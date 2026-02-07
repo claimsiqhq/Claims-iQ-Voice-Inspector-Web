@@ -1,0 +1,467 @@
+import React, { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import {
+  FileSpreadsheet, FileText, Send, CheckCircle2,
+  AlertTriangle, Download, Loader2, ChevronLeft, ShieldCheck,
+  XCircle,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+export default function ExportPage({ params }: { params: { id: string } }) {
+  const claimId = parseInt(params.id);
+  const [, setLocation] = useLocation();
+
+  const [esxUrl, setEsxUrl] = useState<string | null>(null);
+  const [esxFileName, setEsxFileName] = useState("");
+  const [pdfData, setPdfData] = useState<any>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+
+  const { data: claimData } = useQuery({
+    queryKey: [`/api/claims/${claimId}`],
+    enabled: !!claimId,
+  });
+
+  const claim = claimData as any;
+
+  // Get session ID
+  const { data: sessionData } = useQuery({
+    queryKey: [`/api/claims/${claimId}/inspection/start`],
+    queryFn: async () => {
+      const res = await fetch(`/api/claims/${claimId}/inspection/start`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      return res.json();
+    },
+    enabled: !!claimId,
+  });
+
+  const sessionId = (sessionData as any)?.sessionId;
+
+  // Validation
+  const { data: validation, isLoading: validationLoading } = useQuery({
+    queryKey: [`/api/inspection/${sessionId}/export/validate`],
+    queryFn: async () => {
+      const res = await fetch(`/api/inspection/${sessionId}/export/validate`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      return res.json();
+    },
+    enabled: !!sessionId,
+  });
+
+  const validationData = validation as any;
+  const canExport = validationData?.canExport ?? false;
+  const blockers = validationData?.blockers || [];
+  const warnings = validationData?.warnings || [];
+  const summary = validationData?.summary || {};
+
+  // Session data for status
+  const { data: inspectionData, refetch: refetchInspection } = useQuery({
+    queryKey: [`/api/inspection/${sessionId}`],
+    enabled: !!sessionId,
+  });
+
+  const inspectionSession = (inspectionData as any)?.session;
+  const currentStatus = inspectionSession?.status || "active";
+
+  // ESX Export
+  const esxMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/inspection/${sessionId}/export/esx`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("Content-Disposition");
+      const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || "export.esx";
+      setEsxFileName(fileName);
+      const url = URL.createObjectURL(blob);
+      setEsxUrl(url);
+      return url;
+    },
+  });
+
+  // PDF Export
+  const pdfMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/inspection/${sessionId}/export/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      setPdfData(data);
+      setShowPdfPreview(true);
+      return data;
+    },
+  });
+
+  // Submit for Review
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/inspection/${sessionId}/status`, { status: "submitted" });
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchInspection();
+    },
+  });
+
+  const handleEsxDownload = () => {
+    if (esxUrl) {
+      const a = document.createElement("a");
+      a.href = esxUrl;
+      a.download = esxFileName;
+      a.click();
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col" data-testid="export-page">
+      {/* Header */}
+      <div className="h-14 bg-white border-b border-border flex items-center px-5 shrink-0">
+        <button onClick={() => setLocation(`/inspection/${claimId}/review`)} className="text-muted-foreground hover:text-foreground mr-3">
+          <ChevronLeft size={20} />
+        </button>
+        <div>
+          <h1 className="font-display font-bold text-foreground text-base">Export</h1>
+          <p className="text-xs text-muted-foreground">{claim?.claimNumber || `Claim #${claimId}`}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5 space-y-5 max-w-2xl mx-auto w-full">
+        {/* Loading State */}
+        {validationLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
+
+        {/* Blockers */}
+        {!validationLoading && blockers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="border-2 border-destructive rounded-xl p-5 bg-destructive/5"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <XCircle size={20} className="text-destructive" />
+              <h3 className="font-display font-bold text-destructive">Cannot Export</h3>
+            </div>
+            <ul className="space-y-1.5">
+              {blockers.map((b: string, i: number) => (
+                <li key={i} className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle size={14} /> {b}
+                </li>
+              ))}
+            </ul>
+            <Button
+              variant="outline"
+              className="mt-4 border-destructive text-destructive hover:bg-destructive/10"
+              onClick={() => setLocation(`/inspection/${claimId}/review`)}
+            >
+              Return to Review
+            </Button>
+          </motion.div>
+        )}
+
+        {/* Warnings */}
+        {!validationLoading && canExport && warnings.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="border border-[#F59E0B]/40 rounded-lg p-3 bg-[#F59E0B]/5"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={16} className="text-[#F59E0B]" />
+              <span className="text-sm font-semibold text-[#342A4F]">Warnings</span>
+            </div>
+            <ul className="space-y-1">
+              {warnings.map((w: string, i: number) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-[#342A4F]">
+                  <AlertTriangle size={10} className="text-[#F59E0B]" /> {w}
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+
+        {/* Card 1: ESX Export */}
+        {!validationLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className={cn(
+              "border border-border rounded-xl p-6 bg-card",
+              !canExport && "opacity-50 pointer-events-none"
+            )}
+          >
+            <div className="flex items-start gap-4">
+              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileSpreadsheet size={24} className="text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-foreground text-lg">ESX for Xactimate</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Export estimate as Xactimate-compatible ESX file
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {summary.lineItemCount || 0} line items &bull; {summary.roomCount || 0} rooms
+                </p>
+
+                <div className="mt-4 flex gap-2">
+                  {!esxUrl ? (
+                    <Button
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={() => esxMutation.mutate()}
+                      disabled={esxMutation.isPending}
+                    >
+                      {esxMutation.isPending ? (
+                        <><Loader2 size={14} className="mr-1 animate-spin" /> Generating...</>
+                      ) : (
+                        <>Generate ESX</>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#22C55E]" />
+                      <span className="text-sm text-[#22C55E] font-medium">{esxFileName}</span>
+                      <Button size="sm" variant="outline" onClick={handleEsxDownload}>
+                        <Download size={14} className="mr-1" /> Download
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Card 2: PDF Report */}
+        {!validationLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className={cn(
+              "border border-border rounded-xl p-6 bg-card",
+              !canExport && "opacity-50 pointer-events-none"
+            )}
+          >
+            <div className="flex items-start gap-4">
+              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText size={24} className="text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-foreground text-lg">PDF Inspection Report</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Full inspection report with photos, damage documentation, and estimate
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {summary.photoCount || 0} photos &bull; {summary.lineItemCount || 0} line items &bull; {summary.roomCount || 0} rooms
+                </p>
+
+                <div className="mt-4 flex gap-2">
+                  {!showPdfPreview ? (
+                    <Button
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={() => pdfMutation.mutate()}
+                      disabled={pdfMutation.isPending}
+                    >
+                      {pdfMutation.isPending ? (
+                        <><Loader2 size={14} className="mr-1 animate-spin" /> Generating...</>
+                      ) : (
+                        <>Generate PDF</>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#22C55E]" />
+                      <span className="text-sm text-[#22C55E] font-medium">Report ready</span>
+                      <Button size="sm" variant="outline" onClick={handlePrint}>
+                        Print / Save as PDF
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Card 3: Submit for Review */}
+        {!validationLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className={cn(
+              "border border-border rounded-xl p-6 bg-card",
+              !canExport && "opacity-50 pointer-events-none"
+            )}
+          >
+            <div className="flex items-start gap-4">
+              <div className="h-12 w-12 rounded-lg bg-[#C6A54E]/10 flex items-center justify-center shrink-0">
+                <Send size={24} className="text-[#C6A54E]" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-foreground text-lg">Submit for Review</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Send to carrier or supervisor for approval
+                </p>
+
+                {/* Status Badge */}
+                <div className="mt-3">
+                  <StatusBadge status={currentStatus} />
+                </div>
+
+                <div className="mt-4">
+                  {currentStatus === "submitted" || currentStatus === "approved" ? (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#22C55E]" />
+                      <span className="text-sm text-[#22C55E] font-medium">
+                        {currentStatus === "approved" ? "Approved" : "Submitted for review"}
+                      </span>
+                    </div>
+                  ) : (
+                    <Button
+                      className="bg-[#C6A54E] hover:bg-[#C6A54E]/90 text-[#342A4F] font-semibold"
+                      onClick={() => submitMutation.mutate()}
+                      disabled={submitMutation.isPending}
+                    >
+                      {submitMutation.isPending ? (
+                        <><Loader2 size={14} className="mr-1 animate-spin" /> Submitting...</>
+                      ) : (
+                        <><ShieldCheck size={14} className="mr-1" /> Submit</>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* PDF Preview (printable) */}
+        {showPdfPreview && pdfData && (
+          <div className="print:block border border-border rounded-xl p-8 bg-white mt-6" id="pdf-preview">
+            <div className="text-center mb-6 border-b border-gray-200 pb-4">
+              <h1 className="font-display text-2xl font-bold text-[#342A4F]">Inspection Report</h1>
+              <p className="text-sm text-muted-foreground mt-1">Generated {new Date(pdfData.generatedAt).toLocaleString()}</p>
+            </div>
+
+            {/* Claim Info */}
+            <div className="mb-6">
+              <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Claim Information</h2>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <p><strong>Claim #:</strong> {pdfData.claim?.claimNumber}</p>
+                <p><strong>Insured:</strong> {pdfData.claim?.insuredName}</p>
+                <p><strong>Address:</strong> {pdfData.claim?.propertyAddress}</p>
+                <p><strong>Date of Loss:</strong> {pdfData.claim?.dateOfLoss}</p>
+                <p><strong>Peril:</strong> {pdfData.claim?.perilType}</p>
+              </div>
+            </div>
+
+            {/* Rooms Summary */}
+            {pdfData.rooms?.map((room: any, i: number) => (
+              <div key={i} className="mb-4 border-t border-gray-100 pt-3">
+                <h3 className="font-display font-semibold text-[#342A4F]">{room.name} ({room.structure})</h3>
+                {room.damages?.length > 0 && (
+                  <div className="mt-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">Damages:</p>
+                    {room.damages.map((d: any, j: number) => (
+                      <p key={j} className="text-sm ml-3">{d.description} — {d.severity || "—"}</p>
+                    ))}
+                  </div>
+                )}
+                {room.lineItems?.length > 0 && (
+                  <div className="mt-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">Line Items:</p>
+                    {room.lineItems.map((li: any, j: number) => (
+                      <p key={j} className="text-sm ml-3">{li.description} — {li.quantity} {li.unit} @ ${li.unitPrice} = ${li.totalPrice?.toFixed(2)}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Estimate Summary */}
+            {pdfData.estimate && (
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Estimate Summary</h2>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <p><strong>RCV:</strong> ${pdfData.estimate.totalRCV?.toFixed(2)}</p>
+                  <p><strong>Depreciation:</strong> ${pdfData.estimate.totalDepreciation?.toFixed(2)}</p>
+                  <p><strong>ACV:</strong> ${pdfData.estimate.totalACV?.toFixed(2)}</p>
+                  <p><strong>Items:</strong> {pdfData.estimate.itemCount}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Moisture Readings */}
+            {pdfData.moistureReadings?.length > 0 && (
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Moisture Readings</h2>
+                <table className="w-full text-sm border">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-2 py-1 border">Location</th>
+                      <th className="text-right px-2 py-1 border">Reading</th>
+                      <th className="text-left px-2 py-1 border">Material</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pdfData.moistureReadings.map((m: any, i: number) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1 border">{m.location}</td>
+                        <td className="px-2 py-1 border text-right">{m.reading}%</td>
+                        <td className="px-2 py-1 border">{m.materialType || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Link */}
+      <div className="h-12 bg-white border-t border-border flex items-center justify-center shrink-0">
+        <button
+          onClick={() => setLocation(`/inspection/${claimId}/review`)}
+          className="text-sm text-primary hover:underline"
+        >
+          &larr; Back to Review
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; color: string; bg: string }> = {
+    active: { label: "Draft", color: "#6B7280", bg: "#F3F4F6" },
+    review: { label: "Under Review", color: "#7763B7", bg: "#7763B7/10" },
+    submitted: { label: "Submitted", color: "#C6A54E", bg: "#C6A54E/10" },
+    exported: { label: "Exported", color: "#7763B7", bg: "#7763B7/10" },
+    approved: { label: "Approved", color: "#22C55E", bg: "#22C55E/10" },
+    completed: { label: "Completed", color: "#22C55E", bg: "#22C55E/10" },
+  };
+
+  const c = config[status] || config.active;
+
+  return (
+    <span
+      className="text-xs font-semibold px-2.5 py-1 rounded-full inline-flex items-center gap-1"
+      style={{ backgroundColor: `${c.color}15`, color: c.color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.color }} />
+      {c.label}
+    </span>
+  );
+}

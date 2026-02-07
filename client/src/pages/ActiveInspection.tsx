@@ -15,10 +15,13 @@ import {
   Loader2,
   AlertCircle,
   WifiOff,
+  FileText,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
+import ProgressMap from "@/components/ProgressMap";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -84,6 +87,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [showProgressMap, setShowProgressMap] = useState(false);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -348,7 +352,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (!sessionId) { result = { success: false }; break; }
           await fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" });
           result = { success: true, message: "Inspection finalized." };
-          setTimeout(() => setLocation("/"), 2000);
+          setTimeout(() => setLocation(`/inspection/${claimId}/review`), 2000);
           break;
         }
 
@@ -419,6 +423,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       case "error":
         console.error("Realtime error:", event.error);
         setVoiceState("error");
+        // Auto-recover after 5 seconds
+        setTimeout(() => {
+          setVoiceState((prev) => prev === "error" ? "idle" : prev);
+        }, 5000);
         break;
     }
   }, [addTranscriptEntry, executeToolCall]);
@@ -467,6 +475,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       dc.onclose = () => {
         setIsConnected(false);
         setVoiceState("disconnected");
+        // Auto-reconnect after 3 seconds
+        setTimeout(() => {
+          if (!pcRef.current || pcRef.current.connectionState === "closed") {
+            connectVoice();
+          }
+        }, 3000);
       };
 
       dc.onmessage = (event) => {
@@ -661,14 +675,23 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           ))}
         </div>
 
-        {/* Finish Button */}
-        <div className="p-3 border-t border-white/10">
+        {/* Progress Map + Finish */}
+        <div className="p-3 border-t border-white/10 space-y-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-white/60 hover:text-white hover:bg-white/10"
+            onClick={() => setShowProgressMap(true)}
+          >
+            <MapPin className="h-3 w-3 mr-1" />
+            Progress Map
+          </Button>
           <Button
             variant="outline"
             className="w-full border-white/20 text-white hover:bg-white/10 text-xs"
             onClick={() => {
               if (sessionId) {
-                fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation("/"));
+                fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation(`/inspection/${claimId}/review`));
               } else {
                 setLocation("/");
               }
@@ -713,9 +736,19 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         {/* Disconnected Banner */}
         {voiceState === "disconnected" && !isConnecting && (
-          <div className="bg-amber-600/20 border-b border-amber-500/30 px-5 py-2 flex items-center gap-2 z-10">
-            <WifiOff size={14} className="text-amber-400" />
-            <span className="text-xs text-amber-300">Voice disconnected</span>
+          <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between text-sm z-10">
+            <div className="flex items-center gap-2">
+              <WifiOff className="h-4 w-4" />
+              <span>Voice disconnected — Reconnecting...</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:text-white/80 hover:bg-white/10"
+              onClick={connectVoice}
+            >
+              Reconnect Now
+            </Button>
           </div>
         )}
 
@@ -819,7 +852,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 )}
               </button>
               <div className="mt-2 h-6">
-                {isConnected && <VoiceIndicator status={voiceState === "error" || voiceState === "disconnected" ? "idle" : voiceState as any} />}
+                {isConnected && <VoiceIndicator status={voiceState} />}
                 {!isConnected && !isConnecting && (
                   <span className="text-[10px] text-white/40">Tap to connect</span>
                 )}
@@ -829,15 +862,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </div>
             </div>
 
-            {/* Right: Skip */}
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
-              data-testid="button-skip"
-            >
-              <SkipForward size={18} />
-            </Button>
+            {/* Right: Skip + Review */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-white/60 hover:text-white"
+                onClick={() => setLocation(`/inspection/${claimId}/review`)}
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                Review
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
+                data-testid="button-skip"
+              >
+                <SkipForward size={18} />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -918,6 +962,19 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
         )}
       </div>
+
+      {/* PROGRESS MAP */}
+      <ProgressMap
+        isOpen={showProgressMap}
+        onClose={() => setShowProgressMap(false)}
+        sessionId={sessionId!}
+        rooms={rooms}
+        currentPhase={currentPhase}
+        onNavigateToRoom={(roomId) => {
+          setCurrentRoomId(roomId);
+          setShowProgressMap(false);
+        }}
+      />
 
       {/* CAMERA OVERLAY */}
       <AnimatePresence>
