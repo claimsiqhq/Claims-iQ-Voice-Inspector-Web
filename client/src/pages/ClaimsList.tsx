@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import ClaimCard from "@/components/ClaimCard";
+import DocumentStatusTracker from "@/components/DocumentStatusTracker";
 import { Button } from "@/components/ui/button";
 import { Plus, Filter, Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -91,6 +92,8 @@ export default function ClaimsList() {
             <Filter className="h-4 w-4" /> Filter
           </Button>
         </div>
+
+        <DocumentStatusTracker />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">

@@ -237,6 +237,49 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/documents/status-summary", async (_req, res) => {
+    try {
+      const docs = await storage.getAllDocuments();
+      const allClaims = await storage.getClaims();
+      const summaries = [];
+      for (const claim of allClaims) {
+        const claimDocs = docs.filter(d => d.claimId === claim.id);
+        if (claimDocs.length === 0) continue;
+        const claimExtractions = await storage.getExtractions(claim.id);
+        const docStatuses = claimDocs.map(doc => {
+          const extraction = claimExtractions.find(e => e.documentType === doc.documentType);
+          let stage: string;
+          if (extraction?.confirmedByUser) {
+            stage = "reviewed";
+          } else if (doc.status === "parsed") {
+            stage = "extracted";
+          } else if (doc.status === "processing") {
+            stage = "processing";
+          } else if (doc.status === "uploaded") {
+            stage = "uploaded";
+          } else {
+            stage = "empty";
+          }
+          return {
+            documentId: doc.id,
+            documentType: doc.documentType,
+            fileName: doc.fileName,
+            stage,
+          };
+        });
+        summaries.push({
+          claimId: claim.id,
+          claimNumber: claim.claimNumber,
+          insuredName: claim.insuredName,
+          documents: docStatuses,
+        });
+      }
+      res.json(summaries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/claims/:id/documents", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
