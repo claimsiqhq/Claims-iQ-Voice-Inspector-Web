@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
+import FloorPlanSketch from "@/components/FloorPlanSketch";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
@@ -46,6 +47,8 @@ interface RoomData {
   photoCount: number;
   roomType?: string;
   phase?: number;
+  dimensions?: { length?: number; width?: number; height?: number };
+  structure?: string;
 }
 
 interface CameraMode {
@@ -103,6 +106,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
   const elapsedRef = useRef(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -306,14 +310,22 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "trigger_photo_capture": {
+          // Store the pending call_id — DO NOT send tool result yet
+          // The agent will wait for the photo capture before continuing
+          pendingPhotoCallRef.current = {
+            call_id,
+            label: args.label,
+            photoType: args.photoType,
+          };
           setCameraMode({
             active: true,
             label: args.label,
             photoType: args.photoType,
             overlay: args.overlay || "none",
           });
-          result = { success: true, message: "Camera activated. Waiting for capture." };
-          break;
+          // IMPORTANT: Return early — skip the dcRef.current.send() below
+          // The tool result will be sent from handleCameraCapture instead
+          return;
         }
 
         case "log_moisture_reading": {
@@ -551,9 +563,21 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     ctx.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
 
+    // Stop the camera stream
+    const videoStream = videoRef.current.srcObject as MediaStream | null;
+    if (videoStream) {
+      videoStream.getTracks().forEach((t) => t.stop());
+    }
+
+    // Show a "processing" state while we save + analyze
+    setCameraMode((prev) => ({ ...prev, label: "Analyzing photo..." }));
+
+    let photoResult: any = { success: false, message: "Photo capture failed" };
+
     if (sessionId) {
       try {
-        const res = await fetch(`/api/inspection/${sessionId}/photos`, {
+        // Step 1: Save photo to backend (uploads to Supabase)
+        const saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -564,15 +588,82 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             photoType: cameraMode.photoType,
           }),
         });
-        const photo = await res.json();
-        setRecentPhotos((prev) => [photo, ...prev].slice(0, 6));
-      } catch {}
+        const savedPhoto = await saveRes.json();
+
+        // Step 2: Send to GPT-4o Vision for analysis
+        let analysis: any = null;
+        try {
+          const analyzeRes = await fetch(
+            `/api/inspection/${sessionId}/photos/${savedPhoto.photoId}/analyze`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                imageBase64: dataUrl,
+                expectedLabel: cameraMode.label,
+                expectedPhotoType: cameraMode.photoType,
+              }),
+            }
+          );
+          analysis = await analyzeRes.json();
+        } catch (e) {
+          console.error("Photo analysis failed:", e);
+        }
+
+        // Step 3: Store in local state WITH thumbnail + analysis for gallery display
+        setRecentPhotos((prev) => [
+          {
+            id: savedPhoto.photoId,
+            storagePath: savedPhoto.storagePath,
+            thumbnail: dataUrl,
+            caption: cameraMode.label,
+            photoType: cameraMode.photoType,
+            analysis,
+            matchesRequest: analysis?.matchesExpected ?? true,
+          },
+          ...prev,
+        ].slice(0, 20));
+
+        // Step 4: Build the tool result to send back to the voice agent
+        photoResult = {
+          success: true,
+          photoId: savedPhoto.photoId,
+          message: "Photo captured and saved.",
+          analysis: analysis ? {
+            description: analysis.description,
+            damageVisible: analysis.damageVisible,
+            matchesExpected: analysis.matchesExpected,
+            matchExplanation: analysis.matchExplanation,
+            qualityScore: analysis.qualityScore,
+          } : undefined,
+        };
+
+        // If photo doesn't match what was requested, tell the agent
+        if (analysis && !analysis.matchesExpected) {
+          photoResult.warning = `Photo may not match requested capture "${cameraMode.label}". ${analysis.matchExplanation}`;
+        }
+      } catch (e: any) {
+        console.error("Camera capture error:", e);
+        photoResult = { success: false, message: e.message };
+      }
     }
 
-    const videoStream = videoRef.current.srcObject as MediaStream | null;
-    if (videoStream) {
-      videoStream.getTracks().forEach((t) => t.stop());
+    // Step 5: NOW send the deferred tool result to the voice agent
+    const pendingCall = pendingPhotoCallRef.current;
+    if (pendingCall && dcRef.current && dcRef.current.readyState === "open") {
+      dcRef.current.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: pendingCall.call_id,
+          output: JSON.stringify(photoResult),
+        },
+      }));
+      dcRef.current.send(JSON.stringify({ type: "response.create" }));
     }
+    pendingPhotoCallRef.current = null;
+
+    // Step 6: Close camera overlay
     setCameraMode({ active: false, label: "", photoType: "", overlay: "none" });
   };
 
@@ -723,6 +814,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         </div>
       </div>
 
+      <FloorPlanSketch
+        rooms={rooms.map(r => ({
+          ...r,
+          dimensions: (r as any).dimensions,
+        }))}
+        currentRoomId={currentRoomId}
+        onRoomClick={(roomId) => {
+          setCurrentRoomId(roomId);
+          setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+        }}
+      />
+
       <div>
         <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Line Items</p>
         {recentLineItems.length === 0 && (
@@ -752,12 +855,73 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
       {recentPhotos.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Photos</p>
-          <div className="grid grid-cols-3 gap-1">
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
+            Captured Photos ({recentPhotos.length})
+          </p>
+          <div className="space-y-2">
             {recentPhotos.map((photo: any, i: number) => (
-              <div key={i} className="aspect-square bg-white/10 rounded border border-white/10 flex items-center justify-center">
-                <Camera size={12} className="text-white/30" />
-              </div>
+              <motion.div
+                key={photo.id || i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white/5 rounded-lg border border-white/10 overflow-hidden"
+              >
+                {/* Thumbnail */}
+                {photo.thumbnail ? (
+                  <div className="relative">
+                    <img
+                      src={photo.thumbnail}
+                      alt={photo.caption || "Inspection photo"}
+                      className="w-full h-32 object-cover"
+                    />
+                    {/* Match badge */}
+                    {photo.analysis && (
+                      <div className={cn(
+                        "absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold",
+                        photo.matchesRequest
+                          ? "bg-green-500/90 text-white"
+                          : "bg-amber-500/90 text-white"
+                      )}>
+                        {photo.matchesRequest ? "✓ Match" : "⚠ Check"}
+                      </div>
+                    )}
+                    {/* Photo type badge */}
+                    <div className="absolute bottom-1 left-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] text-white/80">
+                      {(photo.photoType || "photo").replace("_", " ")}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-20 bg-white/5 flex items-center justify-center">
+                    <Camera size={16} className="text-white/20" />
+                  </div>
+                )}
+
+                {/* Caption + Analysis */}
+                <div className="px-2.5 py-2">
+                  <p className="text-xs font-medium truncate">{photo.caption || "Photo"}</p>
+                  {photo.analysis?.description && (
+                    <p className="text-[10px] text-white/50 mt-1 line-clamp-2">
+                      {photo.analysis.description}
+                    </p>
+                  )}
+                  {photo.analysis?.damageVisible?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {photo.analysis.damageVisible.map((d: any, j: number) => (
+                        <span key={j} className="px-1.5 py-0.5 bg-red-500/20 text-red-300 rounded text-[9px]">
+                          {d.type} — {d.severity}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {photo.analysis && !photo.matchesRequest && (
+                    <div className="mt-1.5 px-2 py-1 bg-amber-500/10 rounded border border-amber-500/20">
+                      <p className="text-[9px] text-amber-300">
+                        ⚠ {photo.analysis.matchExplanation}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -1048,6 +1212,24 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   const videoStream = videoRef.current?.srcObject as MediaStream | null;
                   if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
                   setCameraMode({ active: false, label: "", photoType: "", overlay: "none" });
+
+                  // Send cancelled result to the voice agent so it doesn't hang
+                  const pendingCall = pendingPhotoCallRef.current;
+                  if (pendingCall && dcRef.current && dcRef.current.readyState === "open") {
+                    dcRef.current.send(JSON.stringify({
+                      type: "conversation.item.create",
+                      item: {
+                        type: "function_call_output",
+                        call_id: pendingCall.call_id,
+                        output: JSON.stringify({
+                          success: false,
+                          message: "Photo capture cancelled by user. Ask if they want to try again or continue.",
+                        }),
+                      },
+                    }));
+                    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                  }
+                  pendingPhotoCallRef.current = null;
                 }}
                 data-testid="button-camera-close"
               >
@@ -1066,12 +1248,22 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-black/80 p-4 flex justify-center border-t border-white/10">
-              <button
-                onClick={handleCameraCapture}
-                className="h-16 w-16 rounded-full bg-white border-4 border-white/50 hover:scale-105 active:scale-95 transition-transform"
-                data-testid="button-camera-capture"
-              />
+            <div className="bg-black/80 p-4 border-t border-white/10">
+              {cameraMode.label === "Analyzing photo..." ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-8 w-8 text-accent animate-spin" />
+                  <p className="text-sm text-white/70">Analyzing photo with AI...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={handleCameraCapture}
+                    className="h-16 w-16 rounded-full bg-white border-4 border-white/50 hover:scale-105 active:scale-95 transition-transform"
+                    data-testid="button-camera-capture"
+                  />
+                  <p className="text-[10px] text-white/40">Tap to capture</p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

@@ -28,7 +28,21 @@ export function buildSystemInstructions(briefing: any, claim: Claim): string {
 
 1. **Location Awareness:** Always know which structure (Main Dwelling, Detached Garage, etc.) and which room/area the adjuster is in. Never add a line item without knowing the location. Use set_inspection_context to track this.
 
-2. **Guided Flow:** Follow the 8-phase inspection flow:
+2. **Guided Flow:** Follow the inspection flow starting with mandatory property verification:
+
+   **MANDATORY FIRST STEP — Property Verification Photo:**
+   Before anything else, your FIRST action upon connecting must be:
+   1. Greet the adjuster briefly: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
+   2. Immediately call trigger_photo_capture with:
+      - label: "Front of Property — ${claim.propertyAddress}, ${claim.city}, ${claim.state}"
+      - photoType: "overview"
+   3. When the photo result comes back with the AI analysis, compare what was captured against the claim data:
+      - Does the visible structure match the property type from the briefing (e.g., single-family, townhome)?
+      - Can you see a house number? Does it match the address on file?
+      - Does the general condition match what's described in the claim?
+   4. Confirm with the adjuster: "I can see [description from analysis]. This matches the property at [address] on the claim. We're good to proceed." OR if there's a mismatch: "The photo doesn't appear to match the property on file. Can you confirm we're at [address]?"
+   5. Only after property verification is confirmed, proceed to Phase 1.
+
    Phase 1: Pre-Inspection (review briefing highlights)
    Phase 2: Session Setup (confirm peril, price list, structures)
    Phase 3: Exterior (roof, siding, gutters, windows, each elevation)
@@ -53,6 +67,7 @@ ${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/m
    - Test square count is mentioned (test square photo)
    - Moisture readings are abnormal (moisture documentation photo)
    - Adjuster says "take a photo" or "capture this"
+   IMPORTANT: When you call trigger_photo_capture, the camera will open and WAIT for the adjuster to capture the photo. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo — acknowledge what was captured and whether it matches what you expected. If the photo doesn't match, ask the adjuster to retake it.
 
 7. **Coverage Limits:** The deductible is $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A limit is $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert the adjuster if the running estimate approaches or exceeds any coverage limit.
 
@@ -143,12 +158,12 @@ export const realtimeTools = [
   {
     type: "function",
     name: "trigger_photo_capture",
-    description: "Triggers the iPad camera to capture a photo. Call when evidence is needed for damage, overview, or test squares.",
+    description: "Triggers the iPad camera to capture a photo. Call for property verification (mandatory first step), damage evidence, overview shots, or test squares. The camera will open and wait for the adjuster to capture — do NOT continue talking until you receive the result.",
     parameters: {
       type: "object",
       properties: {
         label: { type: "string", description: "Caption for the photo, e.g., 'Hail Test Square - North Slope'" },
-        photoType: { type: "string", enum: ["overview", "damage_detail", "test_square", "moisture", "pre_existing"] },
+        photoType: { type: "string", enum: ["overview", "address_verification", "damage_detail", "test_square", "moisture", "pre_existing"] },
         overlay: { type: "string", enum: ["none", "test_square_grid", "measurement_ruler"], description: "Optional camera overlay" }
       },
       required: ["label", "photoType"]

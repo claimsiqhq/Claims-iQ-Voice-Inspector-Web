@@ -183,6 +183,8 @@ export const inspectionPhotos = pgTable("inspection_photos", {
   caption: text("caption"),
   photoType: varchar("photo_type", { length: 30 }),
   annotations: jsonb("annotations"),
+  analysis: jsonb("analysis"),
+  matchesRequest: boolean("matches_request"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

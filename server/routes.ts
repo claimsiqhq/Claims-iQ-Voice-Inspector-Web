@@ -733,6 +733,127 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/inspection/:sessionId/photos/:photoId/analyze
+  app.post("/api/inspection/:sessionId/photos/:photoId/analyze", async (req, res) => {
+    try {
+      const photoId = parseInt(req.params.photoId);
+      const { imageBase64, expectedLabel, expectedPhotoType } = req.body;
+
+      if (!imageBase64) {
+        return res.status(400).json({ message: "imageBase64 is required" });
+      }
+
+      // Call GPT-4o Vision to analyze the photo
+      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an insurance property inspection photo analyst. Analyze this photo and provide:
+1. A brief description of what you see (1-2 sentences)
+2. Any visible damage (type, severity, location in frame)
+3. Whether this photo matches the expected capture: "${expectedLabel}" (type: ${expectedPhotoType})
+4. Photo quality assessment (lighting, focus, framing)
+Respond in JSON format:
+{
+  "description": "string",
+  "damageVisible": [{ "type": "string", "severity": "string", "notes": "string" }],
+  "matchesExpected": true/false,
+  "matchConfidence": 0.0-1.0,
+  "matchExplanation": "string",
+  "qualityScore": 1-5,
+  "qualityNotes": "string"
+}`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: imageBase64,
+                    detail: "high"
+                  }
+                },
+                {
+                  type: "text",
+                  text: `This photo was requested as: "${expectedLabel}" (type: ${expectedPhotoType}). Analyze it.`
+                }
+              ]
+            }
+          ],
+          max_tokens: 500,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!openaiRes.ok) {
+        const errBody = await openaiRes.text();
+        console.error("Vision API error:", errBody);
+        // Return a graceful fallback — don't block the workflow
+        const fallbackAnalysis = {
+          description: "Photo captured successfully. AI analysis unavailable.",
+          damageVisible: [],
+          matchesExpected: true,
+          matchConfidence: 0.5,
+          matchExplanation: "Analysis unavailable — assuming match.",
+          qualityScore: 3,
+          qualityNotes: "Unable to assess",
+        };
+        // Still save the fallback analysis
+        await storage.updatePhoto(photoId, {
+          analysis: fallbackAnalysis,
+          matchesRequest: true,
+        });
+        return res.json(fallbackAnalysis);
+      }
+
+      const visionData = await openaiRes.json();
+      const analysisText = visionData.choices?.[0]?.message?.content || "{}";
+
+      let analysis: any;
+      try {
+        analysis = JSON.parse(analysisText);
+      } catch {
+        analysis = {
+          description: analysisText,
+          damageVisible: [],
+          matchesExpected: true,
+          matchConfidence: 0.5,
+          matchExplanation: "Parse error — raw response stored.",
+          qualityScore: 3,
+          qualityNotes: "",
+        };
+      }
+
+      // Update the photo record with analysis
+      await storage.updatePhoto(photoId, {
+        analysis,
+        matchesRequest: analysis.matchesExpected ?? true,
+      });
+
+      res.json(analysis);
+    } catch (error: any) {
+      console.error("Photo analysis error:", error);
+      // Don't block the workflow on analysis failure
+      res.json({
+        description: "Photo captured. Analysis failed.",
+        damageVisible: [],
+        matchesExpected: true,
+        matchConfidence: 0.5,
+        matchExplanation: "Analysis error — photo saved without analysis.",
+        qualityScore: 3,
+        qualityNotes: error.message,
+      });
+    }
+  });
+
   // ── Moisture Readings ─────────────────────────────
 
   app.post("/api/inspection/:sessionId/moisture", async (req, res) => {
@@ -830,6 +951,12 @@ export async function registerRoutes(
           tools: realtimeTools,
           input_audio_transcription: { model: "whisper-1" },
           modalities: ["audio", "text"],
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.75,
+            prefix_padding_ms: 400,
+            silence_duration_ms: 800,
+          },
         }),
       });
 

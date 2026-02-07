@@ -76,6 +76,7 @@ export interface IStorage {
   createPhoto(data: InsertInspectionPhoto): Promise<InspectionPhoto>;
   getPhotos(sessionId: number): Promise<InspectionPhoto[]>;
   getPhotosForRoom(roomId: number): Promise<InspectionPhoto[]>;
+  updatePhoto(id: number, updates: Partial<InspectionPhoto>): Promise<InspectionPhoto | undefined>;
 
   createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
   getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
@@ -354,6 +355,11 @@ export class DatabaseStorage implements IStorage {
 
   async getPhotosForRoom(roomId: number): Promise<InspectionPhoto[]> {
     return db.select().from(inspectionPhotos).where(eq(inspectionPhotos.roomId, roomId));
+  }
+
+  async updatePhoto(id: number, updates: Partial<InspectionPhoto>): Promise<InspectionPhoto | undefined> {
+    const [photo] = await db.update(inspectionPhotos).set(updates).where(eq(inspectionPhotos.id, id)).returning();
+    return photo;
   }
 
   async createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading> {
