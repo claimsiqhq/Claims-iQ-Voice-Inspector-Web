@@ -64,32 +64,88 @@ function EditableField({ label, value, confidence, onChange }: {
   );
 }
 
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="col-span-full border-t border-dashed border-border my-1 pt-3">
+      <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">{title}</h4>
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-foreground text-xs">{label}</Label>
+      <div className="text-sm font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function CurrencyDisplay({ label, value, highlight }: { label: string; value: number | null | undefined; highlight?: boolean }) {
+  const fmt = (v: number | null | undefined) => v != null ? `$${v.toLocaleString()}` : "—";
+  return (
+    <div className="space-y-1">
+      <Label className="text-muted-foreground text-xs">{label}</Label>
+      <div className={`text-sm font-mono font-semibold ${highlight ? "text-amber-700" : "text-foreground"}`}>
+        {fmt(value)}
+      </div>
+    </div>
+  );
+}
+
 function FnolTab({ extraction }: { extraction: Extraction }) {
   const data = extraction.extractedData || {};
   const conf = extraction.confidence || {};
   const addr = data.propertyAddress || {};
+  const contact = data.contactInfo || {};
+  const producer = data.producer || {};
+  const policyInfo = data.policyInfo || {};
+  const deductibles = data.deductibles || {};
+  const coverages = data.coverages || {};
 
   return (
     <Card className="border-border">
       <CardHeader className="pb-4 border-b border-border/50">
         <CardTitle className="text-lg font-display flex items-center gap-2">
-          <Check className="h-5 w-5 text-green-600" /> FNOL Extraction
+          <Check className="h-5 w-5 text-green-600" /> FNOL / Claim Information Report
         </CardTitle>
+        {data.catCode && (
+          <Badge variant="destructive" className="w-fit mt-1">CAT: {data.catCode}</Badge>
+        )}
       </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
+      <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 pt-6">
+        <SectionHeader title="Claim Details" />
         <EditableField label="Claim Number" value={data.claimNumber || ""} confidence={conf.claimNumber} onChange={() => {}} />
+        <EditableField label="Date of Loss" value={data.dateOfLoss || ""} confidence={conf.dateOfLoss} onChange={() => {}} />
+        <ReadOnlyField label="Time of Loss" value={data.timeOfLoss || ""} />
+        <ReadOnlyField label="Claim Status" value={data.claimStatus || ""} />
+        <ReadOnlyField label="Operating Company" value={data.operatingCompany || ""} />
+        <EditableField label="Policy Number" value={data.policyNumber || ""} confidence={conf.policyNumber} onChange={() => {}} />
+
+        <SectionHeader title="Insured Information" />
         <EditableField label="Insured Name" value={data.insuredName || ""} confidence={conf.insuredName} onChange={() => {}} />
-        <div className="space-y-2 md:col-span-2">
+        {data.insuredName2 && (
+          <ReadOnlyField label="Insured Name 2" value={data.insuredName2} />
+        )}
+        <div className="space-y-2 md:col-span-2 lg:col-span-3">
           <Label>Property Address</Label>
           <Input
+            data-testid="input-property-address"
             value={`${addr.street || ""}, ${addr.city || ""}, ${addr.state || ""} ${addr.zip || ""}`}
             readOnly
             className="bg-muted/50"
           />
         </div>
-        <EditableField label="Date of Loss" value={data.dateOfLoss || ""} confidence={conf.dateOfLoss} onChange={() => {}} />
+        <ReadOnlyField label="Home Phone" value={contact.homePhone || ""} />
+        <ReadOnlyField label="Mobile Phone" value={contact.mobilePhone || ""} />
+        <ReadOnlyField label="Email" value={contact.email || ""} />
+
+        <SectionHeader title="Loss & Damage Information" />
         <EditableField label="Peril Type" value={data.perilType || ""} confidence={conf.perilType} onChange={() => {}} />
-        <div className="space-y-2 md:col-span-2">
+        <ReadOnlyField label="Damage Areas" value={data.damageAreas || ""} />
+        <ReadOnlyField label="Roof Damage" value={data.roofDamage != null ? (data.roofDamage ? "Yes" : "No") : ""} />
+        <div className="space-y-2 md:col-span-2 lg:col-span-3">
           <div className="flex items-center justify-between">
             <Label>Reported Damage</Label>
             {conf.reportedDamage && <ConfidenceBadge level={conf.reportedDamage} />}
@@ -100,8 +156,97 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
             defaultValue={data.reportedDamage || ""}
           />
         </div>
+
+        <SectionHeader title="Property Details" />
         <EditableField label="Property Type" value={data.propertyType || ""} confidence={conf.propertyType} onChange={() => {}} />
         <EditableField label="Year Built" value={data.yearBuilt?.toString() || ""} confidence={conf.yearBuilt} onChange={() => {}} />
+        <ReadOnlyField label="Year Roof Installed" value={data.yearRoofInstalled?.toString() || ""} />
+        <ReadOnlyField label="Wood Roof" value={data.woodRoof != null ? (data.woodRoof ? "Yes" : "No") : ""} />
+        <ReadOnlyField label="Mortgagee" value={data.thirdPartyInterest || ""} />
+
+        {(coverages.coverageA?.limit || coverages.coverageB?.limit || coverages.coverageC?.limit) && (
+          <>
+            <SectionHeader title="Coverage Limits" />
+            <CurrencyDisplay label="Coverage A (Dwelling)" value={coverages.coverageA?.limit} />
+            <CurrencyDisplay label="Coverage B (Other Structures)" value={coverages.coverageB?.limit} />
+            <CurrencyDisplay label="Coverage C (Personal Property)" value={coverages.coverageC?.limit} />
+            <CurrencyDisplay label="Coverage D (Loss of Use)" value={coverages.coverageD?.limit} />
+            <CurrencyDisplay label="Coverage E (Liability)" value={coverages.coverageE?.limit} />
+            <CurrencyDisplay label="Coverage F (Medical)" value={coverages.coverageF?.limit} />
+            {coverages.coverageA?.valuationMethod && (
+              <ReadOnlyField label="Valuation Method" value={coverages.coverageA.valuationMethod} />
+            )}
+          </>
+        )}
+
+        {(deductibles.policyDeductible || deductibles.windHailDeductible) && (
+          <>
+            <SectionHeader title="Deductibles" />
+            <CurrencyDisplay label="Policy Deductible" value={deductibles.policyDeductible} highlight />
+            <CurrencyDisplay label="Wind/Hail Deductible" value={deductibles.windHailDeductible} highlight />
+            {deductibles.windHailDeductiblePercentage != null && (
+              <ReadOnlyField label="Wind/Hail %" value={`${deductibles.windHailDeductiblePercentage}%`} />
+            )}
+          </>
+        )}
+
+        {data.additionalCoverages && data.additionalCoverages.length > 0 && (
+          <>
+            <SectionHeader title="Additional Coverages" />
+            <div className="col-span-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {data.additionalCoverages.map((ac: any, i: number) => (
+                  <div key={i} className="rounded-lg border border-border/50 p-3 bg-muted/20">
+                    <div className="text-xs font-medium text-foreground">{ac.name}</div>
+                    <div className="text-sm font-mono font-semibold mt-1">
+                      {ac.limit != null ? `$${ac.limit.toLocaleString()}` : "—"}
+                      {ac.deductible != null && (
+                        <span className="text-xs text-muted-foreground ml-2">(Ded: ${ac.deductible.toLocaleString()})</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {data.endorsementList && data.endorsementList.length > 0 && (
+          <>
+            <SectionHeader title="Listed Endorsements" />
+            <div className="col-span-full">
+              <div className="flex flex-wrap gap-2">
+                {data.endorsementList.map((e: any, i: number) => (
+                  <Badge key={i} variant="outline" className="text-xs font-mono">
+                    {e.formNumber}
+                    <span className="font-sans ml-1 text-muted-foreground">{e.title}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {data.endorsementAlerts && data.endorsementAlerts.length > 0 && (
+          <>
+            <div className="col-span-full mt-2">
+              {data.endorsementAlerts.map((alert: string, i: number) => (
+                <Badge key={i} variant="destructive" className="mr-2 mb-1">
+                  <AlertCircle className="h-3 w-3 mr-1" /> {alert}
+                </Badge>
+              ))}
+            </div>
+          </>
+        )}
+
+        {producer.name && (
+          <>
+            <SectionHeader title="Agent / Producer" />
+            <ReadOnlyField label="Agent Name" value={producer.name} />
+            <ReadOnlyField label="Agent Phone" value={producer.phone || ""} />
+            <ReadOnlyField label="Agent Email" value={producer.email || ""} />
+          </>
+        )}
       </CardContent>
     </Card>
   );
