@@ -6,7 +6,7 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 ## Important Notes
 - **Database is Supabase PostgreSQL only** — never use local Replit database or execute_sql_tool. All schema changes must target Supabase via psql with SUPABASE_DATABASE_URL.
 - `drizzle.config.ts` uses DATABASE_URL (local) — do NOT use `npm run db:push` as it targets the wrong database. Create tables directly in Supabase via psql.
-- Supabase database currently has 46 tables total. Our app uses 12 of them (see Database Tables below). The other tables belong to a prior/parallel project in the same Supabase instance — do not modify or drop them.
+- The Supabase instance is shared with another project. Our app uses 12 tables (see Database Tables below). Do not modify or drop any other tables in the database.
 
 ## Recent Changes
 - **Feb 7, 2026**: Confirmed all 7 inspection tables exist in Supabase PostgreSQL (inspection_sessions, inspection_rooms, damage_observations, line_items, inspection_photos, moisture_readings, voice_transcripts). All 12 app tables verified live.
