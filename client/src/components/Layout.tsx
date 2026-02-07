@@ -77,8 +77,8 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto p-4 md:p-8 max-w-7xl mx-auto w-full">
+      {/* Main Content - pb-20 accounts for fixed bottom nav */}
+      <main className="flex-1 overflow-auto p-4 pb-24 md:p-8 md:pb-24 max-w-7xl mx-auto w-full">
         {children}
       </main>
     </div>

@@ -120,7 +120,7 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" data-testid="export-page">
+    <div className="min-h-screen bg-background flex flex-col pb-20" data-testid="export-page">
       {/* Header */}
       <div className="h-14 bg-white border-b border-border flex items-center px-3 md:px-5 shrink-0">
         <button onClick={() => setLocation(`/inspection/${claimId}/review`)} className="text-muted-foreground hover:text-foreground mr-2 md:mr-3 shrink-0">

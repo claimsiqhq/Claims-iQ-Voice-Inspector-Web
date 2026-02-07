@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable icon: safe zone is inner 80% (51.2px padding each side) -->
+  <rect width="512" height="512" fill="#342A4F"/>
+  <!-- Microphone body -->
+  <rect x="216" y="120" width="80" height="160" rx="40" fill="#7763B7"/>
+  <!-- Microphone arc -->
+  <path d="M176 260 a80 80 0 0 0 160 0" fill="none" stroke="#C6A54E" stroke-width="16" stroke-linecap="round"/>
+  <!-- Microphone stand -->
+  <line x1="256" y1="340" x2="256" y2="380" stroke="#C6A54E" stroke-width="16" stroke-linecap="round"/>
+  <line x1="216" y1="380" x2="296" y2="380" stroke="#C6A54E" stroke-width="16" stroke-linecap="round"/>
+</svg>
