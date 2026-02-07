@@ -30,6 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     checkSession();
     const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
