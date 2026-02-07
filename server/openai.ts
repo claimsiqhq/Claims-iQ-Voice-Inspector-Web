@@ -107,7 +107,7 @@ Return ONLY valid JSON.`,
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 4000,
+    max_tokens: 50000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -163,7 +163,7 @@ Return ONLY valid JSON.`,
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 4000,
+    max_tokens: 50000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -223,7 +223,7 @@ Return ONLY valid JSON.`,
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 4000,
+    max_tokens: 50000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -293,7 +293,7 @@ Endorsements: ${JSON.stringify(endorsementsData)}`,
       },
     ],
     temperature: 0.2,
-    max_tokens: 4000,
+    max_tokens: 50000,
   });
 
   return parseJsonResponse(response.choices[0].message.content || "{}");
