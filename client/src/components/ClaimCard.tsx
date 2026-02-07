@@ -1,6 +1,6 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { StatusBadge, PerilBadge } from "./StatusBadge";
-import { Calendar, MapPin, ChevronRight } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, User } from "lucide-react";
 import { Link } from "wouter";
 
 interface ClaimCardProps {
@@ -36,43 +36,46 @@ export default function ClaimCard({
 
   return (
     <Link href={getNextRoute()}>
-      <Card data-testid={`card-claim-${id}`} className="hover:shadow-md transition-shadow cursor-pointer border-border overflow-hidden group h-full">
-        <div className="flex h-full">
-          <div className="w-32 bg-gray-100 relative shrink-0">
-            <div className="h-full w-full flex items-center justify-center bg-muted">
-              <MapPin className="text-muted-foreground opacity-20 h-8 w-8" />
-            </div>
-            {peril && (
-              <div className="absolute top-2 left-2">
-                <PerilBadge peril={peril} />
-              </div>
-            )}
+      <Card
+        data-testid={`card-claim-${id}`}
+        className="hover:shadow-lg transition-all cursor-pointer border-border group h-full"
+      >
+        <div className="p-4 flex flex-col gap-3 h-full">
+          <div className="flex items-center justify-between gap-2">
+            <span
+              data-testid={`text-claim-number-${id}`}
+              className="font-mono text-sm font-semibold text-foreground/70 tracking-wide"
+            >
+              {claimNumber}
+            </span>
+            <StatusBadge status={status} />
           </div>
 
-          <div className="flex-1 p-4 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-start mb-1">
-                <h3 data-testid={`text-claim-number-${id}`} className="font-display font-bold text-lg text-foreground group-hover:text-primary transition-colors">
-                  {claimNumber}
-                </h3>
-                <StatusBadge status={status} />
-              </div>
-
-              <p className="font-medium text-foreground/80 mb-1">{insuredName || "Unknown Insured"}</p>
-
-              <div className="flex items-center text-sm text-muted-foreground gap-1 mb-3">
-                <MapPin className="h-3.5 w-3.5" />
-                <span className="truncate">{address || "No address"}</span>
-              </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <User className="h-4 w-4 text-primary shrink-0" />
+              <h3 className="font-display font-bold text-base text-foreground truncate group-hover:text-primary transition-colors">
+                {insuredName || "Unknown Insured"}
+              </h3>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-border/50">
-              <div className="flex items-center text-xs text-muted-foreground gap-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>DOL: {dateOfLoss || "N/A"}</span>
-              </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span className="line-clamp-2 leading-snug">{address || "No address"}</span>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-border/50">
+            <div className="flex items-center gap-3">
+              {peril && <PerilBadge peril={peril} />}
+              {dateOfLoss && (
+                <div className="flex items-center text-xs text-muted-foreground gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span>DOL {dateOfLoss}</span>
+                </div>
+              )}
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
           </div>
         </div>
       </Card>

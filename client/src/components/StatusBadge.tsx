@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { FileText, Upload, CheckCircle, Briefcase, Search, Star } from "lucide-react";
 
 interface StatusBadgeProps {
   status: string;
@@ -11,67 +12,79 @@ interface PerilBadgeProps {
   className?: string;
 }
 
-const STATUS_DISPLAY: Record<string, string> = {
-  draft: "Draft",
-  documents_uploaded: "Documents Uploaded",
-  extractions_confirmed: "Extractions Confirmed",
-  briefing_ready: "Briefing Ready",
-  inspecting: "Inspecting",
-  review: "Review",
-  complete: "Complete",
+const STATUS_CONFIG: Record<string, { label: string; icon: typeof FileText; colorClass: string }> = {
+  draft: {
+    label: "Draft",
+    icon: FileText,
+    colorClass: "bg-gray-100 text-gray-600 border-gray-200",
+  },
+  documents_uploaded: {
+    label: "Uploaded",
+    icon: Upload,
+    colorClass: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  extractions_confirmed: {
+    label: "Confirmed",
+    icon: CheckCircle,
+    colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  },
+  briefing_ready: {
+    label: "Ready",
+    icon: Briefcase,
+    colorClass: "bg-primary/10 text-primary border-primary/20",
+  },
+  inspecting: {
+    label: "Inspecting",
+    icon: Search,
+    colorClass: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  complete: {
+    label: "Complete",
+    icon: Star,
+    colorClass: "bg-green-50 text-green-700 border-green-200",
+  },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const normalized = status.toLowerCase().replace(/\s+/g, "_");
-  let colorClass = "bg-muted text-muted-foreground";
-
-  switch (normalized) {
-    case "draft":
-      colorClass = "bg-gray-100 text-gray-700 border-gray-200";
-      break;
-    case "documents_uploaded":
-      colorClass = "bg-blue-50 text-blue-700 border-blue-200";
-      break;
-    case "extractions_confirmed":
-      colorClass = "bg-indigo-50 text-indigo-700 border-indigo-200";
-      break;
-    case "briefing_ready":
-      colorClass = "bg-primary/10 text-primary border-primary/20";
-      break;
-    case "inspecting":
-      colorClass = "bg-accent/10 text-accent-foreground border-accent/20";
-      break;
-    case "complete":
-      colorClass = "bg-green-50 text-green-700 border-green-200";
-      break;
-  }
-
-  const display = STATUS_DISPLAY[normalized] || status;
+  const config = STATUS_CONFIG[normalized] || {
+    label: status,
+    icon: FileText,
+    colorClass: "bg-muted text-muted-foreground",
+  };
+  const Icon = config.icon;
 
   return (
-    <Badge variant="outline" className={cn("font-medium px-2.5 py-0.5 border", colorClass, className)}>
-      {display}
+    <Badge
+      variant="outline"
+      className={cn(
+        "font-medium text-xs px-2 py-0.5 border gap-1 whitespace-nowrap shrink-0",
+        config.colorClass,
+        className,
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {config.label}
     </Badge>
   );
 }
 
+const PERIL_CONFIG: Record<string, string> = {
+  hail: "bg-primary text-white",
+  water: "bg-blue-600 text-white",
+  fire: "bg-red-600 text-white",
+  wind: "bg-teal-600 text-white",
+  freeze: "bg-cyan-600 text-white",
+  multi: "bg-gray-700 text-white",
+};
+
 export function PerilBadge({ peril, className }: PerilBadgeProps) {
   const normalized = peril.toLowerCase();
-  let colorClass = "bg-muted text-muted-foreground";
-
-  switch (normalized) {
-    case "hail": colorClass = "bg-primary text-white hover:bg-primary/90"; break;
-    case "water": colorClass = "bg-secondary text-white hover:bg-secondary/90"; break;
-    case "fire": colorClass = "bg-destructive text-white hover:bg-destructive/90"; break;
-    case "wind": colorClass = "bg-accent text-white hover:bg-accent/90"; break;
-    case "freeze": colorClass = "bg-cyan-600 text-white hover:bg-cyan-700"; break;
-    case "multi": colorClass = "bg-gray-700 text-white hover:bg-gray-800"; break;
-  }
-
+  const colorClass = PERIL_CONFIG[normalized] || "bg-muted text-muted-foreground";
   const display = peril.charAt(0).toUpperCase() + peril.slice(1);
 
   return (
-    <Badge className={cn("font-medium border-0", colorClass, className)}>
+    <Badge className={cn("font-medium text-xs border-0 px-2 py-0.5", colorClass, className)}>
       {display}
     </Badge>
   );
