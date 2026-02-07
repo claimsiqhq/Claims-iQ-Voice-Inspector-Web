@@ -284,19 +284,63 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "add_line_item": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const { category, action, description, catalogCode, quantity, unit, unitPrice, depreciationType, wasteFactor } = args;
+
+          let finalUnitPrice = unitPrice || 0;
+          let finalUnit = unit || "EA";
+          let finalWasteFactor = wasteFactor || 0;
+
+          // If catalogCode provided, look it up and use catalog pricing
+          if (catalogCode) {
+            try {
+              const catalogRes = await fetch(`/api/pricing/catalog/search?q=${encodeURIComponent(catalogCode)}`);
+              if (catalogRes.ok) {
+                const catalogItems = await catalogRes.json();
+                const matched = catalogItems.find((item: any) => item.code === catalogCode);
+                if (matched) {
+                  const priceRes = await fetch(`/api/pricing/scope`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      items: [{ code: catalogCode, quantity: quantity || 1 }],
+                      regionId: "US_NATIONAL",
+                      taxRate: 0.08,
+                    }),
+                  });
+                  if (priceRes.ok) {
+                    const priceData = await priceRes.json();
+                    if (priceData.items && priceData.items.length > 0) {
+                      const priced = priceData.items[0];
+                      finalUnitPrice = priced.unitPriceBreakdown.unitPrice;
+                      finalUnit = matched.unit || "EA";
+                      finalWasteFactor = matched.defaultWasteFactor || 0;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Catalog lookup failed, falling back to provided price:", e);
+            }
+          }
+
+          const qty = quantity || 1;
+          const totalPrice = qty * finalUnitPrice * (1 + (finalWasteFactor || 0) / 100);
+
           const lineRes = await fetch(`/api/inspection/${sessionId}/line-items`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               roomId: currentRoomId,
-              category: args.category,
-              action: args.action,
-              description: args.description,
-              quantity: args.quantity,
-              unit: args.unit,
-              unitPrice: args.unitPrice,
-              wasteFactor: args.wasteFactor,
-              depreciationType: args.depreciationType,
+              category: category || "General",
+              action: action || null,
+              description,
+              xactCode: catalogCode || null,
+              quantity: qty,
+              unit: finalUnit,
+              unitPrice: finalUnitPrice,
+              totalPrice,
+              depreciationType: depreciationType || "Recoverable",
+              wasteFactor: finalWasteFactor,
             }),
           });
           const lineItem = await lineRes.json();
@@ -304,8 +348,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           result = {
             success: true,
             lineItemId: lineItem.id,
-            totalPrice: lineItem.totalPrice,
-            description: lineItem.description,
+            unitPrice: finalUnitPrice,
+            totalPrice,
+            description,
           };
           break;
         }

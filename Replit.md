@@ -43,16 +43,37 @@ The application features a 7-screen workflow:
 - **Document Processing:** Upload and AI-powered parsing of FNOLs, policies, and endorsements with batch support.
 - **AI Confidence Scoring:** Visual indicators for AI extraction confidence (high/medium/low).
 - **Inspection Briefing:** AI-generated briefings covering property, coverage, peril, and inspection checklists.
-- **Active Voice Inspection:** A three-panel interface for voice-guided inspections using OpenAI Realtime API, featuring floor plans, real-time transcription, and a photo gallery. Voice AI tools facilitate actions like setting context, creating rooms, adding damages, capturing photos, and logging moisture readings.
+- **Active Voice Inspection:** A three-panel interface for voice-guided inspections using OpenAI Realtime API, featuring floor plans, real-time transcription, and a photo gallery. Voice AI tools facilitate actions like setting context, creating rooms, adding damages, capturing photos, and logging moisture readings. The `add_line_item` tool supports `catalogCode` for automatic Xactimate pricing lookup.
 - **Multi-Structure Inspections:** Support for detailed exterior inspections of multiple structures, including roof slopes and elevations, aligned with Xactimate patterns.
-- **Review & Finalize:** A comprehensive review stage with tabs for estimate details, photos, completeness checks with AI scope gap detection, and notes.
+- **Review & Finalize:** A comprehensive review stage with tabs for estimate details (including Material/Labor/Equipment breakdown and O&P eligibility display), photos, completeness checks with AI scope gap detection, and notes.
 - **Export:** Options for ESX/Xactimate XML, PDF report generation, and a "Submit for Review" workflow.
 
 ### Data Model
-The system uses 12 PostgreSQL tables in Supabase, structured around core claim data, document processing, and detailed inspection sessions, rooms, damages, line items, photos, and moisture readings.
+The system uses 14 PostgreSQL tables in Supabase, structured around core claim data, document processing, detailed inspection sessions, rooms, damages, line items, photos, moisture readings, and a pricing catalog. The two newest tables are:
+- **scope_line_items:** ~100 Xactimate-compatible catalog items across 14 trades (MIT, DEM, DRY, PNT, FLR, INS, CAR, CAB, CTR, RFG, WIN, EXT, ELE, PLM) with codes, units, waste factors, and companion rules.
+- **regional_price_sets:** Regional pricing with separate material/labor/equipment cost breakdown per catalog item (currently US_NATIONAL region).
+
+### Xactimate Pricing Engine (`server/estimateEngine.ts`)
+A dedicated pricing engine provides:
+- Catalog lookup by code and regional price retrieval
+- Line item price calculation: `unitPrice = (Material + Labor + Equipment) x (1 + wasteFactor%)`
+- Estimate totals with material/labor/equipment subtotals, tax (default 8%), and waste tracking
+- Overhead & Profit (O&P) eligibility: 10% overhead + 10% profit when 3+ trades are involved
+- Estimate validation for scope gaps (missing companion items, duplicate detection)
+- Companion item suggestions (e.g., underlayment with roofing, house wrap with siding)
+
+### Seed Catalog (`server/seed-catalog.ts`)
+Seed data for ~100 line items with realistic Verisk-style pricing. Seeded via `POST /api/pricing/seed`.
 
 ### API Endpoints
-Approximately 40 RESTful endpoints manage the workflow, grouped into Document Flow, Inspection, and Review/Export phases.
+Approximately 47 RESTful endpoints manage the workflow, grouped into Document Flow, Inspection, Pricing Catalog, and Review/Export phases. The pricing endpoints include:
+- `GET /api/pricing/catalog` — Full catalog listing
+- `GET /api/pricing/catalog/search?q=` — Search catalog by code or description
+- `GET /api/pricing/catalog/:tradeCode` — Items by trade
+- `POST /api/pricing/scope` — Price a list of items with regional pricing, returns M/L/E breakdown and totals
+- `POST /api/pricing/validate` — Validate an estimate for scope gaps
+- `GET /api/pricing/regions` — Available pricing regions
+- `POST /api/pricing/seed` — Seed the catalog (idempotent)
 
 ### UI/UX and Design System
 The UI/UX emphasizes a professional insurance app aesthetic using Primary Purple, Deep Purple, and Gold color schemes, Work Sans and Source Sans 3 fonts. Responsive design is implemented using a `useIsMobile` hook, adapting layouts for mobile devices with sheet drawers, icon-only navigation, and scaled elements. Visual indicators are used for voice states (listening, speaking, processing, error, disconnected).

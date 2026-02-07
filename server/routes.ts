@@ -5,6 +5,7 @@ import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
 import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
+import { lookupCatalogItem, getRegionalPrice, calculateLineItemPrice, calculateEstimateTotals, validateEstimate } from "./estimateEngine";
 import { z } from "zod";
 
 const uploadBodySchema = z.object({
@@ -1556,6 +1557,119 @@ Respond in JSON format:
       if (!session) return res.status(404).json({ message: "Session not found" });
       res.json(session);
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Pricing Catalog Endpoints ──────────────────────────────
+
+  app.get("/api/pricing/catalog", async (_req, res) => {
+    try {
+      const items = await storage.getScopeLineItems();
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/pricing/catalog/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string || "").toLowerCase();
+      if (!q) {
+        return res.status(400).json({ message: "q parameter required" });
+      }
+      const allItems = await storage.getScopeLineItems();
+      const filtered = allItems.filter(item =>
+        item.code.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q)
+      );
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/pricing/catalog/:tradeCode", async (req, res) => {
+    try {
+      const tradeCode = req.params.tradeCode;
+      const items = await storage.getScopeLineItemsByTrade(tradeCode);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/pricing/scope", async (req, res) => {
+    try {
+      const { items, regionId, taxRate } = req.body;
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "items array required" });
+      }
+      if (!regionId) {
+        return res.status(400).json({ message: "regionId required" });
+      }
+
+      const pricedItems = [];
+
+      for (const item of items) {
+        const catalogItem = await storage.getScopeLineItemByCode(item.code);
+        if (!catalogItem) {
+          return res.status(404).json({ message: `Catalog item ${item.code} not found` });
+        }
+        const regionalPrice = await storage.getRegionalPrice(item.code, regionId);
+        if (!regionalPrice) {
+          return res.status(404).json({ message: `Regional price for ${item.code} in region ${regionId} not found` });
+        }
+        const priced = calculateLineItemPrice(catalogItem, regionalPrice, item.quantity, item.wasteFactor);
+        pricedItems.push(priced);
+      }
+
+      const totals = calculateEstimateTotals(pricedItems, taxRate || 0.08);
+
+      res.json({ items: pricedItems, totals });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/pricing/validate", async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "items array required" });
+      }
+
+      const validation = await validateEstimate(items);
+
+      res.json(validation);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/pricing/regions", async (_req, res) => {
+    try {
+      const allPrices = await storage.getRegionalPricesForRegion("US_NATIONAL");
+      const regions = new Set(allPrices.map(p => p.regionId));
+      res.json({
+        regions: Array.from(regions).sort(),
+        available: Array.from(regions).length > 0,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Pricing Catalog Seed
+  app.post("/api/pricing/seed", async (_req, res) => {
+    try {
+      const { seedCatalog } = require("./seed-catalog");
+      await seedCatalog();
+      res.json({ message: "Catalog seeded successfully" });
+    } catch (error: any) {
+      if (error.message.includes("unique constraint") || error.message.includes("duplicate key")) {
+        return res.json({ message: "Catalog already seeded" });
+      }
       res.status(500).json({ message: error.message });
     }
   });

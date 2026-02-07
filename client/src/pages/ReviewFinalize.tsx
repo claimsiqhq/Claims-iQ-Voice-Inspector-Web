@@ -369,6 +369,21 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
       {/* Sticky Summary Card */}
       {categories.length > 0 && (
         <div className="mx-3 md:mx-5 mt-2 bg-[#342A4F] rounded-xl p-4 md:p-5 text-white">
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-white/5 rounded p-2">
+              <p className="text-[9px] uppercase tracking-wider text-white/40">Material</p>
+              <p className="text-sm font-display font-bold text-white">${(estimate?.subtotalMaterial || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div className="bg-white/5 rounded p-2">
+              <p className="text-[9px] uppercase tracking-wider text-white/40">Labor</p>
+              <p className="text-sm font-display font-bold text-white">${(estimate?.subtotalLabor || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div className="bg-white/5 rounded p-2">
+              <p className="text-[9px] uppercase tracking-wider text-white/40">Equipment</p>
+              <p className="text-sm font-display font-bold text-white">${(estimate?.subtotalEquipment || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-white/50">RCV Total</p>
@@ -417,6 +432,29 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                   <span className="text-[10px] text-[#C6A54E]">Claim exceeds 80% of policy limit</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {estimate?.qualifiesForOP && (
+            <div className="mt-3 border-t border-white/20 pt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] uppercase tracking-wider text-white/50">
+                  Overhead & Profit (3+ trades)
+                </span>
+                <span className="px-1.5 py-0.5 bg-green-500/20 text-green-300 rounded text-[9px] font-bold">
+                  Eligible
+                </span>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/40">10% Overhead</span>
+                  <span className="text-white/60 font-mono">${(estimate?.overheadAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/40">10% Profit</span>
+                  <span className="text-white/60 font-mono">${(estimate?.profitAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
             </div>
           )}
         </div>

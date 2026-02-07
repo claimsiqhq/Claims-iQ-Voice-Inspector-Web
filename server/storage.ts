@@ -15,6 +15,9 @@ import {
   type InspectionPhoto, type InsertInspectionPhoto,
   type MoistureReading, type InsertMoistureReading,
   type VoiceTranscript, type InsertVoiceTranscript,
+  scopeLineItems, regionalPriceSets,
+  type ScopeLineItem, type InsertScopeLineItem,
+  type RegionalPriceSet, type InsertRegionalPriceSet,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -90,6 +93,12 @@ export interface IStorage {
 
   addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript>;
   getTranscript(sessionId: number): Promise<VoiceTranscript[]>;
+
+  getScopeLineItems(): Promise<ScopeLineItem[]>;
+  getScopeLineItemByCode(code: string): Promise<ScopeLineItem | undefined>;
+  getScopeLineItemsByTrade(tradeCode: string): Promise<ScopeLineItem[]>;
+  getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined>;
+  getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -420,6 +429,32 @@ export class DatabaseStorage implements IStorage {
 
   async getTranscript(sessionId: number): Promise<VoiceTranscript[]> {
     return db.select().from(voiceTranscripts).where(eq(voiceTranscripts.sessionId, sessionId)).orderBy(voiceTranscripts.timestamp);
+  }
+
+  async getScopeLineItems(): Promise<ScopeLineItem[]> {
+    return db.select().from(scopeLineItems).where(eq(scopeLineItems.isActive, true)).orderBy(scopeLineItems.sortOrder);
+  }
+
+  async getScopeLineItemByCode(code: string): Promise<ScopeLineItem | undefined> {
+    const [item] = await db.select().from(scopeLineItems).where(eq(scopeLineItems.code, code)).limit(1);
+    return item;
+  }
+
+  async getScopeLineItemsByTrade(tradeCode: string): Promise<ScopeLineItem[]> {
+    return db.select().from(scopeLineItems)
+      .where(and(eq(scopeLineItems.tradeCode, tradeCode), eq(scopeLineItems.isActive, true)))
+      .orderBy(scopeLineItems.sortOrder);
+  }
+
+  async getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined> {
+    const [price] = await db.select().from(regionalPriceSets)
+      .where(and(eq(regionalPriceSets.lineItemCode, lineItemCode), eq(regionalPriceSets.regionId, regionId)))
+      .limit(1);
+    return price;
+  }
+
+  async getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]> {
+    return db.select().from(regionalPriceSets).where(eq(regionalPriceSets.regionId, regionId));
   }
 }
 

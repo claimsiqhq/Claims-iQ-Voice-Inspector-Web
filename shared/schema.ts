@@ -207,6 +207,33 @@ export const voiceTranscripts = pgTable("voice_transcripts", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+export const scopeLineItems = pgTable("scope_line_items", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 30 }).notNull().unique(),
+  description: text("description").notNull(),
+  unit: varchar("unit", { length: 10 }).notNull(),
+  tradeCode: varchar("trade_code", { length: 10 }).notNull(),
+  quantityFormula: varchar("quantity_formula", { length: 50 }),
+  defaultWasteFactor: real("default_waste_factor").default(0),
+  activityType: varchar("activity_type", { length: 20 }).default("install"),
+  scopeConditions: jsonb("scope_conditions"),
+  companionRules: jsonb("companion_rules"),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+});
+
+export const regionalPriceSets = pgTable("regional_price_sets", {
+  id: serial("id").primaryKey(),
+  regionId: varchar("region_id", { length: 20 }).notNull(),
+  regionName: text("region_name").notNull(),
+  lineItemCode: varchar("line_item_code", { length: 30 }).notNull().references(() => scopeLineItems.code),
+  materialCost: real("material_cost").default(0),
+  laborCost: real("labor_cost").default(0),
+  equipmentCost: real("equipment_cost").default(0),
+  effectiveDate: varchar("effective_date", { length: 20 }),
+  priceListVersion: varchar("price_list_version", { length: 20 }),
+});
+
 export const insertInspectionSessionSchema = createInsertSchema(inspectionSessions).omit({ id: true, startedAt: true, completedAt: true });
 export const insertInspectionRoomSchema = createInsertSchema(inspectionRooms).omit({ id: true, createdAt: true, completedAt: true });
 export const insertDamageObservationSchema = createInsertSchema(damageObservations).omit({ id: true, createdAt: true });
@@ -229,3 +256,11 @@ export type MoistureReading = typeof moistureReadings.$inferSelect;
 export type InsertMoistureReading = z.infer<typeof insertMoistureReadingSchema>;
 export type VoiceTranscript = typeof voiceTranscripts.$inferSelect;
 export type InsertVoiceTranscript = z.infer<typeof insertVoiceTranscriptSchema>;
+
+export const insertScopeLineItemSchema = createInsertSchema(scopeLineItems).omit({ id: true });
+export const insertRegionalPriceSetSchema = createInsertSchema(regionalPriceSets).omit({ id: true });
+
+export type ScopeLineItem = typeof scopeLineItems.$inferSelect;
+export type InsertScopeLineItem = z.infer<typeof insertScopeLineItemSchema>;
+export type RegionalPriceSet = typeof regionalPriceSets.$inferSelect;
+export type InsertRegionalPriceSet = z.infer<typeof insertRegionalPriceSetSchema>;

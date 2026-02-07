@@ -150,13 +150,14 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_line_item",
-    description: "Adds an Xactimate-compatible estimate line item. Call when damage warrants a repair action.",
+    description: "Adds an Xactimate-compatible estimate line item. When possible, provide a catalogCode (e.g., 'RFG-SHIN-AR') for accurate pricing lookup. Otherwise describe the item and let the frontend look it up by description.",
     parameters: {
       type: "object",
       properties: {
         category: { type: "string", enum: ["Roofing", "Siding", "Soffit/Fascia", "Gutters", "Windows", "Doors", "Drywall", "Painting", "Flooring", "Plumbing", "Electrical", "HVAC", "Debris", "General", "Fencing"] },
         action: { type: "string", enum: ["R&R", "Detach & Reset", "Repair", "Paint", "Clean", "Tear Off", "Labor Only", "Install"] },
         description: { type: "string", description: "Detailed item, e.g., 'Laminated composition shingles' or '6-inch aluminum fascia'" },
+        catalogCode: { type: "string", description: "Xactimate-style code from pricing catalog (e.g., 'RFG-SHIN-AR' for architectural shingles). Enables accurate pricing lookup." },
         quantity: { type: "number", description: "Amount (SF, LF, EA, SQ)" },
         unit: { type: "string", enum: ["SF", "LF", "EA", "SQ", "HR", "DAY"] },
         unitPrice: { type: "number", description: "Price per unit (estimate if not known exactly)" },
