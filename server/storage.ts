@@ -23,6 +23,7 @@ export interface IStorage {
   getDocuments(claimId: number): Promise<Document[]>;
   getDocument(claimId: number, documentType: string): Promise<Document | undefined>;
   updateDocumentStatus(id: number, status: string, rawText?: string): Promise<Document | undefined>;
+  updateDocumentFilePath(id: number, filePath: string, fileName: string, fileSize: number): Promise<Document | undefined>;
   updateDocumentError(id: number, errorMessage: string): Promise<Document | undefined>;
 
   createExtraction(data: InsertExtraction): Promise<Extraction>;
@@ -95,6 +96,15 @@ export class DatabaseStorage implements IStorage {
     const update: any = { status };
     if (rawText !== undefined) update.rawText = rawText;
     const [doc] = await db.update(documents).set(update).where(eq(documents.id, id)).returning();
+    return doc;
+  }
+
+  async updateDocumentFilePath(id: number, filePath: string, fileName: string, fileSize: number): Promise<Document | undefined> {
+    const [doc] = await db
+      .update(documents)
+      .set({ filePath, fileName, fileSize })
+      .where(eq(documents.id, id))
+      .returning();
     return doc;
   }
 

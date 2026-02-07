@@ -6,8 +6,16 @@ const openai = new OpenAI({
 });
 
 function parseJsonResponse(text: string): any {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(cleaned);
+  try {
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    throw new Error("Failed to parse AI response as JSON");
+  }
 }
 
 export async function extractFNOL(rawText: string): Promise<{ extractedData: any; confidence: any }> {

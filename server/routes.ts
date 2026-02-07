@@ -4,7 +4,8 @@ import { storage } from "./storage";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import pdfParse from "pdf-parse";
+import * as pdfParseModule from "pdf-parse";
+const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 
 const upload = multer({
@@ -85,8 +86,7 @@ export async function registerRoutes(
 
       const existing = await storage.getDocument(claimId, documentType);
       if (existing) {
-        await storage.updateDocumentStatus(existing.id, "uploaded", undefined);
-        const updatedPath = file.path;
+        await storage.updateDocumentFilePath(existing.id, file.path, file.originalname, file.size);
         await storage.updateDocumentStatus(existing.id, "uploaded");
         res.json({ documentId: existing.id, status: "uploaded" });
         return;
