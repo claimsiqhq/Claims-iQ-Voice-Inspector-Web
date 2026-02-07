@@ -1,13 +1,22 @@
 import { db } from "./db";
 import {
   claims, documents, extractions, briefings,
+  inspectionSessions, inspectionRooms, damageObservations,
+  lineItems, inspectionPhotos, moistureReadings, voiceTranscripts,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
   type Briefing, type InsertBriefing,
   type User, type InsertUser, users,
+  type InspectionSession, type InsertInspectionSession,
+  type InspectionRoom, type InsertInspectionRoom,
+  type DamageObservation, type InsertDamageObservation,
+  type LineItem, type InsertLineItem,
+  type InspectionPhoto, type InsertInspectionPhoto,
+  type MoistureReading, type InsertMoistureReading,
+  type VoiceTranscript, type InsertVoiceTranscript,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -34,6 +43,46 @@ export interface IStorage {
 
   createBriefing(data: InsertBriefing): Promise<Briefing>;
   getBriefing(claimId: number): Promise<Briefing | undefined>;
+
+  createInspectionSession(claimId: number): Promise<InspectionSession>;
+  getInspectionSession(sessionId: number): Promise<InspectionSession | undefined>;
+  getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined>;
+  updateSessionPhase(sessionId: number, phase: number): Promise<InspectionSession | undefined>;
+  updateSessionRoom(sessionId: number, roomId: number): Promise<InspectionSession | undefined>;
+  updateSessionStatus(sessionId: number, status: string): Promise<InspectionSession | undefined>;
+  updateSession(sessionId: number, updates: Partial<InspectionSession>): Promise<InspectionSession | undefined>;
+  completeSession(sessionId: number): Promise<InspectionSession | undefined>;
+
+  createRoom(data: InsertInspectionRoom): Promise<InspectionRoom>;
+  getRooms(sessionId: number): Promise<InspectionRoom[]>;
+  getRoom(roomId: number): Promise<InspectionRoom | undefined>;
+  getRoomByName(sessionId: number, name: string): Promise<InspectionRoom | undefined>;
+  updateRoomStatus(roomId: number, status: string): Promise<InspectionRoom | undefined>;
+  completeRoom(roomId: number): Promise<InspectionRoom | undefined>;
+  incrementRoomDamageCount(roomId: number): Promise<InspectionRoom | undefined>;
+  incrementRoomPhotoCount(roomId: number): Promise<InspectionRoom | undefined>;
+
+  createDamage(data: InsertDamageObservation): Promise<DamageObservation>;
+  getDamages(roomId: number): Promise<DamageObservation[]>;
+  getDamagesForSession(sessionId: number): Promise<DamageObservation[]>;
+
+  createLineItem(data: InsertLineItem): Promise<LineItem>;
+  getLineItems(sessionId: number): Promise<LineItem[]>;
+  getLineItemsForRoom(roomId: number): Promise<LineItem[]>;
+  getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number }>;
+  updateLineItem(id: number, updates: Partial<LineItem>): Promise<LineItem | undefined>;
+  deleteLineItem(id: number): Promise<void>;
+
+  createPhoto(data: InsertInspectionPhoto): Promise<InspectionPhoto>;
+  getPhotos(sessionId: number): Promise<InspectionPhoto[]>;
+  getPhotosForRoom(roomId: number): Promise<InspectionPhoto[]>;
+
+  createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
+  getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
+  getMoistureReadingsForSession(sessionId: number): Promise<MoistureReading[]>;
+
+  addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript>;
+  getTranscript(sessionId: number): Promise<VoiceTranscript[]>;
 }
 
 export class DatabaseStorage implements IStorage {
