@@ -26,6 +26,8 @@ export interface IStorage {
   createClaim(data: InsertClaim): Promise<Claim>;
   getClaims(): Promise<Claim[]>;
   getClaim(id: number): Promise<Claim | undefined>;
+  deleteClaim(id: number): Promise<boolean>;
+  deleteAllClaims(): Promise<number>;
   updateClaimStatus(id: number, status: string): Promise<Claim | undefined>;
   updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType'>>): Promise<Claim | undefined>;
 
@@ -49,6 +51,7 @@ export interface IStorage {
 
   createInspectionSession(claimId: number): Promise<InspectionSession>;
   getInspectionSession(sessionId: number): Promise<InspectionSession | undefined>;
+  getInspectionSessionsForClaim(claimId: number): Promise<InspectionSession[]>;
   getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined>;
   updateSessionPhase(sessionId: number, phase: number): Promise<InspectionSession | undefined>;
   updateSessionRoom(sessionId: number, roomId: number): Promise<InspectionSession | undefined>;
@@ -117,6 +120,16 @@ export class DatabaseStorage implements IStorage {
   async getClaim(id: number): Promise<Claim | undefined> {
     const [claim] = await db.select().from(claims).where(eq(claims.id, id));
     return claim;
+  }
+
+  async deleteClaim(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(claims).where(eq(claims.id, id)).returning();
+    return !!deleted;
+  }
+
+  async deleteAllClaims(): Promise<number> {
+    const deleted = await db.delete(claims).returning();
+    return deleted.length;
   }
 
   async updateClaimStatus(id: number, status: string): Promise<Claim | undefined> {
@@ -241,6 +254,10 @@ export class DatabaseStorage implements IStorage {
   async getInspectionSession(sessionId: number): Promise<InspectionSession | undefined> {
     const [session] = await db.select().from(inspectionSessions).where(eq(inspectionSessions.id, sessionId));
     return session;
+  }
+
+  async getInspectionSessionsForClaim(claimId: number): Promise<InspectionSession[]> {
+    return db.select().from(inspectionSessions).where(eq(inspectionSessions.claimId, claimId));
   }
 
   async getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined> {
