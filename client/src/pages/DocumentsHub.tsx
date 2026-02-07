@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
-import DocumentStatusTracker from "@/components/DocumentStatusTracker";
+import { StageIndicator, getDocStage } from "@/components/DocumentStatusTracker";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
