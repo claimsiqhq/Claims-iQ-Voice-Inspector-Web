@@ -111,7 +111,7 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
           <Check className="h-5 w-5 text-green-600" /> FNOL / Claim Information Report
         </CardTitle>
         {data.catCode && (
-          <Badge variant="destructive" className="w-fit mt-1">CAT: {data.catCode}</Badge>
+          <Badge data-testid="text-cat-code" variant="destructive" className="w-fit mt-1">CAT: {data.catCode}</Badge>
         )}
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 pt-6">
@@ -394,43 +394,107 @@ function EndorsementsTab({ extraction }: { extraction: Extraction }) {
 
   return (
     <div className="space-y-4">
+      {data.totalEndorsements && (
+        <div data-testid="text-endorsement-count" className="text-sm text-muted-foreground mb-2">
+          {data.totalEndorsements} endorsement{data.totalEndorsements !== 1 ? "s" : ""} extracted
+        </div>
+      )}
       {endorsements.map((end: any, i: number) => (
-        <Card key={i} className="border-l-4 border-l-accent">
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold text-lg font-mono text-accent-foreground">{end.endorsementId}</h3>
-                  <Badge variant="secondary">{end.title?.split(" ").slice(0, 2).join(" ")}</Badge>
-                </div>
-                <p className="font-medium text-foreground">{end.title}</p>
-                <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{end.claimImpact}</p>
-                {end.keyProvisions && end.keyProvisions.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {end.keyProvisions.map((p: string, j: number) => (
-                      <li key={j} className="text-xs text-muted-foreground flex items-start gap-1">
-                        <span className="text-primary mt-0.5">&#8226;</span> {p}
-                      </li>
-                    ))}
-                  </ul>
+        <Card key={i} data-testid={`card-endorsement-${i}`} className="border-l-4 border-l-accent">
+          <CardContent className="pt-6 space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <h3 data-testid={`text-endorsement-id-${i}`} className="font-bold text-lg font-mono text-accent-foreground">{end.endorsementId}</h3>
+                {end.formEdition && (
+                  <Badge variant="outline" className="text-xs font-mono">Ed. {end.formEdition}</Badge>
                 )}
-                {end.sublimits && end.sublimits.length > 0 && (
-                  <div className="mt-2 flex gap-2 flex-wrap">
-                    {end.sublimits.map((s: any, k: number) => (
-                      <Badge key={k} variant="outline" className="text-xs">
-                        {s.description}: ${s.amount?.toLocaleString()}
-                      </Badge>
+              </div>
+              <p className="font-medium text-foreground">{end.title}</p>
+              <p className="text-xs text-muted-foreground mt-1">{end.whatItModifies}</p>
+            </div>
+
+            <div className="rounded-lg bg-blue-50/50 border border-blue-200/50 p-3">
+              <div className="text-xs font-semibold text-blue-800 mb-1">Adjuster Impact</div>
+              <p className="text-xs text-blue-700">{end.claimImpact}</p>
+            </div>
+
+            {end.keyProvisions && end.keyProvisions.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-2">Key Provisions</div>
+                <ul className="space-y-1">
+                  {end.keyProvisions.map((p: string, j: number) => (
+                    <li key={j} className="text-xs text-foreground flex items-start gap-2">
+                      <span className="text-primary mt-0.5">&#8226;</span> {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {end.modifiedDefinitions && end.modifiedDefinitions.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-2">Modified Definitions</div>
+                <div className="space-y-2">
+                  {end.modifiedDefinitions.map((md: any, j: number) => (
+                    <div key={j} className="rounded border border-border/50 p-2 bg-muted/10">
+                      <div className="text-xs font-medium text-foreground">{md.term}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{md.change}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {end.modifiedExclusions && end.modifiedExclusions.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-2">Modified Exclusions</div>
+                <div className="space-y-2">
+                  {end.modifiedExclusions.map((me: any, j: number) => (
+                    <div key={j} className="rounded border border-red-200/50 p-2 bg-red-50/20">
+                      <div className="text-xs font-medium text-red-800">{me.exclusion}</div>
+                      <div className="text-xs text-red-600 mt-0.5">{me.change}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {end.modifiedSettlement && (
+              <div className="rounded-lg bg-amber-50/50 border border-amber-200/50 p-3">
+                <div className="text-xs font-semibold text-amber-800 mb-1">Settlement Modification</div>
+                <p className="text-xs text-amber-700">{end.modifiedSettlement}</p>
+              </div>
+            )}
+
+            {end.roofPaymentSchedule && end.roofPaymentSchedule.hasSchedule && (
+              <div className="rounded-lg bg-purple-50/50 border border-purple-200/50 p-3">
+                <div className="text-xs font-semibold text-purple-800 mb-1">Roof Payment Schedule</div>
+                <p className="text-xs text-purple-700">{end.roofPaymentSchedule.summary}</p>
+                {end.roofPaymentSchedule.materialTypes && end.roofPaymentSchedule.materialTypes.length > 0 && (
+                  <div className="flex gap-1 flex-wrap mt-2">
+                    {end.roofPaymentSchedule.materialTypes.map((m: string, k: number) => (
+                      <Badge key={k} variant="outline" className="text-xs border-purple-200 text-purple-700">{m}</Badge>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
+            )}
+
+            {end.sublimits && end.sublimits.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {end.sublimits.map((s: any, k: number) => (
+                  <Badge key={k} variant="outline" className="text-xs">
+                    {s.description}: ${s.amount?.toLocaleString()}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       ))}
       {endorsements.length === 0 && (
         <div className="text-center py-8 text-muted-foreground">
-          No endorsements extracted. Upload an endorsements document first.
+          No endorsements extracted. Upload endorsement documents first.
         </div>
       )}
     </div>

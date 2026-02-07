@@ -13,6 +13,14 @@ const uploadBodySchema = z.object({
   documentType: z.enum(["fnol", "policy", "endorsements"]),
 });
 
+const batchUploadBodySchema = z.object({
+  files: z.array(z.object({
+    fileName: z.string().min(1),
+    fileBase64: z.string().min(1),
+  })).min(1).max(20),
+  documentType: z.literal("endorsements"),
+});
+
 async function uploadToSupabase(
   claimId: number,
   documentType: string,
@@ -137,6 +145,52 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/claims/:id/documents/upload-batch", async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const parsed = batchUploadBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid batch upload data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { files, documentType } = parsed.data;
+
+      const storagePaths: string[] = [];
+      for (const file of files) {
+        const base64Data = file.fileBase64.includes(",") ? file.fileBase64.split(",")[1] : file.fileBase64;
+        const fileBuffer = Buffer.from(base64Data, "base64");
+        const storagePath = await uploadToSupabase(claimId, documentType, fileBuffer, file.fileName);
+        storagePaths.push(storagePath);
+      }
+
+      const combinedFileName = files.map(f => f.fileName).join(", ");
+      const totalSize = files.reduce((sum, f) => {
+        const base64Data = f.fileBase64.includes(",") ? f.fileBase64.split(",")[1] : f.fileBase64;
+        return sum + Buffer.from(base64Data, "base64").length;
+      }, 0);
+
+      const existing = await storage.getDocument(claimId, documentType);
+      if (existing) {
+        await storage.updateDocumentStoragePath(existing.id, storagePaths.join("|"), combinedFileName, totalSize);
+        await storage.updateDocumentStatus(existing.id, "uploaded");
+        res.json({ documentId: existing.id, storagePaths, fileCount: files.length, status: "uploaded" });
+        return;
+      }
+
+      const doc = await storage.createDocument({
+        claimId,
+        documentType,
+        fileName: combinedFileName,
+        fileSize: totalSize,
+        storagePath: storagePaths.join("|"),
+        status: "uploaded",
+      });
+
+      res.status(201).json({ documentId: doc.id, storagePaths, fileCount: files.length, status: "uploaded" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/claims/:id/documents/:type/parse", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
@@ -155,9 +209,20 @@ export async function registerRoutes(
 
       let rawText = "";
       try {
-        const dataBuffer = await downloadFromSupabase(doc.storagePath);
-        const pdfData = await pdfParse(dataBuffer);
-        rawText = pdfData.text;
+        if (documentType === "endorsements" && doc.storagePath!.includes("|")) {
+          const storagePaths = doc.storagePath!.split("|");
+          const textParts: string[] = [];
+          for (const sp of storagePaths) {
+            const dataBuffer = await downloadFromSupabase(sp);
+            const pdfData = await pdfParse(dataBuffer);
+            textParts.push(pdfData.text);
+          }
+          rawText = textParts.join("\n\n--- NEXT DOCUMENT ---\n\n");
+        } else {
+          const dataBuffer = await downloadFromSupabase(doc.storagePath!);
+          const pdfData = await pdfParse(dataBuffer);
+          rawText = pdfData.text;
+        }
       } catch (pdfError: any) {
         await storage.updateDocumentError(doc.id, "Failed to parse PDF: " + pdfError.message);
         return res.status(422).json({ message: "Failed to parse PDF text" });

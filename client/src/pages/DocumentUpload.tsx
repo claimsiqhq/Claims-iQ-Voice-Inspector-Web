@@ -2,12 +2,13 @@ import { useState, useRef, useCallback } from "react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, FileText, Shield, FileStack, CheckCircle2, Loader2, ArrowRight, AlertCircle } from "lucide-react";
+import { FileText, Shield, FileStack, CheckCircle2, Loader2, ArrowRight, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
 
 type UploadState = "empty" | "uploading" | "processing" | "complete" | "error";
 
@@ -22,9 +23,12 @@ interface DocCardProps {
   errorMsg?: string;
   onUpload: (file: File) => void;
   index: number;
+  multiple?: boolean;
+  onUploadMultiple?: (files: File[]) => void;
+  fileCount?: number;
 }
 
-const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpload, index }: DocCardProps) => {
+const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpload, index, multiple, onUploadMultiple, fileCount }: DocCardProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleClick = () => {
@@ -34,8 +38,13 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onUpload(file);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (multiple && onUploadMultiple && files.length > 0) {
+      onUploadMultiple(Array.from(files));
+    } else if (files[0]) {
+      onUpload(files[0]);
+    }
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -55,7 +64,7 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
         )}
         onClick={handleClick}
       >
-        <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} />
+        <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} multiple={multiple} />
 
         {state === "empty" && (
           <div className="text-center space-y-4">
@@ -65,7 +74,7 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
             <h3 className="font-display font-semibold text-lg">{title}</h3>
             <p className="text-sm text-muted-foreground max-w-[200px] mx-auto">{description}</p>
             <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-4 left-0 right-0 text-center text-xs text-primary font-medium">
-              Click to upload PDF
+              {multiple ? "Click to select PDF(s)" : "Click to upload PDF"}
             </div>
           </div>
         )}
@@ -81,7 +90,9 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
                 transition={{ duration: 2 }}
               />
             </div>
-            <p className="text-sm text-muted-foreground">Uploading document...</p>
+            <p className="text-sm text-muted-foreground">
+              {fileCount && fileCount > 1 ? `Uploading ${fileCount} documents...` : "Uploading document..."}
+            </p>
           </div>
         )}
 
@@ -94,7 +105,9 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
               </div>
             </div>
             <p className="text-sm font-medium animate-pulse">AI Parsing in progress...</p>
-            <p className="text-xs text-muted-foreground">Extracting key data points</p>
+            <p className="text-xs text-muted-foreground">
+              {fileCount && fileCount > 1 ? `Extracting from ${fileCount} documents` : "Extracting key data points"}
+            </p>
           </div>
         )}
 
@@ -104,6 +117,11 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
               <CheckCircle2 className="h-8 w-8 text-green-600" />
             </div>
             <h3 className="font-display font-semibold text-lg text-green-900">Analysis Complete</h3>
+            {fileCount && fileCount > 1 && (
+              <Badge data-testid="text-endorsement-file-count" variant="outline" className="border-green-200 text-green-700">
+                {fileCount} documents processed
+              </Badge>
+            )}
             <div className="bg-white/50 rounded-lg p-2 text-xs text-left w-full max-w-[200px] mx-auto border border-green-200/50 space-y-1">
               <div className="h-2 w-3/4 bg-green-200/50 rounded"></div>
               <div className="h-2 w-1/2 bg-green-200/50 rounded"></div>
@@ -126,11 +144,21 @@ const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpl
   );
 };
 
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function DocumentUpload({ params }: { params: { id: string } }) {
   const [, setLocation] = useLocation();
   const claimId = params.id;
   const [docStates, setDocStates] = useState<UploadState[]>(["empty", "empty", "empty"]);
   const [errors, setErrors] = useState<(string | undefined)[]>([undefined, undefined, undefined]);
+  const [endorsementFileCount, setEndorsementFileCount] = useState(0);
 
   const { data: existingDocs } = useQuery<any[]>({
     queryKey: [`/api/claims/${claimId}/documents`],
@@ -167,12 +195,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
     updateState(index, "uploading");
 
     try {
-      const fileBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("Failed to read file"));
-        reader.readAsDataURL(file);
-      });
+      const fileBase64 = await readFileAsBase64(file);
 
       const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload`, {
         method: "POST",
@@ -208,6 +231,52 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
     }
   }, [claimId]);
 
+  const handleEndorsementBatch = useCallback(async (files: File[]) => {
+    const index = 2;
+    setEndorsementFileCount(files.length);
+    updateState(index, "uploading");
+
+    try {
+      const filesData = await Promise.all(
+        files.map(async (file) => ({
+          fileName: file.name,
+          fileBase64: await readFileAsBase64(file),
+        }))
+      );
+
+      const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: filesData,
+          documentType: "endorsements",
+        }),
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.message || "Batch upload failed");
+      }
+
+      updateState(index, "processing");
+
+      const parseRes = await fetch(`/api/claims/${claimId}/documents/endorsements/parse`, {
+        method: "POST",
+      });
+
+      if (!parseRes.ok) {
+        const err = await parseRes.json();
+        throw new Error(err.message || "AI parsing failed");
+      }
+
+      updateState(index, "complete");
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
+    } catch (error: any) {
+      updateState(index, "error", error.message);
+    }
+  }, [claimId]);
+
   const allComplete = [0, 1, 2].every((i) => getEffectiveState(i) === "complete");
 
   return (
@@ -224,7 +293,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
           <DocCard
             index={0}
             title="FNOL Report"
-            description="First Notice of Loss containing insured details and reported damage."
+            description="First Notice of Loss / Claim Information Report with insured details and reported damage."
             icon={FileText}
             color="bg-primary"
             state={getEffectiveState(0)}
@@ -233,8 +302,8 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
           />
           <DocCard
             index={1}
-            title="Policy Declarations"
-            description="Standard HO policy form (e.g. HO 80 03) defining coverages."
+            title="Policy Form"
+            description="HO policy form (e.g. HO 80 03) or declarations page with coverages."
             icon={Shield}
             color="bg-secondary"
             state={getEffectiveState(1)}
@@ -244,12 +313,15 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
           <DocCard
             index={2}
             title="Endorsements"
-            description="Additional policy modifications and special provisions."
+            description="Select one or more endorsement PDFs (e.g. HO 88 02, HO 81 06). All will be combined for extraction."
             icon={FileStack}
             color="bg-accent"
             state={getEffectiveState(2)}
             errorMsg={errors[2]}
-            onUpload={(file) => handleUpload(2, file)}
+            onUpload={(file) => handleEndorsementBatch([file])}
+            multiple={true}
+            onUploadMultiple={handleEndorsementBatch}
+            fileCount={endorsementFileCount}
           />
         </div>
 
