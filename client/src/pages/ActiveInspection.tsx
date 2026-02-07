@@ -930,7 +930,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   );
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+    <div className="h-[calc(100vh-4rem)] bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
       {/* LEFT SIDEBAR - Desktop only */}
       {!isMobile && (
         <div className="w-72 bg-gray-900 border-r border-white/10 flex flex-col z-20">

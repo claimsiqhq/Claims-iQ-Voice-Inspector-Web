@@ -72,7 +72,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const briefing = briefingData as any;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" data-testid="review-finalize-page">
+    <div className="min-h-screen bg-background flex flex-col pb-20" data-testid="review-finalize-page">
       {/* Header */}
       <div className="h-14 bg-white border-b border-border flex items-center justify-between px-3 md:px-5 shrink-0">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
