@@ -21,6 +21,56 @@ const batchUploadBodySchema = z.object({
   documentType: z.literal("endorsements"),
 });
 
+const createClaimSchema = z.object({
+  claimNumber: z.string().min(1).max(50),
+  insuredName: z.string().nullable().optional(),
+  propertyAddress: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  zip: z.string().nullable().optional(),
+  dateOfLoss: z.string().nullable().optional(),
+  perilType: z.string().nullable().optional(),
+  status: z.string().optional(),
+});
+
+const sessionUpdateSchema = z.object({
+  currentPhase: z.number().int().positive().optional(),
+  currentRoomId: z.number().int().positive().nullable().optional(),
+  currentStructure: z.string().min(1).optional(),
+  status: z.string().min(1).optional(),
+});
+
+const roomCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  roomType: z.string().max(50).nullable().optional(),
+  structure: z.string().max(100).nullable().optional(),
+  dimensions: z.any().optional(),
+  phase: z.number().int().positive().nullable().optional(),
+});
+
+const lineItemCreateSchema = z.object({
+  roomId: z.number().int().positive().nullable().optional(),
+  damageId: z.number().int().positive().nullable().optional(),
+  category: z.string().min(1).max(50),
+  action: z.string().max(30).nullable().optional(),
+  description: z.string().min(1),
+  xactCode: z.string().max(30).nullable().optional(),
+  quantity: z.number().positive().optional(),
+  unit: z.string().max(20).nullable().optional(),
+  unitPrice: z.number().nonnegative().optional(),
+  depreciationType: z.string().max(30).nullable().optional(),
+  wasteFactor: z.number().int().nonnegative().optional(),
+});
+
+const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
+function decodeBase64Payload(base64Input: string, maxBytes: number): { buffer: Buffer; wasTruncated: boolean } {
+  const base64Data = base64Input.includes(",") ? base64Input.split(",")[1] : base64Input;
+  const buffer = Buffer.from(base64Data, "base64");
+  return { buffer, wasTruncated: buffer.length > maxBytes };
+}
+
 async function uploadToSupabase(
   claimId: number,
   documentType: string,
@@ -63,7 +113,11 @@ export async function registerRoutes(
 
   app.post("/api/claims", async (req, res) => {
     try {
-      const claim = await storage.createClaim(req.body);
+      const parsed = createClaimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid claim data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const claim = await storage.createClaim(parsed.data);
       res.status(201).json(claim);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -117,8 +171,14 @@ export async function registerRoutes(
       }
       const { fileName, fileBase64, documentType } = parsed.data;
 
-      const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
-      const fileBuffer = Buffer.from(base64Data, "base64");
+      if (!fileName.toLowerCase().endsWith(".pdf") && !fileBase64.startsWith("data:application/pdf")) {
+        return res.status(400).json({ message: "Only PDF uploads are supported" });
+      }
+
+      const { buffer: fileBuffer, wasTruncated } = decodeBase64Payload(fileBase64, MAX_DOCUMENT_BYTES);
+      if (wasTruncated) {
+        return res.status(413).json({ message: "File exceeds max upload size (25MB)" });
+      }
 
       const storagePath = await uploadToSupabase(claimId, documentType, fileBuffer, fileName);
 
@@ -156,16 +216,21 @@ export async function registerRoutes(
 
       const storagePaths: string[] = [];
       for (const file of files) {
-        const base64Data = file.fileBase64.includes(",") ? file.fileBase64.split(",")[1] : file.fileBase64;
-        const fileBuffer = Buffer.from(base64Data, "base64");
+        if (!file.fileName.toLowerCase().endsWith(".pdf") && !file.fileBase64.startsWith("data:application/pdf")) {
+          return res.status(400).json({ message: "Only PDF uploads are supported" });
+        }
+        const { buffer: fileBuffer, wasTruncated } = decodeBase64Payload(file.fileBase64, MAX_DOCUMENT_BYTES);
+        if (wasTruncated) {
+          return res.status(413).json({ message: "One or more files exceed the 25MB limit" });
+        }
         const storagePath = await uploadToSupabase(claimId, documentType, fileBuffer, file.fileName);
         storagePaths.push(storagePath);
       }
 
       const combinedFileName = files.map(f => f.fileName).join(", ");
       const totalSize = files.reduce((sum, f) => {
-        const base64Data = f.fileBase64.includes(",") ? f.fileBase64.split(",")[1] : f.fileBase64;
-        return sum + Buffer.from(base64Data, "base64").length;
+        const { buffer } = decodeBase64Payload(f.fileBase64, MAX_DOCUMENT_BYTES);
+        return sum + buffer.length;
       }, 0);
 
       const existing = await storage.getDocument(claimId, documentType);
@@ -411,11 +476,11 @@ export async function registerRoutes(
   app.patch("/api/inspection/:sessionId", async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
-      const updates: any = {};
-      if (req.body.currentPhase !== undefined) updates.currentPhase = req.body.currentPhase;
-      if (req.body.currentRoomId !== undefined) updates.currentRoomId = req.body.currentRoomId;
-      if (req.body.currentStructure !== undefined) updates.currentStructure = req.body.currentStructure;
-      if (req.body.status !== undefined) updates.status = req.body.status;
+      const parsed = sessionUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid session update", errors: parsed.error.flatten().fieldErrors });
+      }
+      const updates = parsed.data;
       const session = await storage.updateSession(sessionId, updates);
       res.json(session);
     } catch (error: any) {
@@ -441,7 +506,11 @@ export async function registerRoutes(
   app.post("/api/inspection/:sessionId/rooms", async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
-      const { name, roomType, structure, dimensions, phase } = req.body;
+      const parsed = roomCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid room data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { name, roomType, structure, dimensions, phase } = parsed.data;
       const room = await storage.createRoom({
         sessionId,
         name,
@@ -531,10 +600,11 @@ export async function registerRoutes(
   app.post("/api/inspection/:sessionId/line-items", async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
-      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor } = req.body;
-      if (!category || !description) {
-        return res.status(400).json({ message: "category and description are required" });
+      const parsed = lineItemCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
+      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor } = parsed.data;
       const wf = wasteFactor || 0;
       const qty = quantity || 1;
       const up = unitPrice || 0;
@@ -610,9 +680,14 @@ export async function registerRoutes(
       if (!imageBase64) {
         return res.status(400).json({ message: "imageBase64 is required" });
       }
+      if (!imageBase64.startsWith("data:image/")) {
+        return res.status(400).json({ message: "Only image uploads are supported" });
+      }
 
-      const base64Data = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
-      const fileBuffer = Buffer.from(base64Data, "base64");
+      const { buffer: fileBuffer, wasTruncated } = decodeBase64Payload(imageBase64, MAX_PHOTO_BYTES);
+      if (wasTruncated) {
+        return res.status(413).json({ message: "Image exceeds max upload size (10MB)" });
+      }
       const tag = autoTag || `photo_${Date.now()}`;
       const storagePath = `inspections/${sessionId}/${tag}.jpg`;
 
@@ -625,6 +700,7 @@ export async function registerRoutes(
 
       if (error) {
         console.error("Photo upload error:", error);
+        return res.status(502).json({ message: "Photo upload failed" });
       }
 
       const photo = await storage.createPhoto({
@@ -1145,7 +1221,7 @@ export async function registerRoutes(
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { status } = req.body;
-      const validStatuses = ["active", "review", "exported", "submitted", "approved"];
+      const validStatuses = ["active", "review", "exported", "submitted", "approved", "completed"];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
       }

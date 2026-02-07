@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,48 +17,66 @@ export const insertUserSchema = createInsertSchema(users).pick({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
-export const claims = pgTable("claims", {
-  id: serial("id").primaryKey(),
-  claimNumber: varchar("claim_number", { length: 50 }).notNull(),
-  insuredName: text("insured_name"),
-  propertyAddress: text("property_address"),
-  city: varchar("city", { length: 100 }),
-  state: varchar("state", { length: 2 }),
-  zip: varchar("zip", { length: 10 }),
-  dateOfLoss: varchar("date_of_loss", { length: 20 }),
-  perilType: varchar("peril_type", { length: 20 }),
-  status: varchar("status", { length: 30 }).notNull().default("draft"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const claims = pgTable(
+  "claims",
+  {
+    id: serial("id").primaryKey(),
+    claimNumber: varchar("claim_number", { length: 50 }).notNull(),
+    insuredName: text("insured_name"),
+    propertyAddress: text("property_address"),
+    city: varchar("city", { length: 100 }),
+    state: varchar("state", { length: 2 }),
+    zip: varchar("zip", { length: 10 }),
+    dateOfLoss: varchar("date_of_loss", { length: 20 }),
+    perilType: varchar("peril_type", { length: 20 }),
+    status: varchar("status", { length: 30 }).notNull().default("draft"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    claimNumberUnique: uniqueIndex("claims_claim_number_unique").on(table.claimNumber),
+  }),
+);
 
-export const documents = pgTable("documents", {
-  id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id),
-  documentType: varchar("document_type", { length: 20 }).notNull(),
-  fileName: text("file_name"),
-  fileSize: integer("file_size"),
-  storagePath: text("storage_path"),
-  rawText: text("raw_text"),
-  status: varchar("status", { length: 20 }).notNull().default("empty"),
-  errorMessage: text("error_message"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const documents = pgTable(
+  "documents",
+  {
+    id: serial("id").primaryKey(),
+    claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+    documentType: varchar("document_type", { length: 20 }).notNull(),
+    fileName: text("file_name"),
+    fileSize: integer("file_size"),
+    storagePath: text("storage_path"),
+    rawText: text("raw_text"),
+    status: varchar("status", { length: 20 }).notNull().default("empty"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    claimDocumentUnique: uniqueIndex("documents_claim_document_unique").on(table.claimId, table.documentType),
+  }),
+);
 
-export const extractions = pgTable("extractions", {
-  id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id),
-  documentType: varchar("document_type", { length: 20 }).notNull(),
-  extractedData: jsonb("extracted_data").notNull(),
-  confidence: jsonb("confidence"),
-  confirmedByUser: boolean("confirmed_by_user").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const extractions = pgTable(
+  "extractions",
+  {
+    id: serial("id").primaryKey(),
+    claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+    documentType: varchar("document_type", { length: 20 }).notNull(),
+    extractedData: jsonb("extracted_data").notNull(),
+    confidence: jsonb("confidence"),
+    confirmedByUser: boolean("confirmed_by_user").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    claimExtractionUnique: uniqueIndex("extractions_claim_document_unique").on(table.claimId, table.documentType),
+  }),
+);
 
 export const briefings = pgTable("briefings", {
   id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id),
+  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
   propertyProfile: jsonb("property_profile"),
   coverageSnapshot: jsonb("coverage_snapshot"),
   perilAnalysis: jsonb("peril_analysis"),
@@ -99,7 +117,7 @@ export type InsertBriefing = z.infer<typeof insertBriefingSchema>;
 
 export const inspectionSessions = pgTable("inspection_sessions", {
   id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id),
+  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   currentPhase: integer("current_phase").default(1),
   currentRoomId: integer("current_room_id"),
@@ -111,7 +129,7 @@ export const inspectionSessions = pgTable("inspection_sessions", {
 
 export const inspectionRooms = pgTable("inspection_rooms", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   roomType: varchar("room_type", { length: 50 }),
   structure: varchar("structure", { length: 100 }).default("Main Dwelling"),
@@ -126,8 +144,8 @@ export const inspectionRooms = pgTable("inspection_rooms", {
 
 export const damageObservations = pgTable("damage_observations", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
-  roomId: integer("room_id").notNull().references(() => inspectionRooms.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
   damageType: varchar("damage_type", { length: 50 }),
   severity: varchar("severity", { length: 20 }),
@@ -138,9 +156,9 @@ export const damageObservations = pgTable("damage_observations", {
 
 export const lineItems = pgTable("line_items", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
-  roomId: integer("room_id").references(() => inspectionRooms.id),
-  damageId: integer("damage_id").references(() => damageObservations.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+  damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
   category: varchar("category", { length: 50 }).notNull(),
   action: varchar("action", { length: 30 }),
   description: text("description").notNull(),
@@ -157,9 +175,9 @@ export const lineItems = pgTable("line_items", {
 
 export const inspectionPhotos = pgTable("inspection_photos", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
-  roomId: integer("room_id").references(() => inspectionRooms.id),
-  damageId: integer("damage_id").references(() => damageObservations.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+  damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
   storagePath: text("storage_path"),
   autoTag: varchar("auto_tag", { length: 50 }),
   caption: text("caption"),
@@ -170,8 +188,8 @@ export const inspectionPhotos = pgTable("inspection_photos", {
 
 export const moistureReadings = pgTable("moisture_readings", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
-  roomId: integer("room_id").notNull().references(() => inspectionRooms.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
   location: text("location"),
   reading: real("reading").notNull(),
   materialType: varchar("material_type", { length: 50 }),
@@ -181,7 +199,7 @@ export const moistureReadings = pgTable("moisture_readings", {
 
 export const voiceTranscripts = pgTable("voice_transcripts", {
   id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
   speaker: varchar("speaker", { length: 10 }).notNull(),
   content: text("content").notNull(),
   timestamp: timestamp("timestamp").defaultNow(),
