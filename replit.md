@@ -28,7 +28,7 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - `SUPABASE_URL` - Supabase project URL (https://xxx.supabase.co)
 - `SUPABASE_SERVICE_ROLE_KEY` - Server-side Supabase key (bypasses RLS)
 - `SUPABASE_ANON_KEY` - Public Supabase key
-- `AI_INTEGRATIONS_OPENAI_API_KEY` - OpenAI API key (auto-populated by Replit AI Integrations; used for both chat completions and Realtime sessions)
+- `OPENAI_API_KEY` - User's own OpenAI API key (used for document parsing, briefing generation, and Realtime voice sessions)
 
 ### Database Tables (12 used by this app)
 **Act 1 — Core tables:**

@@ -672,7 +672,7 @@ export async function registerRoutes(
 
       const instructions = buildSystemInstructions(briefing, claim);
 
-      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
         return res.status(500).json({ message: "OpenAI API key not configured" });
       }
