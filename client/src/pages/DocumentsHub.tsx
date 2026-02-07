@@ -259,6 +259,12 @@ function ClaimCard({ claim, docs }: { claim: Claim; docs: DocRecord[] }) {
                   <DocStatusPill status={doc?.status} />
                 </div>
 
+                {doc && doc.status && doc.status !== "empty" && (
+                  <div className="mt-2.5 ml-10 pb-4" data-testid={`status-pipeline-${key}-${claim.id}`}>
+                    <StageIndicator stage={getDocStage(doc.status)} />
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 mt-3">
                   {hasFile && (
                     <Button
@@ -345,8 +351,6 @@ export default function DocumentsHub() {
             View and manage documents across all your claims.
           </p>
         </div>
-
-        <DocumentStatusTracker />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
