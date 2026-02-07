@@ -546,6 +546,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/claims/:id/extractions/:type/confirm", async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const ext = await storage.getExtraction(claimId, req.params.type);
+      if (!ext) return res.status(404).json({ message: "Extraction not found" });
+
+      await storage.confirmExtraction(ext.id);
+
+      if (req.params.type === "fnol" && ext.extractedData) {
+        const fnolFields = claimFieldsFromFnol(ext.extractedData);
+        if (Object.keys(fnolFields).length > 0) {
+          await storage.updateClaimFields(claimId, fnolFields);
+        }
+      }
+
+      res.json({ confirmed: true, documentType: req.params.type });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/claims/:id/extractions/confirm-all", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
