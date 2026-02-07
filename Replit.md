@@ -1,7 +1,9 @@
 # Claims IQ Voice Inspector
 
 ## Overview
-Claims IQ Voice Inspector is a voice-driven field inspection assistant designed for insurance adjusters. Its primary purpose is to streamline the insurance claims process by providing AI-powered tools for document analysis, inspection guidance, and report generation. The project aims to reduce manual effort, improve accuracy, and accelerate claim processing for insurance companies and adjusters. Key capabilities include document upload and AI parsing (FNOL, Policy, Endorsements), extraction review, inspection briefing generation, voice-guided active inspections using OpenAI's Realtime API, and a comprehensive review-and-finalize workflow with export options (ESX, PDF, Submit for Review).
+Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assistant for insurance adjusters. It aims to streamline the insurance claims process by automating document analysis, guiding inspections, and facilitating report generation. The project's core purpose is to enhance accuracy, reduce manual effort, and accelerate claim processing, providing significant value to insurance companies and adjusters.
+
+Key capabilities include: AI-powered document parsing of claim reports and policy forms, guided voice inspections using real-time AI, multi-structure inspection support, AI-enhanced photo capture and damage annotation, moisture reading logging, and comprehensive review-and-export functionalities (ESX/Xactimate, PDF).
 
 ## User Preferences
 - Professional insurance app styling
@@ -10,59 +12,58 @@ Claims IQ Voice Inspector is a voice-driven field inspection assistant designed 
 - Never use execute_sql_tool for Supabase operations
 - All schema changes via psql with SUPABASE_DATABASE_URL
 - Use user's own `OPENAI_API_KEY` — not Replit AI Integrations key
+- pdf-parse must stay at v1.1.1 (v2 has incompatible API)
 
 ## System Architecture
 
 ### Tech Stack
 - **Frontend:** React 19, Vite 7, TypeScript, Tailwind CSS v4, shadcn/ui, wouter, TanStack React Query, Framer Motion
-- **Backend:** Express 5, pdf-parse, @supabase/supabase-js
+- **Backend:** Express 5
 - **Database:** Drizzle ORM with Supabase PostgreSQL (postgres.js driver)
-- **File Storage:** Supabase Storage (claim-documents, inspection-photos buckets)
-- **AI:** OpenAI GPT-4o for document parsing and briefing; OpenAI Realtime API for voice inspection via WebRTC
-- **Voice:** Browser WebRTC PeerConnection + DataChannel for OpenAI Realtime API integration.
+- **File Storage:** Supabase Storage
+- **AI:** OpenAI GPT-4o (document parsing, briefing, photo analysis), OpenAI Realtime API (voice inspection via WebRTC)
+- **Voice:** Browser WebRTC for OpenAI Realtime API integration
+- **PWA:** Vite PWA plugin with Workbox
+
+### Project Structure
+The project is organized into `client/` for the React frontend, `server/` for the Express backend, and `shared/` for common Drizzle schemas and types.
+
+### Frontend Routes
+The application features a 7-screen workflow:
+- `/`: Claims List
+- `/upload/:id`: Document Upload
+- `/review/:id`: Extraction Review
+- `/briefing/:id`: Inspection Briefing
+- `/inspection/:id`: Active Voice Inspection
+- `/inspection/:id/review`: Review & Finalize
+- `/inspection/:id/export`: Export
 
 ### Core Features
-The application supports a comprehensive workflow:
-1.  **Claims Management:** List and create claims.
-2.  **Document Processing:** Upload and AI-parse FNOL, Policy, and Endorsement PDFs (with batch endorsement support). Review and confirm extracted data.
-3.  **AI Confidence Scoring:** Each extracted data point displays a visual confidence indicator with color-coded shield icon (green/amber/red), animated progress bar, and percentage. Overall confidence summary aggregates field-level scores per document tab. Tooltips explain each level on hover. Components: `ConfidenceScore` (per-field), `OverallConfidenceSummary` (per-tab header).
-4.  **Inspection Briefing:** AI-generated briefings based on parsed documents.
-5.  **Active Voice Inspection:** Live voice-guided inspections using OpenAI Realtime API, enabling creation of rooms, damages, line items, photo capture, and moisture readings. Features a three-panel layout (sidebars convert to slide-out Sheet drawers on mobile) and robust voice indicator with various states.
-6.  **Review & Finalize:** A dedicated page (Screen 7) with four tabs:
-    *   **Estimate:** Collapsible hierarchy with inline editing.
-    *   **Photos:** Gallery grouped by room with filters.
-    *   **Completeness:** Circular score with AI scope gap detection.
-    *   **Notes:** Adjuster notes and voice transcript viewer. Includes a slide-over `ProgressMap` for navigation and status overview, and a `MoistureMap` for SVG-based moisture reading visualization, IICRC classification, and drying equipment calculation.
-7.  **Export:** Supports ESX/Xactimate export, PDF report generation, and a "Submit for Review" workflow with status tracking.
+- **Claims Management:** Creation and status tracking of claims (draft to exported).
+- **Document Processing:** Upload and AI-powered parsing of FNOLs, policies, and endorsements with batch support.
+- **AI Confidence Scoring:** Visual indicators for AI extraction confidence (high/medium/low).
+- **Inspection Briefing:** AI-generated briefings covering property, coverage, peril, and inspection checklists.
+- **Active Voice Inspection:** A three-panel interface for voice-guided inspections using OpenAI Realtime API, featuring floor plans, real-time transcription, and a photo gallery. Voice AI tools facilitate actions like setting context, creating rooms, adding damages, capturing photos, and logging moisture readings.
+- **Multi-Structure Inspections:** Support for detailed exterior inspections of multiple structures, including roof slopes and elevations, aligned with Xactimate patterns.
+- **Review & Finalize:** A comprehensive review stage with tabs for estimate details, photos, completeness checks with AI scope gap detection, and notes.
+- **Export:** Options for ESX/Xactimate XML, PDF report generation, and a "Submit for Review" workflow.
 
 ### Data Model
-The system uses 12 PostgreSQL tables in Supabase, structured into two main acts:
--   **Act 1 (Core):** `users`, `claims`, `documents`, `extractions`, `briefings`
--   **Act 2 (Inspection):** `inspection_sessions`, `inspection_rooms`, `damage_observations`, `line_items`, `inspection_photos`, `moisture_readings`, `voice_transcripts`
+The system uses 12 PostgreSQL tables in Supabase, structured around core claim data, document processing, and detailed inspection sessions, rooms, damages, line items, photos, and moisture readings.
 
-### API Design
-A RESTful API supports all application functionalities, covering Act 1 (document flow), Act 2 (inspection), and Act 3 (review/export), including endpoints for OpenAI Realtime session management.
+### API Endpoints
+Approximately 40 RESTful endpoints manage the workflow, grouped into Document Flow, Inspection, and Review/Export phases.
 
 ### UI/UX and Design System
--   **Colors:** Primary Purple (`#7763B7`), Deep Purple (`#342A4F`), Gold (`#C6A54E`), Secondary Purple (`#9D8BBF`).
--   **Fonts:** Work Sans (headings), Source Sans 3 (body), Space Mono (monospace).
--   **Radius:** 0.5rem default.
--   **Voice States:** Visual indicators for listening (Purple), speaking (Gold), processing (Secondary Purple), error (Gold warning), and disconnected (Red).
+The UI/UX emphasizes a professional insurance app aesthetic using Primary Purple, Deep Purple, and Gold color schemes, Work Sans and Source Sans 3 fonts. Responsive design is implemented using a `useIsMobile` hook, adapting layouts for mobile devices with sheet drawers, icon-only navigation, and scaled elements. Visual indicators are used for voice states (listening, speaking, processing, error, disconnected).
 
 ### Error Recovery
-The system includes mechanisms for voice disconnection auto-reconnect, manual reconnect options, error state auto-clearing, and export validation to prevent incomplete exports.
-
-## Recent Changes
-- **2026-02-07:** Photo Gallery component with grid/list views, type filters (overview, damage, test square, etc.), full-screen viewer with prev/next navigation, and detailed AI analysis annotations (description, damage tags, quality stars, match/mismatch indicators). Replaces old simple photo list in ActiveInspection right panel.
-- **2026-02-07:** FloorPlanSketch now groups rooms by structure (Main Dwelling, Detached Garage, etc.) with separate Interior/Exterior sections per structure. Exterior rooms show type icons (triangle for roof slopes, square variants for elevations). Photo count badges on room rectangles.
-- **2026-02-07:** Voice AI prompt expanded for multi-structure exterior inspections: walks through each structure's roof slopes, four elevations, gutters, and other areas. create_room tool now has specific roomType enums for exterior areas (exterior_roof_slope, exterior_elevation_front/left/right/rear, exterior_gutter, etc.). Completeness check updated for hail+wind claims to verify elevation and roof slope documentation.
-- **2026-02-07:** Photo upload filename sanitization — strips special characters (em dashes, non-ASCII) before Supabase Storage upload. Upload failure guard prevents analysis with undefined photoId. Analyze endpoint validates photoId.
-- **2026-02-07:** Added AI Confidence Score visualization — per-field `ConfidenceScore` component with shield icon, animated bar, and percentage; `OverallConfidenceSummary` aggregating field scores per document tab header; keyboard-accessible tooltips explaining each level.
-- **2026-02-07:** Comprehensive mobile optimization across all screens — ActiveInspection sidebars convert to Sheet drawers on mobile, Layout header scales down, ReviewFinalize uses icon-only tabs and stacked buttons, ClaimsList/DocumentUpload/ExtractionReview/InspectionBriefing/ExportPage all have responsive text, spacing, and layout adjustments using `md:` Tailwind breakpoints.
-- **2026-02-07:** Batch endorsement upload with pipe-separated storage paths and combined text extraction. Fixed parse route to only split storagePath for endorsements.
-- **2026-02-07:** Expanded FNOL, Policy, and Endorsement extraction prompts to capture comprehensive claim data from real sample documents.
+The system includes mechanisms for voice disconnection auto-reconnect, error state auto-clearing, export validation, photo upload failure guards, and filename sanitization.
 
 ## External Dependencies
--   **Supabase:** PostgreSQL database and Storage buckets (`claim-documents`, `inspection-photos`).
--   **OpenAI API:** GPT-4o for document parsing, briefing generation, and Realtime API for voice interactions (`gpt-4o-realtime-preview`).
--   **pdf-parse:** For extracting text from PDF documents on the backend.
+- **Supabase:** Used for PostgreSQL database and file storage (`claim-documents`, `inspection-photos` buckets).
+- **OpenAI API:** Utilized for GPT-4o capabilities (document parsing, briefing, photo analysis) and the Realtime API for voice interactions (`gpt-4o-realtime-preview`).
+- **pdf-parse:** Version 1.1.1 is used on the backend for PDF text extraction.
+- **Drizzle ORM:** Employed for database schema management and querying.
+- **Framer Motion:** Used for UI animations and transitions.
+- **Vite PWA:** Provides Progressive Web App features, including offline caching.
