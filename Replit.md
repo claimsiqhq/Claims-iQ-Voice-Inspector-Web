@@ -1,201 +1,68 @@
 # Claims IQ Voice Inspector
 
 ## Overview
-Claims IQ Voice Inspector is a full-stack insurance property inspection application that combines voice AI (OpenAI Realtime API) with iPad-based photo capture and AI analysis. Field adjusters use voice commands to document damage, take photos, and build Xactimate-compatible estimates in real time.
+Claims IQ Voice Inspector is a voice-driven field inspection assistant designed for insurance adjusters. Its primary purpose is to streamline the insurance claims process by providing AI-powered tools for document analysis, inspection guidance, and report generation. The project aims to reduce manual effort, improve accuracy, and accelerate claim processing for insurance companies and adjusters. Key capabilities include document upload and AI parsing (FNOL, Policy, Endorsements), extraction review, inspection briefing generation, voice-guided active inspections using OpenAI's Realtime API, and a comprehensive review-and-finalize workflow with export options (ESX, PDF, Submit for Review).
 
-## Architecture
+## User Preferences
+- Professional insurance app styling
+- Clean, minimal aesthetic
+- Database must be Supabase only — never use local Replit PostgreSQL
+- Never use execute_sql_tool for Supabase operations
+- All schema changes via psql with SUPABASE_DATABASE_URL
+- Use user's own `OPENAI_API_KEY` — not Replit AI Integrations key
 
-### Frontend (React + Vite)
-- **Framework:** React 19 with TypeScript
-- **Routing:** wouter (lightweight, no SSR)
-- **State:** React Query (TanStack Query) + local state
-- **UI:** Tailwind CSS v4 + shadcn/ui components + Framer Motion animations
-- **Icons:** Lucide React
-- **Voice:** WebRTC peer connection to OpenAI Realtime API via data channel
-- **Camera:** getUserMedia with canvas capture → base64 JPEG
-- **PWA:** vite-plugin-pwa with Workbox service worker (installable, offline-capable)
+## System Architecture
 
-### Backend (Express + Node.js)
-- **Framework:** Express.js with TypeScript
-- **Database:** PostgreSQL via Drizzle ORM
-- **Storage:** Supabase Storage (documents bucket + photos bucket)
-- **AI Services:**
-  - OpenAI GPT-4o for document extraction and briefing generation
-  - OpenAI Realtime API (gpt-4o-realtime-preview) for voice inspection
-  - OpenAI GPT-4o Vision for photo analysis
+### Tech Stack
+- **Frontend:** React 19, Vite 7, TypeScript, Tailwind CSS v4, shadcn/ui, wouter, TanStack React Query, Framer Motion
+- **Backend:** Express 5, pdf-parse, @supabase/supabase-js
+- **Database:** Drizzle ORM with Supabase PostgreSQL (postgres.js driver)
+- **File Storage:** Supabase Storage (claim-documents, inspection-photos buckets)
+- **AI:** OpenAI GPT-4o for document parsing and briefing; OpenAI Realtime API for voice inspection via WebRTC
+- **Voice:** Browser WebRTC PeerConnection + DataChannel for OpenAI Realtime API integration.
 
-### Database Schema (Drizzle ORM → PostgreSQL)
-- `users` — authentication
-- `claims` — insurance claim records
-- `documents` — uploaded PDF documents (FNOL, policy, endorsements)
-- `extractions` — AI-extracted data from documents
-- `briefings` — generated pre-inspection briefings
-- `inspectionSessions` — active inspection sessions
-- `inspectionRooms` — rooms/areas within an inspection
-- `damageObservations` — damage records per room
-- `lineItems` — Xactimate-compatible estimate line items
-- `inspectionPhotos` — captured photos with AI analysis (has `analysis` jsonb and `matchesRequest` boolean columns)
-- `moistureReadings` — moisture meter readings
-- `voiceTranscripts` — voice session transcripts
+### Core Features
+The application supports a comprehensive workflow:
+1.  **Claims Management:** List and create claims.
+2.  **Document Processing:** Upload and AI-parse FNOL, Policy, and Endorsement PDFs (with batch endorsement support). Review and confirm extracted data.
+3.  **AI Confidence Scoring:** Each extracted data point displays a visual confidence indicator with color-coded shield icon (green/amber/red), animated progress bar, and percentage. Overall confidence summary aggregates field-level scores per document tab. Tooltips explain each level on hover. Components: `ConfidenceScore` (per-field), `OverallConfidenceSummary` (per-tab header).
+4.  **Inspection Briefing:** AI-generated briefings based on parsed documents.
+5.  **Active Voice Inspection:** Live voice-guided inspections using OpenAI Realtime API, enabling creation of rooms, damages, line items, photo capture, and moisture readings. Features a three-panel layout (sidebars convert to slide-out Sheet drawers on mobile) and robust voice indicator with various states.
+6.  **Review & Finalize:** A dedicated page (Screen 7) with four tabs:
+    *   **Estimate:** Collapsible hierarchy with inline editing.
+    *   **Photos:** Gallery grouped by room with filters.
+    *   **Completeness:** Circular score with AI scope gap detection.
+    *   **Notes:** Adjuster notes and voice transcript viewer. Includes a slide-over `ProgressMap` for navigation and status overview, and a `MoistureMap` for SVG-based moisture reading visualization, IICRC classification, and drying equipment calculation.
+7.  **Export:** Supports ESX/Xactimate export, PDF report generation, and a "Submit for Review" workflow with status tracking.
 
-## PWA (Progressive Web App)
+### Data Model
+The system uses 12 PostgreSQL tables in Supabase, structured into two main acts:
+-   **Act 1 (Core):** `users`, `claims`, `documents`, `extractions`, `briefings`
+-   **Act 2 (Inspection):** `inspection_sessions`, `inspection_rooms`, `damage_observations`, `line_items`, `inspection_photos`, `moisture_readings`, `voice_transcripts`
 
-The application is a fully installable PWA with offline capabilities.
+### API Design
+A RESTful API supports all application functionalities, covering Act 1 (document flow), Act 2 (inspection), and Act 3 (review/export), including endpoints for OpenAI Realtime session management.
 
-### Configuration
-- **Plugin:** `vite-plugin-pwa` in `vite.config.ts` — auto-generates manifest, service worker, and registration script
-- **Register type:** `autoUpdate` — service worker updates silently in the background
-- **Manifest:** Auto-generated at build time as `manifest.webmanifest` with app name, theme colors, and icons
+### UI/UX and Design System
+-   **Colors:** Primary Purple (`#7763B7`), Deep Purple (`#342A4F`), Gold (`#C6A54E`), Secondary Purple (`#9D8BBF`).
+-   **Fonts:** Work Sans (headings), Source Sans 3 (body), Space Mono (monospace).
+-   **Radius:** 0.5rem default.
+-   **Voice States:** Visual indicators for listening (Purple), speaking (Gold), processing (Secondary Purple), error (Gold warning), and disconnected (Red).
 
-### Icons
-| File | Purpose |
-|---|---|
-| `client/public/pwa-icon.svg` | Main app icon (any purpose) — deep purple background with gold mic |
-| `client/public/pwa-icon-maskable.svg` | Maskable icon for adaptive rendering on Android |
-| `client/public/favicon.png` | 48×48 PNG fallback |
+### Error Recovery
+The system includes mechanisms for voice disconnection auto-reconnect, manual reconnect options, error state auto-clearing, and export validation to prevent incomplete exports.
 
-### Service Worker (Workbox)
-- **Precaching:** All built assets (JS, CSS, HTML, SVG, PNG, JPG, WOFF2)
-- **Runtime caching:**
-  - Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) → **CacheFirst** (1 year TTL)
-  - API routes (`/api/*`) → **NetworkFirst** (5 min TTL, 50 max entries)
+## Recent Changes
+- **2026-02-07:** Photo Gallery component with grid/list views, type filters (overview, damage, test square, etc.), full-screen viewer with prev/next navigation, and detailed AI analysis annotations (description, damage tags, quality stars, match/mismatch indicators). Replaces old simple photo list in ActiveInspection right panel.
+- **2026-02-07:** FloorPlanSketch now groups rooms by structure (Main Dwelling, Detached Garage, etc.) with separate Interior/Exterior sections per structure. Exterior rooms show type icons (triangle for roof slopes, square variants for elevations). Photo count badges on room rectangles.
+- **2026-02-07:** Voice AI prompt expanded for multi-structure exterior inspections: walks through each structure's roof slopes, four elevations, gutters, and other areas. create_room tool now has specific roomType enums for exterior areas (exterior_roof_slope, exterior_elevation_front/left/right/rear, exterior_gutter, etc.). Completeness check updated for hail+wind claims to verify elevation and roof slope documentation.
+- **2026-02-07:** Photo upload filename sanitization — strips special characters (em dashes, non-ASCII) before Supabase Storage upload. Upload failure guard prevents analysis with undefined photoId. Analyze endpoint validates photoId.
+- **2026-02-07:** Added AI Confidence Score visualization — per-field `ConfidenceScore` component with shield icon, animated bar, and percentage; `OverallConfidenceSummary` aggregating field scores per document tab header; keyboard-accessible tooltips explaining each level.
+- **2026-02-07:** Comprehensive mobile optimization across all screens — ActiveInspection sidebars convert to Sheet drawers on mobile, Layout header scales down, ReviewFinalize uses icon-only tabs and stacked buttons, ClaimsList/DocumentUpload/ExtractionReview/InspectionBriefing/ExportPage all have responsive text, spacing, and layout adjustments using `md:` Tailwind breakpoints.
+- **2026-02-07:** Batch endorsement upload with pipe-separated storage paths and combined text extraction. Fixed parse route to only split storagePath for endorsements.
+- **2026-02-07:** Expanded FNOL, Policy, and Endorsement extraction prompts to capture comprehensive claim data from real sample documents.
 
-### HTML Meta Tags (`client/index.html`)
-- `theme-color: #342A4F` (deep purple)
-- `apple-mobile-web-app-capable: yes`
-- `apple-mobile-web-app-status-bar-style: black-translucent`
-- `viewport-fit=cover` for iOS safe area support
-
-## Persistent Bottom Navigation
-
-A fixed bottom tab bar (`BottomNav.tsx`) renders at the App level in `App.tsx`, persisting across all pages.
-
-### Navigation Items
-| Tab | Icon | Highlights When |
-|---|---|---|
-| Home | `Home` | Path is exactly `/` |
-| Documents | `FileText` | Path starts with `/upload` or `/review` |
-| **Inspect** | `Mic` (prominent raised button) | Path starts with `/briefing` or `/inspection` |
-| Reports | `ClipboardCheck` | Path contains `/inspection/` or `/export` |
-| Settings | `Settings` | Path starts with `/settings` |
-
-### Layout Integration
-- **Height:** `h-16` (4rem) + iOS safe area inset
-- **Z-index:** `z-50` (same level as header)
-- **Pages using `Layout.tsx`** (ClaimsList, DocumentUpload, ExtractionReview, InspectionBriefing): Main content has `pb-24` to clear the nav
-- **Self-layout pages** (ActiveInspection): Uses `h-[calc(100vh-4rem)]` instead of `h-screen`
-- **Self-layout pages** (ReviewFinalize, ExportPage): Root container has `pb-20`
-
-### Active State
-- Active tabs show purple icon + purple text + purple underline indicator
-- The center "Inspect" tab has a raised circular button (deep purple when inactive, primary purple when active)
-
-## Key Features (PROMPT-05)
-
-### Camera Workflow (Fixed)
-The photo capture workflow uses a **deferred tool response** pattern:
-1. Voice agent calls `trigger_photo_capture` → camera overlay opens
-2. Agent **stops talking and waits** (no tool result sent yet)
-3. User taps shutter → photo saved to Supabase → sent to GPT-4o Vision for analysis
-4. Analysis result sent back as the deferred tool response
-5. Agent resumes, acknowledges what it sees, flags mismatches
-
-Key ref: `pendingPhotoCallRef` in `ActiveInspection.tsx` stores the pending `call_id` until capture completes.
-
-### Photo AI Analysis
-- **Endpoint:** `POST /api/inspection/:sessionId/photos/:photoId/analyze`
-- Sends base64 image to GPT-4o Vision
-- Returns: description, damage detected, match confidence, quality score
-- Graceful fallback if Vision API fails (never blocks workflow)
-
-### Live Floor Plan Sketch
-- **Component:** `client/src/components/FloorPlanSketch.tsx`
-- SVG-based floor plan that builds in real-time as rooms are created
-- Room rectangles proportional to real-world dimensions
-- Color-coded: gray=not started, purple=in progress, green=complete, gold border=current
-- Red damage count badges
-- Clickable rooms to navigate
-
-### VAD Threshold Tuning
-- `turn_detection` config in Realtime session creation
-- `threshold: 0.75` (up from default 0.5) — ignores wind/traffic/construction noise
-- `silence_duration_ms: 800` — doesn't cut off adjusters mid-sentence
-- `prefix_padding_ms: 400` — avoids clipping first syllable
-
-### Mandatory Front-of-House Photo
-- Every inspection starts with property verification photo before Phase 1
-- Agent's first action: request front-of-property photo
-- GPT-4o Vision validates photo against claim address/property type
-- Prevents "wrong property" errors
-
-## Application Flow (3 Acts)
-
-### Act 1: Claim Setup
-1. Create claim with claim number
-2. Upload 3 PDFs: FNOL, Policy Declaration, Endorsements
-3. Parse each document → AI extracts structured data
-4. Review/edit extractions → confirm
-5. Generate pre-inspection briefing
-
-### Act 2: Voice Inspection
-1. Start inspection session from briefing page
-2. Connect voice (WebRTC → OpenAI Realtime)
-3. **Property verification photo** (mandatory first step)
-4. Voice-guided 8-phase inspection:
-   - Phase 1: Pre-Inspection review
-   - Phase 2: Session Setup
-   - Phase 3: Exterior (roof, siding, elevations)
-   - Phase 4: Interior (room by room)
-   - Phase 5: Moisture (water claims)
-   - Phase 6: Evidence Review
-   - Phase 7: Estimate Assembly
-   - Phase 8: Finalize
-5. AI tools: create rooms, add damage, add line items, capture/analyze photos, log moisture readings
-6. Live floor plan sketch builds in real-time
-7. Right panel shows running estimate, line items, photo gallery with AI analysis
-
-### Act 3: Review & Export
-1. Review inspection completeness
-2. Grouped estimate view
-3. Export to ESX (Xactimate XML format)
-4. PDF export data endpoint
-
-## Development
-
-### Running Locally
-```bash
-npm install
-npm run dev
-```
-
-### Database Migration
-After schema changes:
-```bash
-npx drizzle-kit push
-```
-
-### Environment Variables
-- `DATABASE_URL` — PostgreSQL connection string
-- `OPENAI_API_KEY` — OpenAI API key (for extraction, realtime, vision)
-- `SUPABASE_URL` — Supabase project URL
-- `SUPABASE_ANON_KEY` — Supabase anonymous key
-
-### Key Files
-| File | Purpose |
-|---|---|
-| `shared/schema.ts` | Database schema (Drizzle ORM) |
-| `server/routes.ts` | All API endpoints |
-| `server/storage.ts` | Database access layer |
-| `server/realtime.ts` | Voice AI system instructions + tool definitions |
-| `server/openai.ts` | Document extraction AI |
-| `client/src/App.tsx` | Root component with router + BottomNav |
-| `client/src/components/Layout.tsx` | Shared page layout (header + content area) |
-| `client/src/components/BottomNav.tsx` | Persistent bottom tab bar (5 tabs, route-aware) |
-| `client/src/pages/ActiveInspection.tsx` | Voice inspection UI (main page, self-layout) |
-| `client/src/components/FloorPlanSketch.tsx` | Live SVG floor plan |
-| `client/src/components/VoiceIndicator.tsx` | Voice state indicator |
-| `client/src/components/ProgressMap.tsx` | Inspection progress overlay |
-| `client/public/pwa-icon.svg` | PWA app icon (any purpose) |
-| `client/public/pwa-icon-maskable.svg` | PWA maskable icon (adaptive) |
-| `vite.config.ts` | Vite build config + PWA plugin setup |
-| `client/index.html` | Entry HTML with PWA meta tags |
+## External Dependencies
+-   **Supabase:** PostgreSQL database and Storage buckets (`claim-documents`, `inspection-photos`).
+-   **OpenAI API:** GPT-4o for document parsing, briefing generation, and Realtime API for voice interactions (`gpt-4o-realtime-preview`).
+-   **pdf-parse:** For extracting text from PDF documents on the backend.
