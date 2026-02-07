@@ -65,6 +65,25 @@ const lineItemCreateSchema = z.object({
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
+/** Extracts top-level claim fields from a parsed FNOL extraction so they can be synced to the claims table. */
+function claimFieldsFromFnol(data: any): Record<string, any> {
+  const fields: Record<string, any> = {};
+  if (data.insuredName) fields.insuredName = data.insuredName;
+  if (data.perilType) fields.perilType = data.perilType;
+  if (data.dateOfLoss) fields.dateOfLoss = data.dateOfLoss;
+  if (data.propertyAddress) {
+    if (typeof data.propertyAddress === "object") {
+      if (data.propertyAddress.street) fields.propertyAddress = data.propertyAddress.street;
+      if (data.propertyAddress.city) fields.city = data.propertyAddress.city;
+      if (data.propertyAddress.state) fields.state = data.propertyAddress.state;
+      if (data.propertyAddress.zip) fields.zip = data.propertyAddress.zip;
+    } else if (typeof data.propertyAddress === "string") {
+      fields.propertyAddress = data.propertyAddress;
+    }
+  }
+  return fields;
+}
+
 function decodeBase64Payload(base64Input: string, maxBytes: number): { buffer: Buffer; wasTruncated: boolean } {
   const base64Data = base64Input.includes(",") ? base64Input.split(",")[1] : base64Input;
   const buffer = Buffer.from(base64Data, "base64");
@@ -326,6 +345,14 @@ export async function registerRoutes(
 
       await storage.updateDocumentStatus(doc.id, "parsed");
 
+      // Sync FNOL extracted fields to the claims table so claim card, voice agent, etc. have real data
+      if (documentType === "fnol") {
+        const fnolFields = claimFieldsFromFnol(extractResult.extractedData);
+        if (Object.keys(fnolFields).length > 0) {
+          await storage.updateClaimFields(claimId, fnolFields);
+        }
+      }
+
       const allDocs = await storage.getDocuments(claimId);
       const allParsed = allDocs.length >= 3 && allDocs.every(d => d.status === "parsed");
       if (allParsed) {
@@ -367,6 +394,15 @@ export async function registerRoutes(
 
       const updated = await storage.updateExtraction(ext.id, req.body.extractedData);
       await storage.confirmExtraction(ext.id);
+
+      // Re-sync edited FNOL fields to the claims table
+      if (req.params.type === "fnol") {
+        const fnolFields = claimFieldsFromFnol(req.body.extractedData);
+        if (Object.keys(fnolFields).length > 0) {
+          await storage.updateClaimFields(claimId, fnolFields);
+        }
+      }
+
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -380,6 +416,16 @@ export async function registerRoutes(
       for (const ext of exts) {
         await storage.confirmExtraction(ext.id);
       }
+
+      // Ensure the latest FNOL data is synced to the claims table on confirmation
+      const fnolExt = exts.find(e => e.documentType === "fnol");
+      if (fnolExt?.extractedData) {
+        const fnolFields = claimFieldsFromFnol(fnolExt.extractedData);
+        if (Object.keys(fnolFields).length > 0) {
+          await storage.updateClaimFields(claimId, fnolFields);
+        }
+      }
+
       await storage.updateClaimStatus(claimId, "extractions_confirmed");
       res.json({ confirmed: exts.length });
     } catch (error: any) {
