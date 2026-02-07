@@ -171,6 +171,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/documents/all", async (_req, res) => {
+    try {
+      const docs = await storage.getAllDocuments();
+      res.json(docs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/claims/:id/documents", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);

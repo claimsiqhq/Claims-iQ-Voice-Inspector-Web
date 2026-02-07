@@ -29,6 +29,7 @@ export interface IStorage {
   updateClaimStatus(id: number, status: string): Promise<Claim | undefined>;
   updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType'>>): Promise<Claim | undefined>;
 
+  getAllDocuments(): Promise<Document[]>;
   createDocument(data: InsertDocument): Promise<Document>;
   getDocuments(claimId: number): Promise<Document[]>;
   getDocument(claimId: number, documentType: string): Promise<Document | undefined>;
@@ -138,6 +139,10 @@ export class DatabaseStorage implements IStorage {
   async createDocument(data: InsertDocument): Promise<Document> {
     const [doc] = await db.insert(documents).values(data).returning();
     return doc;
+  }
+
+  async getAllDocuments(): Promise<Document[]> {
+    return db.select().from(documents);
   }
 
   async getDocuments(claimId: number): Promise<Document[]> {

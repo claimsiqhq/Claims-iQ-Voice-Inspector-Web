@@ -28,8 +28,8 @@ function getNavItems(): NavItem[] {
     {
       icon: FileText,
       label: "Documents",
-      getPath: (c) => c ? `/upload/${c.id}` : "/",
-      matchPaths: ["/upload", "/review"],
+      getPath: () => "/documents",
+      matchPaths: ["/documents", "/upload", "/review"],
     },
     {
       icon: Mic,

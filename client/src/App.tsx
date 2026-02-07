@@ -14,11 +14,13 @@ import InspectionBriefing from "@/pages/InspectionBriefing";
 import ActiveInspection from "@/pages/ActiveInspection";
 import ReviewFinalize from "@/pages/ReviewFinalize";
 import ExportPage from "@/pages/ExportPage";
+import DocumentsHub from "@/pages/DocumentsHub";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={ClaimsList} />
+      <Route path="/documents" component={DocumentsHub} />
       <Route path="/upload/:id" component={DocumentUpload} />
       <Route path="/review/:id" component={ExtractionReview} />
       <Route path="/briefing/:id" component={InspectionBriefing} />
