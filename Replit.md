@@ -6,12 +6,14 @@ Claims IQ Voice Inspector is a full-stack insurance property inspection applicat
 ## Architecture
 
 ### Frontend (React + Vite)
-- **Framework:** React 18 with TypeScript
-- **Routing:** wouter
+- **Framework:** React 19 with TypeScript
+- **Routing:** wouter (lightweight, no SSR)
 - **State:** React Query (TanStack Query) + local state
-- **UI:** Tailwind CSS + shadcn/ui components + Framer Motion animations
+- **UI:** Tailwind CSS v4 + shadcn/ui components + Framer Motion animations
+- **Icons:** Lucide React
 - **Voice:** WebRTC peer connection to OpenAI Realtime API via data channel
 - **Camera:** getUserMedia with canvas capture → base64 JPEG
+- **PWA:** vite-plugin-pwa with Workbox service worker (installable, offline-capable)
 
 ### Backend (Express + Node.js)
 - **Framework:** Express.js with TypeScript
@@ -35,6 +37,58 @@ Claims IQ Voice Inspector is a full-stack insurance property inspection applicat
 - `inspectionPhotos` — captured photos with AI analysis (has `analysis` jsonb and `matchesRequest` boolean columns)
 - `moistureReadings` — moisture meter readings
 - `voiceTranscripts` — voice session transcripts
+
+## PWA (Progressive Web App)
+
+The application is a fully installable PWA with offline capabilities.
+
+### Configuration
+- **Plugin:** `vite-plugin-pwa` in `vite.config.ts` — auto-generates manifest, service worker, and registration script
+- **Register type:** `autoUpdate` — service worker updates silently in the background
+- **Manifest:** Auto-generated at build time as `manifest.webmanifest` with app name, theme colors, and icons
+
+### Icons
+| File | Purpose |
+|---|---|
+| `client/public/pwa-icon.svg` | Main app icon (any purpose) — deep purple background with gold mic |
+| `client/public/pwa-icon-maskable.svg` | Maskable icon for adaptive rendering on Android |
+| `client/public/favicon.png` | 48×48 PNG fallback |
+
+### Service Worker (Workbox)
+- **Precaching:** All built assets (JS, CSS, HTML, SVG, PNG, JPG, WOFF2)
+- **Runtime caching:**
+  - Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) → **CacheFirst** (1 year TTL)
+  - API routes (`/api/*`) → **NetworkFirst** (5 min TTL, 50 max entries)
+
+### HTML Meta Tags (`client/index.html`)
+- `theme-color: #342A4F` (deep purple)
+- `apple-mobile-web-app-capable: yes`
+- `apple-mobile-web-app-status-bar-style: black-translucent`
+- `viewport-fit=cover` for iOS safe area support
+
+## Persistent Bottom Navigation
+
+A fixed bottom tab bar (`BottomNav.tsx`) renders at the App level in `App.tsx`, persisting across all pages.
+
+### Navigation Items
+| Tab | Icon | Highlights When |
+|---|---|---|
+| Home | `Home` | Path is exactly `/` |
+| Documents | `FileText` | Path starts with `/upload` or `/review` |
+| **Inspect** | `Mic` (prominent raised button) | Path starts with `/briefing` or `/inspection` |
+| Reports | `ClipboardCheck` | Path contains `/inspection/` or `/export` |
+| Settings | `Settings` | Path starts with `/settings` |
+
+### Layout Integration
+- **Height:** `h-16` (4rem) + iOS safe area inset
+- **Z-index:** `z-50` (same level as header)
+- **Pages using `Layout.tsx`** (ClaimsList, DocumentUpload, ExtractionReview, InspectionBriefing): Main content has `pb-24` to clear the nav
+- **Self-layout pages** (ActiveInspection): Uses `h-[calc(100vh-4rem)]` instead of `h-screen`
+- **Self-layout pages** (ReviewFinalize, ExportPage): Root container has `pb-20`
+
+### Active State
+- Active tabs show purple icon + purple text + purple underline indicator
+- The center "Inspect" tab has a raised circular button (deep purple when inactive, primary purple when active)
 
 ## Key Features (PROMPT-05)
 
@@ -134,7 +188,14 @@ npx drizzle-kit push
 | `server/storage.ts` | Database access layer |
 | `server/realtime.ts` | Voice AI system instructions + tool definitions |
 | `server/openai.ts` | Document extraction AI |
-| `client/src/pages/ActiveInspection.tsx` | Voice inspection UI (main page) |
+| `client/src/App.tsx` | Root component with router + BottomNav |
+| `client/src/components/Layout.tsx` | Shared page layout (header + content area) |
+| `client/src/components/BottomNav.tsx` | Persistent bottom tab bar (5 tabs, route-aware) |
+| `client/src/pages/ActiveInspection.tsx` | Voice inspection UI (main page, self-layout) |
 | `client/src/components/FloorPlanSketch.tsx` | Live SVG floor plan |
 | `client/src/components/VoiceIndicator.tsx` | Voice state indicator |
 | `client/src/components/ProgressMap.tsx` | Inspection progress overlay |
+| `client/public/pwa-icon.svg` | PWA app icon (any purpose) |
+| `client/public/pwa-icon-maskable.svg` | PWA maskable icon (adaptive) |
+| `vite.config.ts` | Vite build config + PWA plugin setup |
+| `client/index.html` | Entry HTML with PWA meta tags |
