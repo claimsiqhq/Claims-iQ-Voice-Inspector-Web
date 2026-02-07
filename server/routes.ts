@@ -5,6 +5,13 @@ import { supabase, DOCUMENTS_BUCKET } from "./supabase";
 import * as pdfParseModule from "pdf-parse";
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
+import { z } from "zod";
+
+const uploadBodySchema = z.object({
+  fileName: z.string().min(1),
+  fileBase64: z.string().min(1),
+  documentType: z.enum(["fnol", "policy", "endorsements"]),
+});
 
 async function uploadToSupabase(
   claimId: number,
@@ -96,11 +103,11 @@ export async function registerRoutes(
   app.post("/api/claims/:id/documents/upload", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
-      const { fileName, fileBase64, documentType } = req.body;
-
-      if (!fileName || !fileBase64 || !documentType) {
-        return res.status(400).json({ message: "fileName, fileBase64, and documentType are required" });
+      const parsed = uploadBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid upload data", errors: parsed.error.flatten().fieldErrors });
       }
+      const { fileName, fileBase64, documentType } = parsed.data;
 
       const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
       const fileBuffer = Buffer.from(base64Data, "base64");
@@ -140,11 +147,15 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Document not found. Upload first." });
       }
 
+      if (!doc.storagePath) {
+        return res.status(400).json({ message: "Document has no uploaded file. Upload first." });
+      }
+
       await storage.updateDocumentStatus(doc.id, "processing");
 
       let rawText = "";
       try {
-        const dataBuffer = await downloadFromSupabase(doc.storagePath!);
+        const dataBuffer = await downloadFromSupabase(doc.storagePath);
         const pdfData = await pdfParse(dataBuffer);
         rawText = pdfData.text;
       } catch (pdfError: any) {
