@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 
 const upload = multer({
