@@ -121,6 +121,33 @@ The system includes mechanisms for voice disconnection auto-reconnect, error sta
 - **Supabase:** Used for PostgreSQL database, file storage (`claim-documents`, `inspection-photos` buckets), and user authentication (Supabase Auth).
 - **OpenAI API:** Utilized for GPT-4o capabilities (document parsing, briefing, photo analysis) and the Realtime API for voice interactions (`gpt-4o-realtime-preview`).
 - **pdf-parse:** Version 1.1.1 is used on the backend for PDF text extraction.
+- **pdfkit:** Server-side PDF generation for professional branded inspection reports.
 - **Drizzle ORM:** Employed for database schema management and querying.
 - **Framer Motion:** Used for UI animations and transitions.
 - **Vite PWA:** Provides Progressive Web App features, including offline caching.
+
+## PROMPT-08 — PDF Report Generation & Photo Annotation Canvas
+
+### Changes Applied
+
+**New Files:**
+- `server/pdfGenerator.ts` — Professional Claims IQ branded PDF report builder using pdfkit with 6+ report sections: cover page, claim info, room-by-room details (damages, line items, photos), estimate summary with category breakdowns, photo appendix with AI analysis, and moisture report for water peril claims.
+- `client/src/components/PhotoAnnotator.tsx` — Canvas-based photo annotation tool with 5 drawing tools (arrow, circle, rectangle, freehand, text), 5 color options, 3 line widths, undo/redo stack, and clear-all functionality. Full-screen overlay with framer-motion transitions.
+
+**Modified Files:**
+- `server/routes.ts` — Replaced the PDF export endpoint (`POST /api/inspection/:sessionId/export/pdf`) from returning JSON data to generating and streaming a real PDF file via pdfkit. Added `PUT /api/inspection/:sessionId/photos/:photoId/annotations` endpoint for saving annotation shapes to the database's existing `annotations` jsonb column.
+- `client/src/components/PhotoGallery.tsx` — Added "Annotate" button to the full-screen photo viewer header. Integrated PhotoAnnotator modal with save-to-backend callback. Added `sessionId` prop for API calls.
+- `client/src/pages/ActiveInspection.tsx` — Passes `sessionId` prop to PhotoGallery component.
+- `client/src/pages/ExportPage.tsx` — PDF mutation now downloads a real PDF blob file (triggers browser download) instead of displaying an in-page HTML preview. Removed the old printable HTML preview section. Updated button text to "Generate & Download PDF" with success indicator.
+- `package.json` — Added `pdfkit` (v0.17.2) to dependencies and `@types/pdfkit` to devDependencies.
+
+### Key Design Decisions
+- PDF generation uses built-in Helvetica/Courier fonts (no external font files needed)
+- Line items are grouped by category for the estimate summary section
+- Photo annotations stored as JSON shapes in the existing `annotations` jsonb column (no schema migration needed)
+- The annotated canvas image (base64) is sent to the backend but only shapes are persisted for now
+- `storage.updatePhoto()` method (from PROMPT-05) handles annotation persistence
+
+### Build Status
+- TypeScript compilation: Clean (no new errors introduced)
+- Production build: Successful
