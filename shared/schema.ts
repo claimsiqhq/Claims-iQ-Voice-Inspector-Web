@@ -293,6 +293,15 @@ export const insertSupplementalClaimSchema = createInsertSchema(supplementalClai
 export type SupplementalClaim = typeof supplementalClaims.$inferSelect;
 export type InsertSupplementalClaim = z.infer<typeof insertSupplementalClaimSchema>;
 
+export const userSettings = pgTable("user_settings", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  settings: jsonb("settings").notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type UserSettings = typeof userSettings.$inferSelect;
+
 export const insertScopeLineItemSchema = createInsertSchema(scopeLineItems).omit({ id: true });
 export const insertRegionalPriceSetSchema = createInsertSchema(regionalPriceSets).omit({ id: true });
 

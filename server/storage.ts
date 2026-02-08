@@ -20,6 +20,7 @@ import {
   scopeLineItems, regionalPriceSets,
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
+  userSettings, type UserSettings,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -113,6 +114,9 @@ export interface IStorage {
   updateSupplemental(id: number, updates: Partial<SupplementalClaim>): Promise<SupplementalClaim | undefined>;
   submitSupplemental(id: number): Promise<SupplementalClaim | undefined>;
   approveSupplemental(id: number): Promise<SupplementalClaim | undefined>;
+
+  getUserSettings(userId: string): Promise<Record<string, any> | null>;
+  upsertUserSettings(userId: string, settings: Record<string, any>): Promise<UserSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -571,6 +575,23 @@ export class DatabaseStorage implements IStorage {
   async approveSupplemental(id: number): Promise<SupplementalClaim | undefined> {
     const [claim] = await db.update(supplementalClaims).set({ status: "approved", approvedAt: new Date() }).where(eq(supplementalClaims.id, id)).returning();
     return claim;
+  }
+
+  async getUserSettings(userId: string): Promise<Record<string, any> | null> {
+    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    return row ? (row.settings as Record<string, any>) : null;
+  }
+
+  async upsertUserSettings(userId: string, settings: Record<string, any>): Promise<UserSettings> {
+    const [row] = await db
+      .insert(userSettings)
+      .values({ userId, settings, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: { settings, updatedAt: new Date() },
+      })
+      .returning();
+    return row;
   }
 }
 

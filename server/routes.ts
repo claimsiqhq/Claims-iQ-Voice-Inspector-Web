@@ -1783,6 +1783,34 @@ Respond in JSON format:
     }
   });
 
+  // ── User Settings ──────────────────────────────────
+
+  app.get("/api/settings", authenticateRequest, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const settings = await storage.getUserSettings(userId);
+      res.json(settings || {});
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/settings", authenticateRequest, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const settings = req.body;
+      if (!settings || typeof settings !== "object") {
+        return res.status(400).json({ message: "Settings object required" });
+      }
+      const result = await storage.upsertUserSettings(userId, settings);
+      res.json(result.settings);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Admin / Supervisor Routes ──────────────────────
 
   app.get("/api/admin/users", authenticateRequest, requireRole("supervisor", "admin"), async (_req, res) => {
