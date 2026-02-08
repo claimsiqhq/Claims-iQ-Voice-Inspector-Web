@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import MoistureMap from "@/components/MoistureMap";
-import FloorPlanSketch from "@/components/FloorPlanSketch";
+import PropertySketch from "@/components/PropertySketch";
 
 export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const claimId = parseInt(params.id);
@@ -139,7 +139,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
           {/* SKETCH TAB */}
           <TabsContent value="sketch" className="flex-1 overflow-y-auto mt-0 p-0">
-            <SketchTab rooms={rooms} />
+            <SketchTab rooms={rooms} sessionId={sessionId} />
           </TabsContent>
         </Tabs>
       </div>
@@ -854,7 +854,7 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
 
 // ─── SKETCH TAB ─────────────────────────────────────────
 
-function SketchTab({ rooms }: { rooms: any[] }) {
+function SketchTab({ rooms, sessionId }: { rooms: any[]; sessionId: number | null }) {
   if (rooms.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -889,7 +889,8 @@ function SketchTab({ rooms }: { rooms: any[] }) {
         </div>
       </div>
 
-      <FloorPlanSketch
+      <PropertySketch
+        sessionId={sessionId}
         rooms={rooms.map((r: any) => ({
           id: r.id,
           name: r.name,
@@ -899,6 +900,13 @@ function SketchTab({ rooms }: { rooms: any[] }) {
           roomType: r.roomType,
           dimensions: r.dimensions,
           structure: r.structure,
+          viewType: r.viewType,
+          shapeType: r.shapeType,
+          parentRoomId: r.parentRoomId,
+          attachmentType: r.attachmentType,
+          facetLabel: r.facetLabel,
+          pitch: r.pitch,
+          floor: r.floor,
         }))}
         currentRoomId={null}
         expanded

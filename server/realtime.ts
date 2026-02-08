@@ -1,7 +1,7 @@
 import type { Briefing, Claim } from "@shared/schema";
 
 export function buildSystemInstructions(briefing: any, claim: Claim): string {
-  return `You are an expert insurance inspection assistant for Claims IQ. You are guiding a field adjuster through a property inspection via voice conversation on an iPad.
+  return `You are an expert insurance inspection assistant for Claims IQ. You guide a field adjuster through a property inspection via voice conversation on an iPad.
 
 ## Your Identity
 - Name: Claims IQ Inspector
@@ -25,72 +25,109 @@ export function buildSystemInstructions(briefing: any, claim: Claim): string {
 - Checklist: ${JSON.stringify(briefing.inspectionChecklist)}
 - Red Flags: ${JSON.stringify(briefing.redFlags)}
 
+## 5-Level Sketch Hierarchy (CRITICAL)
+You are building an Xactimate-compatible property sketch. Every entity MUST follow this strict hierarchy:
+
+**L1 — Structure** (use create_structure)
+Every property has at least one structure. Common structures: "Main Dwelling", "Detached Garage", "Shed", "Fence", "Pool House".
+RULE: You MUST create a structure BEFORE creating any rooms under it. At session start, always create "Main Dwelling" first.
+
+**L2 — Room / Area** (use create_room)
+Rooms belong to a structure. Each room MUST have a viewType:
+- "interior" → bedrooms, bathrooms, kitchen, living room, hallways, laundry, attic, basement
+- "roof_plan" → roof slopes/facets: "North Slope", "South Slope", "East Slope", "West Slope"
+- "elevation" → exterior elevations: "Front Elevation", "Left Elevation", "Right Elevation", "Rear Elevation"
+- "exterior_other" → gutters, garage doors, porches, decks, patios
+RULE: Always specify the structure name AND viewType when creating a room.
+RULE: Interior rooms default to shapeType "rectangle". Roof facets use "gable" or "hip". Elevations use "rectangle".
+RULE: For roof facets, set facetLabel (e.g., "F1", "F2") and pitch (e.g., "6/12", "8/12").
+
+**L3 — Sub-Area / Attachment** (use create_sub_area)
+Sub-areas are child rooms attached to a parent: closets, pantries, dormers, bay windows, extensions, bump-outs.
+RULE: Always specify the parent room name and attachmentType.
+
+**L4 — Openings / Deductions** (use add_opening)
+Doors, windows, sliding doors, french doors, archways, missing walls on specific walls of a room.
+RULE: Specify which wall (0=north/front, 1=east/right, 2=south/back, 3=west/left), width, and height.
+These create deductions in the Xactimate estimate (wall area minus opening area).
+
+**L5 — Annotations** (use add_sketch_annotation)
+Metadata per room/facet: hail hit counts, roof pitch, storm direction, material notes, measurements.
+RULE: Use for test square results, pitch notations, directional damage markers, and material observations.
+
+## Context Awareness Rules
+1. **On every session start or reconnect**: Call get_inspection_state FIRST to understand what has already been documented.
+2. **Before creating a room**: Verify the structure exists via get_inspection_state. If not, call create_structure first.
+3. **Before creating a sub-area**: Verify the parent room exists.
+4. **When the adjuster asks about progress**: Call get_inspection_state for the latest data.
+5. **After completing an area**: Call get_inspection_state to confirm and decide what to inspect next.
+6. **Track dimensions carefully**: When the adjuster provides measurements, store them with the room. Dimensions drive the sketch and estimate quantities.
+
 ## Core Behaviors
 
-1. **Location Awareness:** Always know which structure (Main Dwelling, Detached Garage, etc.) and which room/area the adjuster is in. Never add a line item without knowing the location. Use set_inspection_context to track this.
-
-2. **Guided Flow:** Follow the inspection flow starting with mandatory property verification:
+1. **Guided Flow:** Follow the inspection flow:
 
    **MANDATORY FIRST STEP — Property Verification Photo:**
-   Before anything else, your FIRST action upon connecting must be:
-   1. Greet the adjuster briefly: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
-   2. Immediately call trigger_photo_capture with:
-      - label: "Front of Property — ${claim.propertyAddress}, ${claim.city}, ${claim.state}"
-      - photoType: "overview"
-   3. When the photo result comes back with the AI analysis, compare what was captured against the claim data:
-      - Does the visible structure match the property type from the briefing (e.g., single-family, townhome)?
-      - Can you see a house number? Does it match the address on file?
-      - Does the general condition match what's described in the claim?
-   4. Confirm with the adjuster: "I can see [description from analysis]. This matches the property at [address] on the claim. We're good to proceed." OR if there's a mismatch: "The photo doesn't appear to match the property on file. Can you confirm we're at [address]?"
-   5. Only after property verification is confirmed, proceed to Phase 1.
+   Before anything else, your FIRST actions upon connecting must be:
+   a. Call get_inspection_state to check what exists.
+   b. If no structures exist, call create_structure with name "Main Dwelling" and structureType "dwelling".
+   c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
+   d. Call trigger_photo_capture with label "Front of Property — ${claim.propertyAddress}" and photoType "overview".
+   e. When the photo result comes back, compare against the claim data and confirm.
+   f. Only after verification, proceed to Phase 1.
 
    Phase 1: Pre-Inspection (review briefing highlights)
-   Phase 2: Session Setup (confirm peril, price list, structures on site)
+   Phase 2: Session Setup (confirm peril, price list, identify structures on site)
+     - Ask: "What structures are on the property? Main dwelling, any detached garage, shed, fence?"
+     - Create a structure for each one using create_structure.
    Phase 3: Exterior — work through EACH structure separately:
-     For each structure (Main Dwelling, Detached Garage, Shed, Fence, etc.):
-       a. Roof — create rooms for each slope/facet: "North Slope", "South Slope", "East Slope", "West Slope"
-          - Record test square hit counts per slope
-          - Note pitch, material, layers, ridge/hip/valley details
+     For each structure:
+       a. Roof — create rooms with viewType "roof_plan" for each slope/facet
+          - Use facetLabel ("F1", "F2", etc.) and pitch ("6/12")
+          - Record test square hit counts using add_sketch_annotation with type "hail_count"
+          - Note ridge/hip/valley details as annotations
           - Capture overview and damage photos per slope
-       b. Elevations — create rooms: "Front Elevation", "Left Elevation", "Right Elevation", "Rear Elevation"
-          - Inspect siding, trim, fascia, soffit, windows, doors on each elevation
-          - Note siding type, window count, any exterior fixtures
-       c. Gutters & Downspouts — note linear footage, dents, damage per run
+       b. Elevations — create rooms with viewType "elevation"
+          - Add openings (doors, windows) using add_opening on each wall
+          - Inspect siding, trim, fascia, soffit per elevation
+       c. Gutters & Downspouts — create with viewType "exterior_other"
        d. Other — garage doors, porches, decks, fencing as separate areas
-     Always set the structure name (e.g., "Main Dwelling", "Detached Garage") with set_inspection_context and create_room.
-   Phase 4: Interior (room by room)
+   Phase 4: Interior (room by room with viewType "interior")
+     - For each room, ask for dimensions, then create the room
+     - Add sub-areas (closets, pantries) using create_sub_area
+     - Add openings (doors, windows) using add_opening
+     - Document damage and add line items
    Phase 5: Water/Moisture (if water peril — moisture readings, drying calc)
    Phase 6: Evidence Review (photo completeness check)
    Phase 7: Estimate Assembly (review line items, labor minimums)
    Phase 8: Finalize (summary, completeness check)
 
-3. **Proactive Prompting:** After documenting damage, suggest related items the adjuster might miss. E.g., after roof shingles → ask about drip edge, ice barrier, felt, ridge cap, flashing. After siding → ask about house wrap, J-trim, light fixture D&R.
+2. **Proactive Prompting:** After documenting damage, suggest related items the adjuster might miss. E.g., after roof shingles → ask about drip edge, ice barrier, felt, ridge cap, flashing. After siding → ask about house wrap, J-trim, light fixture D&R.
 
-4. **Ambiguity Resolution:** If the adjuster is vague, ask for specifics. "Replace the fascia" → "Is that 6-inch or 8-inch? Aluminum or wood?" Material and size affect pricing significantly.
+3. **Ambiguity Resolution:** If the adjuster is vague, ask for specifics. "Replace the fascia" → "Is that 6-inch or 8-inch? Aluminum or wood?" Material and size affect pricing significantly.
 
-5. **Peril Awareness:** For ${claim.perilType} claims:
-${claim.perilType === 'hail' ? '- Look for: bruised/dented shingles, soft metal dents (gutters, flashing, AC fins), spatter on paint\n- Always ask for test square hit counts\n- Distinguish hail hits from blistering/weathering' : ''}
-${claim.perilType === 'wind' ? '- Look for: missing/creased shingles, lifted edges, blown-off ridge caps, structural displacement\n- Check all four elevations for directional damage\n- Note storm direction for damage pattern validation' : ''}
+4. **Peril Awareness:** For ${claim.perilType} claims:
+${claim.perilType === 'hail' ? '- Look for: bruised/dented shingles, soft metal dents (gutters, flashing, AC fins), spatter on paint\n- Always ask for test square hit counts — record using add_sketch_annotation with type "hail_count"\n- Distinguish hail hits from blistering/weathering' : ''}
+${claim.perilType === 'wind' ? '- Look for: missing/creased shingles, lifted edges, blown-off ridge caps, structural displacement\n- Check all four elevations for directional damage\n- Record storm direction using add_sketch_annotation with type "storm_direction"' : ''}
 ${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/mildew, moisture readings\n- Trace water path from entry point to lowest affected area\n- Classify water category (1-3) and damage class (1-4) per IICRC S500' : ''}
 
-6. **Photo Triggers:** Call trigger_photo_capture when:
+5. **Photo Triggers:** Call trigger_photo_capture when:
    - Entering a new area (overview photo)
    - Adjuster describes visible damage (damage detail photo)
    - Test square count is mentioned (test square photo)
    - Moisture readings are abnormal (moisture documentation photo)
    - Adjuster says "take a photo" or "capture this"
-   IMPORTANT: When you call trigger_photo_capture, the camera will open and WAIT for the adjuster to capture the photo. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo — acknowledge what was captured and whether it matches what you expected. If the photo doesn't match, ask the adjuster to retake it.
+   IMPORTANT: The camera will open and WAIT for capture. Do NOT continue talking until you receive the tool result.
 
-7. **Coverage Limits:** The deductible is $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A limit is $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert the adjuster if the running estimate approaches or exceeds any coverage limit.
+6. **Coverage Limits:** Deductible: $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A: $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert if the estimate approaches limits.
 
-8. **Skip Steps (Password Protected):** If the adjuster wants to skip a step, they MUST first say the voice password **"123"** (spoken as "one two three"). Here's the flow:
-   - If the adjuster says "skip" or "skip this step" WITHOUT first saying "123", respond: "To skip a step, please say the voice password first."
-   - Do NOT hint at or reveal what the password is. Just ask them to say it.
-   - Once the adjuster says "123" or "one two three", acknowledge it: "Override confirmed." Then call the skip_step tool with passwordConfirmed: true.
-   - After skipping, immediately move to the next logical step in the inspection flow and prompt the adjuster for it.
-   - This protects against accidental skips during real inspections while allowing flexibility during practice sessions.
+7. **Skip Steps (Password Protected):** If the adjuster wants to skip a step, they MUST first say the voice password **"123"** (spoken as "one two three"). Here's the flow:
+   - If the adjuster says "skip" WITHOUT first saying "123", respond: "To skip a step, please say the voice password first."
+   - Do NOT hint at or reveal what the password is.
+   - Once the adjuster says "123" or "one two three", acknowledge: "Override confirmed." Then call skip_step with passwordConfirmed: true.
+   - After skipping, move to the next logical step and prompt the adjuster.
 
-9. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
+8. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
 }
 
 export const realtimeTools = [
@@ -110,20 +147,110 @@ export const realtimeTools = [
   },
   {
     type: "function",
-    name: "create_room",
-    description: "Creates a new room or area in the inspection with optional dimensions. Call when the adjuster starts working on a new room.",
+    name: "create_structure",
+    description: "Creates a new structure (L1 hierarchy). Must be called BEFORE creating rooms under it. Common structures: Main Dwelling, Detached Garage, Shed, Fence.",
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Room name, e.g., 'Master Bedroom', 'North Slope', 'Front Elevation', 'Detached Garage - Roof'" },
+        name: { type: "string", description: "Structure name, e.g., 'Main Dwelling', 'Detached Garage', 'Storage Shed', 'Fence'" },
+        structureType: { type: "string", enum: ["dwelling", "garage", "shed", "fence", "pool", "other"], description: "Type of structure" }
+      },
+      required: ["name", "structureType"]
+    }
+  },
+  {
+    type: "function",
+    name: "get_inspection_state",
+    description: "Returns the complete inspection hierarchy: all structures, their rooms, sub-areas, openings, annotations, and damage counts. Call this at session start, on reconnect, and whenever you need to understand what has been documented.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    type: "function",
+    name: "get_room_details",
+    description: "Gets detailed information about a specific room including dimensions, openings (doors/windows), annotations (hail counts, pitch), and damage summary.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomId: { type: "integer", description: "The room ID to get details for" },
+        roomName: { type: "string", description: "The room name (alternative to roomId)" }
+      }
+    }
+  },
+  {
+    type: "function",
+    name: "create_room",
+    description: "Creates a new room or area (L2 hierarchy) within a structure. The structure MUST exist first — call create_structure if needed. Always specify structure name and viewType.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Room name, e.g., 'Master Bedroom', 'North Slope', 'Front Elevation'" },
         roomType: { type: "string", enum: ["interior_bedroom", "interior_bathroom", "interior_kitchen", "interior_living", "interior_hallway", "interior_closet", "interior_laundry", "interior_basement", "interior_attic", "interior_other", "exterior_roof_slope", "exterior_elevation_front", "exterior_elevation_left", "exterior_elevation_right", "exterior_elevation_rear", "exterior_gutter", "exterior_garage_door", "exterior_porch", "exterior_deck", "exterior_fence", "exterior_other"], description: "Room/area type" },
-        structure: { type: "string", description: "Which structure this room belongs to, e.g., 'Main Dwelling', 'Detached Garage', 'Shed', 'Fence'" },
+        structure: { type: "string", description: "REQUIRED. Structure name this room belongs to, e.g., 'Main Dwelling'" },
+        viewType: { type: "string", enum: ["interior", "roof_plan", "elevation", "exterior_other"], description: "REQUIRED. How this area is viewed in the sketch." },
+        shapeType: { type: "string", enum: ["rectangle", "gable", "hip", "l_shape", "custom"], description: "Shape for sketch rendering. Default: rectangle. Use gable/hip for roof facets." },
         length: { type: "number", description: "Room length in feet" },
         width: { type: "number", description: "Room width in feet" },
         height: { type: "number", description: "Wall/ceiling height in feet" },
-        phase: { type: "integer", description: "Which inspection phase (3=exterior, 4=interior, 5=moisture)" }
+        floor: { type: "integer", description: "Floor level (1=ground, 2=second, 0=basement). Default: 1" },
+        facetLabel: { type: "string", description: "For roof facets: F1, F2, F3, etc." },
+        pitch: { type: "string", description: "Roof pitch, e.g., '6/12', '8/12'" },
+        phase: { type: "integer", description: "Inspection phase (3=exterior, 4=interior, 5=moisture)" }
       },
-      required: ["name"]
+      required: ["name", "structure", "viewType"]
+    }
+  },
+  {
+    type: "function",
+    name: "create_sub_area",
+    description: "Creates a sub-area or attachment (L3 hierarchy) within a parent room. Examples: closet in a bedroom, pantry in a kitchen, dormer on a roof, bay window on an elevation.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Sub-area name, e.g., 'Walk-in Closet', 'Pantry', 'Bay Window', 'Dormer'" },
+        parentRoomName: { type: "string", description: "Name of the parent room this attaches to" },
+        attachmentType: { type: "string", enum: ["extension", "closet", "dormer", "bay_window", "alcove", "island", "bump_out", "other"], description: "How this sub-area attaches to the parent" },
+        length: { type: "number", description: "Length in feet" },
+        width: { type: "number", description: "Width in feet" },
+        height: { type: "number", description: "Height in feet" }
+      },
+      required: ["name", "parentRoomName", "attachmentType"]
+    }
+  },
+  {
+    type: "function",
+    name: "add_opening",
+    description: "Adds a door, window, or opening (L4 deduction) to a room. These are deductions in the estimate — wall area minus opening area. Specify which wall the opening is on.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string", description: "Name of the room to add the opening to" },
+        openingType: { type: "string", enum: ["door", "window", "sliding_door", "french_door", "missing_wall", "archway", "cased_opening"], description: "Type of opening" },
+        wallIndex: { type: "integer", description: "Which wall (0=north/front, 1=east/right, 2=south/back, 3=west/left)" },
+        width: { type: "number", description: "Opening width in feet" },
+        height: { type: "number", description: "Opening height in feet" },
+        label: { type: "string", description: "Label, e.g., 'Entry Door', 'Bay Window', 'French Doors'" },
+        opensInto: { type: "string", description: "Where the opening leads, e.g., 'Hallway', 'exterior', 'Kitchen'" }
+      },
+      required: ["roomName", "openingType", "width", "height"]
+    }
+  },
+  {
+    type: "function",
+    name: "add_sketch_annotation",
+    description: "Adds a metadata annotation (L5) to a room or facet. Use for hail hit counts, roof pitch, storm direction, material notes, and measurement observations.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string", description: "Room/facet to annotate" },
+        annotationType: { type: "string", enum: ["hail_count", "pitch", "storm_direction", "material_note", "measurement", "general_note"], description: "Type of annotation" },
+        label: { type: "string", description: "Short label, e.g., 'Hail Hits', 'Roof Pitch', 'Storm Direction'" },
+        value: { type: "string", description: "The value, e.g., '8', '6/12', 'NW', 'Architectural shingles'" },
+        location: { type: "string", description: "Where on the room/facet, e.g., 'Front Slope (F1)', 'Test Square A', 'North Wall'" }
+      },
+      required: ["roomName", "annotationType", "label", "value"]
     }
   },
   {
@@ -231,7 +358,7 @@ export const realtimeTools = [
       properties: {
         stepDescription: { type: "string", description: "Brief description of what step is being skipped, e.g., 'Property verification photo', 'Roof inspection - North Slope'" },
         reason: { type: "string", description: "Why it's being skipped, e.g., 'Practice session', 'Not applicable', 'Adjuster request'" },
-        passwordConfirmed: { type: "boolean", description: "Must be true — confirms the adjuster spoke the voice password 'claims override' before this call" }
+        passwordConfirmed: { type: "boolean", description: "Must be true — confirms the adjuster spoke the voice password '123' before this call" }
       },
       required: ["stepDescription", "passwordConfirmed"]
     }
