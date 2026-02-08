@@ -1458,8 +1458,19 @@ Respond in JSON format:
       const photos = await storage.getPhotos(sessionId);
       const rooms = await storage.getRooms(sessionId);
 
+      const photosWithUrls = await Promise.all(photos.map(async (photo) => {
+        let signedUrl = null;
+        if (photo.storagePath) {
+          const { data } = await supabase.storage
+            .from(PHOTOS_BUCKET)
+            .createSignedUrl(photo.storagePath, 3600);
+          if (data?.signedUrl) signedUrl = data.signedUrl;
+        }
+        return { ...photo, signedUrl };
+      }));
+
       const grouped: Record<string, any[]> = {};
-      for (const photo of photos) {
+      for (const photo of photosWithUrls) {
         const room = rooms.find(r => r.id === photo.roomId);
         const roomName = room ? room.name : "General";
         if (!grouped[roomName]) grouped[roomName] = [];
@@ -1472,7 +1483,7 @@ Respond in JSON format:
           photos: roomPhotos,
           count: roomPhotos.length,
         })),
-        totalPhotos: photos.length,
+        totalPhotos: photosWithUrls.length,
       });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });

@@ -529,9 +529,18 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
                 onClick={() => setSelectedPhoto(photo)}
                 className="aspect-square bg-muted rounded-lg border border-border overflow-hidden relative group hover:ring-2 hover:ring-primary transition-all"
               >
-                <div className="w-full h-full flex items-center justify-center bg-muted">
-                  <ImageIcon size={24} className="text-muted-foreground/30" />
-                </div>
+                {photo.signedUrl ? (
+                  <img
+                    src={photo.signedUrl}
+                    alt={photo.caption || photo.autoTag || "Inspection photo"}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-muted">
+                    <ImageIcon size={24} className="text-muted-foreground/30" />
+                  </div>
+                )}
                 {/* Photo Type Badge */}
                 {photo.photoType && (
                   <span className="absolute top-1 right-1 text-[8px] bg-black/60 text-white px-1 py-0.5 rounded">
@@ -573,12 +582,23 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
                   <X size={18} className="text-muted-foreground" />
                 </button>
               </div>
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                <ImageIcon size={48} className="text-muted-foreground/20" />
+              <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                {selectedPhoto.signedUrl ? (
+                  <img
+                    src={selectedPhoto.signedUrl}
+                    alt={selectedPhoto.caption || selectedPhoto.autoTag || "Photo"}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <ImageIcon size={48} className="text-muted-foreground/20" />
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5 text-sm">
                 {selectedPhoto.caption && <p><strong>Caption:</strong> {selectedPhoto.caption}</p>}
                 {selectedPhoto.photoType && <p><strong>Type:</strong> {selectedPhoto.photoType.replace(/_/g, " ")}</p>}
+                {selectedPhoto.analysis?.description && <p><strong>AI Analysis:</strong> {selectedPhoto.analysis.description}</p>}
                 {selectedPhoto.createdAt && <p className="text-xs text-muted-foreground">Taken: {new Date(selectedPhoto.createdAt).toLocaleString()}</p>}
               </div>
             </motion.div>
