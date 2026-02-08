@@ -157,6 +157,63 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isConnected, isPaused]);
 
+  // Initial data load when session is available
+  useEffect(() => {
+    if (!sessionId) return;
+    refreshRooms();
+    refreshLineItems();
+    refreshEstimate();
+    // Load existing photos
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/inspection/${sessionId}/photos`, { headers });
+        if (res.ok) {
+          const photos = await res.json();
+          setRecentPhotos(photos.slice(-50).reverse().map((p: any) => ({
+            id: p.id,
+            storagePath: p.storagePath,
+            caption: p.caption,
+            photoType: p.photoType,
+            roomId: p.roomId,
+            analysis: p.analysis,
+            matchesRequest: p.matchesRequest,
+          })));
+        }
+      } catch {}
+    })();
+    // Also load session state (phase, structure)
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/inspection/${sessionId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.session?.currentPhase) setCurrentPhase(data.session.currentPhase);
+          if (data.session?.currentStructure) setCurrentStructure(data.session.currentStructure);
+        }
+      } catch {}
+    })();
+  }, [sessionId]);
+
+  // Periodic refresh every 10 seconds while connected
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (sessionId && isConnected) {
+      refreshIntervalRef.current = setInterval(() => {
+        refreshRooms();
+        refreshEstimate();
+        refreshLineItems();
+      }, 10000);
+    }
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [sessionId, isConnected, refreshRooms, refreshEstimate, refreshLineItems]);
+
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -1337,6 +1394,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         rooms={rooms}
         isOpen={showProgressTracker}
         onClose={() => setShowProgressTracker(false)}
+        onRefresh={() => {
+          refreshRooms();
+          refreshLineItems();
+          refreshEstimate();
+        }}
       />
 
       {/* EXPANDED SKETCH OVERLAY */}

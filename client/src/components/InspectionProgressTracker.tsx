@@ -31,6 +31,7 @@ interface ProgressTrackerProps {
   }>;
   isOpen: boolean;
   onClose: () => void;
+  onRefresh?: () => void;
 }
 
 interface ChecklistItem {
@@ -71,6 +72,7 @@ export default function InspectionProgressTracker({
   rooms,
   isOpen,
   onClose,
+  onRefresh,
 }: ProgressTrackerProps) {
   const [completenessData, setCompletenessData] = useState<CompletenessData | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>("phases");
@@ -515,7 +517,10 @@ export default function InspectionProgressTracker({
             {/* Footer */}
             <div className="px-5 py-3 border-t border-border bg-muted/30">
               <button
-                onClick={fetchCompleteness}
+                onClick={() => {
+                  fetchCompleteness();
+                  onRefresh?.();
+                }}
                 disabled={loading}
                 className="w-full text-xs text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
                 data-testid="button-refresh-progress"
