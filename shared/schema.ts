@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -45,6 +45,8 @@ export const claims = pgTable(
   },
   (table) => ({
     claimNumberUnique: uniqueIndex("claims_claim_number_unique").on(table.claimNumber),
+    assignedToIdx: index("claims_assigned_to_idx").on(table.assignedTo),
+    statusIdx: index("claims_status_idx").on(table.status),
   }),
 );
 
@@ -125,18 +127,24 @@ export type InsertExtraction = z.infer<typeof insertExtractionSchema>;
 export type Briefing = typeof briefings.$inferSelect;
 export type InsertBriefing = z.infer<typeof insertBriefingSchema>;
 
-export const inspectionSessions = pgTable("inspection_sessions", {
-  id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
-  inspectorId: varchar("inspector_id").references(() => users.id),
-  status: varchar("status", { length: 20 }).notNull().default("active"),
-  currentPhase: integer("current_phase").default(1),
-  currentRoomId: integer("current_room_id"),
-  currentStructure: varchar("current_structure", { length: 100 }).default("Main Dwelling"),
-  voiceSessionId: text("voice_session_id"),
-  startedAt: timestamp("started_at").defaultNow(),
-  completedAt: timestamp("completed_at"),
-});
+export const inspectionSessions = pgTable(
+  "inspection_sessions",
+  {
+    id: serial("id").primaryKey(),
+    claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+    inspectorId: varchar("inspector_id").references(() => users.id),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    currentPhase: integer("current_phase").default(1),
+    currentRoomId: integer("current_room_id"),
+    currentStructure: varchar("current_structure", { length: 100 }).default("Main Dwelling"),
+    voiceSessionId: text("voice_session_id"),
+    startedAt: timestamp("started_at").defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => ({
+    claimIdIdx: index("inspection_sessions_claim_id_idx").on(table.claimId),
+  }),
+);
 
 // ── Structures ─────────────────────────────────────────
 // Top-level hierarchy entity: Main Dwelling, Detached Garage, Shed, Fence, etc.
@@ -160,40 +168,47 @@ export const structures = pgTable(
 
 // ── L2: Parent Areas (Rooms / Elevations / Roof Facets) ─
 // The primary geometric shape within a structure view.
-export const inspectionRooms = pgTable("inspection_rooms", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 100 }).notNull(),
-  roomType: varchar("room_type", { length: 50 }),
-  structure: varchar("structure", { length: 100 }).default("Main Dwelling"), // legacy text field
-  structureId: integer("structure_id").references(() => structures.id, { onDelete: "set null" }),
-  // L1 View Type: what "canvas" this area belongs to
-  viewType: varchar("view_type", { length: 20 }).default("interior"),
-    // interior, roof_plan, elevation, exterior_other
-  // L2 Shape Type: geometric form of this area
-  shapeType: varchar("shape_type", { length: 20 }).default("rectangle"),
-    // rectangle, gable, hip, l_shape, custom
-  // L3 Parent-child relationship for subrooms/attachments
-  parentRoomId: integer("parent_room_id").references((): any => inspectionRooms.id, { onDelete: "set null" }),
-  attachmentType: varchar("attachment_type", { length: 30 }),
-    // null for top-level areas; for children:
-    // extension, pop_out, bay_window, dormer, closet, pantry, island, alcove, garage_extension
-  dimensions: jsonb("dimensions"),
-    // {length, width, height} — for rooms: LxWxCeiling; for elevations: LxWallH; for roofs: LxW
-  polygon: jsonb("polygon"),         // array of {x,y} wall vertices for sketch
-  position: jsonb("position"),       // {x,y} placement on sketch canvas
-  floor: integer("floor").default(1),
-  // Facet label for roof slopes (F1, F2, F3 — auto-assigned)
-  facetLabel: varchar("facet_label", { length: 10 }),
-  // Roof pitch (e.g., "7/12", "10/12")
-  pitch: varchar("pitch", { length: 10 }),
-  status: varchar("status", { length: 20 }).notNull().default("not_started"),
-  damageCount: integer("damage_count").default(0),
-  photoCount: integer("photo_count").default(0),
-  phase: integer("phase"),
-  createdAt: timestamp("created_at").defaultNow(),
-  completedAt: timestamp("completed_at"),
-});
+export const inspectionRooms = pgTable(
+  "inspection_rooms",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    roomType: varchar("room_type", { length: 50 }),
+    structure: varchar("structure", { length: 100 }).default("Main Dwelling"), // legacy text field
+    structureId: integer("structure_id").references(() => structures.id, { onDelete: "set null" }),
+    // L1 View Type: what "canvas" this area belongs to
+    viewType: varchar("view_type", { length: 20 }).default("interior"),
+      // interior, roof_plan, elevation, exterior_other
+    // L2 Shape Type: geometric form of this area
+    shapeType: varchar("shape_type", { length: 20 }).default("rectangle"),
+      // rectangle, gable, hip, l_shape, custom
+    // L3 Parent-child relationship for subrooms/attachments
+    parentRoomId: integer("parent_room_id").references((): any => inspectionRooms.id, { onDelete: "set null" }),
+    attachmentType: varchar("attachment_type", { length: 30 }),
+      // null for top-level areas; for children:
+      // extension, pop_out, bay_window, dormer, closet, pantry, island, alcove, garage_extension
+    dimensions: jsonb("dimensions"),
+      // {length, width, height} — for rooms: LxWxCeiling; for elevations: LxWallH; for roofs: LxW
+    polygon: jsonb("polygon"),         // array of {x,y} wall vertices for sketch
+    position: jsonb("position"),       // {x,y} placement on sketch canvas
+    floor: integer("floor").default(1),
+    // Facet label for roof slopes (F1, F2, F3 — auto-assigned)
+    facetLabel: varchar("facet_label", { length: 10 }),
+    // Roof pitch (e.g., "7/12", "10/12")
+    pitch: varchar("pitch", { length: 10 }),
+    status: varchar("status", { length: 20 }).notNull().default("not_started"),
+    damageCount: integer("damage_count").default(0),
+    photoCount: integer("photo_count").default(0),
+    phase: integer("phase"),
+    createdAt: timestamp("created_at").defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => ({
+    sessionIdIdx: index("inspection_rooms_session_id_idx").on(table.sessionId),
+    structureIdIdx: index("inspection_rooms_structure_id_idx").on(table.structureId),
+  }),
+);
 
 // ── L4: Deductions / Openings ──────────────────────────
 // "Holes" in walls: doors, windows, missing walls, overhead doors.
@@ -245,56 +260,78 @@ export const sketchTemplates = pgTable("sketch_templates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const damageObservations = pgTable("damage_observations", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  description: text("description").notNull(),
-  damageType: varchar("damage_type", { length: 50 }),
-  severity: varchar("severity", { length: 20 }),
-  location: text("location"),
-  measurements: jsonb("measurements"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const damageObservations = pgTable(
+  "damage_observations",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    damageType: varchar("damage_type", { length: 50 }),
+    severity: varchar("severity", { length: 20 }),
+    location: text("location"),
+    measurements: jsonb("measurements"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("damage_observations_session_id_idx").on(table.sessionId),
+    roomIdIdx: index("damage_observations_room_id_idx").on(table.roomId),
+  }),
+);
 
-export const lineItems = pgTable("line_items", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
-  damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
-  category: varchar("category", { length: 50 }).notNull(),
-  action: varchar("action", { length: 30 }),
-  description: text("description").notNull(),
-  xactCode: varchar("xact_code", { length: 30 }),
-  quantity: numeric("quantity", { precision: 12, scale: 2 }),
-  unit: varchar("unit", { length: 20 }),
-  unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
-  totalPrice: numeric("total_price", { precision: 12, scale: 2 }),
-  depreciationType: varchar("depreciation_type", { length: 30 }).default("Recoverable"),
-  wasteFactor: integer("waste_factor"),
-  provenance: varchar("provenance", { length: 20 }).default("voice"),
-  // Pro-Grade financial attributes
-  coverageBucket: varchar("coverage_bucket", { length: 30 }).default("Dwelling"),
-  qualityGrade: varchar("quality_grade", { length: 30 }),
-  applyOAndP: boolean("apply_o_and_p").default(false),
-  macroSource: varchar("macro_source", { length: 50 }),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const lineItems = pgTable(
+  "line_items",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+    damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
+    category: varchar("category", { length: 50 }).notNull(),
+    action: varchar("action", { length: 30 }),
+    description: text("description").notNull(),
+    xactCode: varchar("xact_code", { length: 30 }),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }),
+    unit: varchar("unit", { length: 20 }),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
+    totalPrice: numeric("total_price", { precision: 12, scale: 2 }),
+    depreciationType: varchar("depreciation_type", { length: 30 }).default("Recoverable"),
+    depreciationRate: numeric("depreciation_rate", { precision: 5, scale: 2 }),
+    wasteFactor: integer("waste_factor"),
+    provenance: varchar("provenance", { length: 20 }).default("voice"),
+    // Pro-Grade financial attributes
+    coverageBucket: varchar("coverage_bucket", { length: 30 }).default("Dwelling"),
+    qualityGrade: varchar("quality_grade", { length: 30 }),
+    applyOAndP: boolean("apply_o_and_p").default(false),
+    macroSource: varchar("macro_source", { length: 50 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("line_items_session_id_idx").on(table.sessionId),
+    roomIdIdx: index("line_items_room_id_idx").on(table.roomId),
+  }),
+);
 
-export const inspectionPhotos = pgTable("inspection_photos", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
-  damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
-  storagePath: text("storage_path"),
-  autoTag: varchar("auto_tag", { length: 50 }),
-  caption: text("caption"),
-  photoType: varchar("photo_type", { length: 30 }),
-  annotations: jsonb("annotations"),
-  analysis: jsonb("analysis"),
-  matchesRequest: boolean("matches_request"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const inspectionPhotos = pgTable(
+  "inspection_photos",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+    damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
+    storagePath: text("storage_path"),
+    autoTag: varchar("auto_tag", { length: 50 }),
+    caption: text("caption"),
+    photoType: varchar("photo_type", { length: 30 }),
+    annotations: jsonb("annotations"),
+    analysis: jsonb("analysis"),
+    matchesRequest: boolean("matches_request"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("inspection_photos_session_id_idx").on(table.sessionId),
+    roomIdIdx: index("inspection_photos_room_id_idx").on(table.roomId),
+  }),
+);
 
 export const moistureReadings = pgTable("moisture_readings", {
   id: serial("id").primaryKey(),

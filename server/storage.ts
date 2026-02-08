@@ -704,7 +704,7 @@ export class DatabaseStorage implements IStorage {
 
   async getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number }> {
     const items = await this.getLineItems(sessionId);
-    const totalRCV = items.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
+    const totalRCV = items.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0);
 
     const categoryDepreciationRates: Record<string, number> = {
       roofing: 0.20,
@@ -719,13 +719,16 @@ export class DatabaseStorage implements IStorage {
       windows: 0.18,
       fencing: 0.15,
     };
-    const defaultRate = 0.12;
+    const defaultCategoryRate = 0.12;
 
     let totalDepreciation = 0;
     for (const item of items) {
-      const cat = (item.category || "").toLowerCase();
-      const rate = categoryDepreciationRates[cat] ?? defaultRate;
-      totalDepreciation += (item.totalPrice || 0) * rate;
+      const price = Number(item.totalPrice) || 0;
+      // Use per-item depreciationRate if set, otherwise fall back to category-based rate
+      const itemRate = item.depreciationRate != null
+        ? Number(item.depreciationRate) / 100
+        : categoryDepreciationRates[(item.category || "").toLowerCase()] ?? defaultCategoryRate;
+      totalDepreciation += price * itemRate;
     }
 
     const totalACV = totalRCV - totalDepreciation;

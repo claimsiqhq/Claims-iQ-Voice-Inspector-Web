@@ -97,6 +97,7 @@ const lineItemCreateSchema = z.object({
   unit: z.string().max(20).nullable().optional(),
   unitPrice: z.number().nonnegative().optional(),
   depreciationType: z.string().max(30).nullable().optional(),
+  depreciationRate: z.number().min(0).max(100).nullable().optional(),
   wasteFactor: z.number().int().nonnegative().optional(),
   coverageBucket: z.enum(["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"]).optional(),
   qualityGrade: z.string().max(30).nullable().optional(),
@@ -1240,6 +1241,7 @@ export async function registerRoutes(
         unitPrice: z.number().optional(),
         totalPrice: z.number().optional(),
         depreciationType: z.string().optional(),
+        depreciationRate: z.number().min(0).max(100).nullable().optional(),
         wasteFactor: z.number().optional(),
         roomId: z.number().optional(),
         damageId: z.number().optional(),
@@ -2825,6 +2827,14 @@ Respond in JSON format:
   app.get("/api/admin/users", authenticateRequest, requireRole("supervisor", "admin"), async (_req, res) => {
     try {
       const allUsers = await storage.getAllUsers();
+      const allClaims = await storage.getClaims();
+      // Build a map of userId -> count of active claims (non-completed/non-closed)
+      const activeClaimCounts = new Map<string, number>();
+      for (const claim of allClaims) {
+        if (claim.assignedTo && claim.status !== "completed" && claim.status !== "closed") {
+          activeClaimCounts.set(claim.assignedTo, (activeClaimCounts.get(claim.assignedTo) || 0) + 1);
+        }
+      }
       const teamMembers = allUsers
         .filter((u) => u.role === "adjuster" || u.role === "supervisor")
         .map((u) => ({
@@ -2832,7 +2842,7 @@ Respond in JSON format:
           fullName: u.fullName || u.username,
           email: u.email,
           role: u.role,
-          activeClaims: 0,
+          activeClaims: activeClaimCounts.get(u.id) || 0,
         }));
       res.json(teamMembers);
     } catch (error: any) {
