@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { Home, FileText, Mic, ClipboardCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Claim {
   id: number;
@@ -79,10 +80,14 @@ function extractClaimIdFromPath(path: string): number | null {
 
 export default function BottomNav() {
   const [location, setLocation] = useLocation();
+  const { isAuthenticated } = useAuth();
 
   const { data: claims = [] } = useQuery<Claim[]>({
     queryKey: ["/api/claims"],
+    enabled: isAuthenticated,
   });
+
+  if (!isAuthenticated) return null;
 
   const currentClaimId = extractClaimIdFromPath(location);
   const activeClaim = currentClaimId
