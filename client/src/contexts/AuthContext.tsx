@@ -114,22 +114,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout);
   }, []);
 
-  async function checkSession() {
-    try {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        const profile = await fetchUserProfile();
-        if (profile) {
-          setUser(profile);
-        }
-      }
-    } catch (error) {
-      console.error("Session check failed:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function fetchUserProfile(): Promise<AuthUser | null> {
     try {
       const response = await fetch("/api/auth/me", {
