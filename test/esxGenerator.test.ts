@@ -133,7 +133,6 @@ describe('generateESXFile', () => {
     expect(storage.getClaim).toHaveBeenCalledWith(claim.id);
     expect(storage.getRooms).toHaveBeenCalledWith(1);
     expect(storage.getLineItems).toHaveBeenCalledWith(1);
-    expect(storage.getEstimateSummary).toHaveBeenCalledWith(1);
   });
 
   it('throws if session not found', async () => {

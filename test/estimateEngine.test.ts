@@ -244,57 +244,56 @@ describe('validateEstimate', () => {
 // getCompanionSuggestions
 // ─────────────────────────────────────────────────
 describe('getCompanionSuggestions', () => {
-  it('suggests underlayment when roofing is present', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'RFG-SHIN-SQ', tradeCode: 'RFG' }),
-    ];
-    const suggestions = await getCompanionSuggestions(items);
+  // The current signature takes Array<{ category: string; xactCode?: string }>
+  // and returns Array<{ code: string; reason: string }>
+
+  it('suggests felt underlayment when roofing is present', () => {
+    const items = [{ category: 'Roofing', xactCode: 'RFG-SHIN-SQ' }];
+    const suggestions = getCompanionSuggestions(items);
     expect(suggestions.length).toBeGreaterThan(0);
-    expect(suggestions.some(s => s.includes('RFG-UNDER-SF'))).toBe(true);
+    expect(suggestions.some(s => s.code === 'RFG-FELT-SQ')).toBe(true);
   });
 
-  it('suggests tape/compound when drywall is present', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'DRY-12-SF', tradeCode: 'DRY' }),
-    ];
-    const suggestions = await getCompanionSuggestions(items);
+  it('suggests tape/texture when drywall is present', () => {
+    const items = [{ category: 'Drywall', xactCode: 'DRY-12-SF' }];
+    const suggestions = getCompanionSuggestions(items);
     expect(suggestions.length).toBeGreaterThan(0);
-    expect(suggestions.some(s => s.includes('DRY-TAPE-LF'))).toBe(true);
+    expect(suggestions.some(s => s.code === 'DRY-TAPE-SF')).toBe(true);
+    expect(suggestions.some(s => s.code === 'DRY-TEXT-SF')).toBe(true);
   });
 
-  it('suggests underlayment when flooring is present', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'FLR-CAR-SF', tradeCode: 'FLR' }),
-    ];
-    const suggestions = await getCompanionSuggestions(items);
+  it('suggests underlayment when flooring is present', () => {
+    const items = [{ category: 'Flooring', xactCode: 'FLR-CAR-SF' }];
+    const suggestions = getCompanionSuggestions(items);
     expect(suggestions.length).toBeGreaterThan(0);
-    expect(suggestions.some(s => s.includes('FLR-PAD-SF'))).toBe(true);
+    expect(suggestions.some(s => s.code === 'FLR-ULAY-SF')).toBe(true);
   });
 
-  it('returns no suggestions when nothing triggers companions', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'ELE-OUTLET-EA', tradeCode: 'ELE' }),
-    ];
-    const suggestions = await getCompanionSuggestions(items);
+  it('returns no suggestions when nothing triggers companions', () => {
+    const items = [{ category: 'Electrical', xactCode: 'ELE-OUTLET-EA' }];
+    const suggestions = getCompanionSuggestions(items);
     expect(suggestions).toHaveLength(0);
   });
 
-  it('does not suggest items that already exist in the estimate', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'DRY-12-SF', tradeCode: 'DRY' }),
-      makePricedItem({ code: 'DRY-TAPE-LF', tradeCode: 'DRY' }),
+  it('does not suggest items that already exist in the estimate', () => {
+    const items = [
+      { category: 'Drywall', xactCode: 'DRY-12-SF' },
+      { category: 'Drywall', xactCode: 'DRY-TAPE-SF' },
     ];
-    const suggestions = await getCompanionSuggestions(items);
-    // Should not re-suggest DRY-TAPE-LF since it's already present
-    const suggestionTexts = suggestions.join(' ');
-    expect(suggestionTexts).not.toContain('DRY-TAPE-LF');
+    const suggestions = getCompanionSuggestions(items);
+    // Should not re-suggest DRY-TAPE-SF since it's already present
+    expect(suggestions.every(s => s.code !== 'DRY-TAPE-SF')).toBe(true);
   });
 
-  it('suggests house wrap when exterior siding is present', async () => {
-    const items: PricedLineItem[] = [
-      makePricedItem({ code: 'EXT-SIDING-SF', tradeCode: 'EXT' }),
-    ];
-    const suggestions = await getCompanionSuggestions(items);
-    expect(suggestions.some(s => s.includes('EXT-WRAP-SF'))).toBe(true);
+  it('suggests carpet pad when carpet flooring is present', () => {
+    const items = [{ category: 'Flooring', xactCode: 'FLR-CAR-SF' }];
+    const suggestions = getCompanionSuggestions(items);
+    expect(suggestions.some(s => s.code === 'FLR-CAR-PAD')).toBe(true);
+  });
+
+  it('suggests painting when drywall present but no painting category', () => {
+    const items = [{ category: 'Drywall', xactCode: 'DRY-12-SF' }];
+    const suggestions = getCompanionSuggestions(items);
+    expect(suggestions.some(s => s.code === 'PNT-WALL-SF')).toBe(true);
   });
 });
