@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -156,45 +157,61 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, agentPartialText]);
 
-  const addTranscriptEntry = useCallback((role: "user" | "agent", text: string) => {
+  const getAuthHeaders = useCallback(async () => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    } catch {}
+    return headers;
+  }, []);
+
+  const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
     if (!text.trim()) return;
     setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
     if (sessionId) {
-      fetch(`/api/inspection/${sessionId}/transcript`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ speaker: role, content: text }),
-      }).catch(() => {});
+      try {
+        const headers = await getAuthHeaders();
+        fetch(`/api/inspection/${sessionId}/transcript`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ speaker: role, content: text }),
+        }).catch(() => {});
+      } catch {}
     }
-  }, [sessionId]);
+  }, [sessionId, getAuthHeaders]);
 
   const refreshEstimate = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
       const data = await res.json();
       setEstimateSummary(data);
     } catch {}
-  }, [sessionId]);
+  }, [sessionId, getAuthHeaders]);
 
   const refreshLineItems = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/inspection/${sessionId}/line-items`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/line-items`, { headers });
       const items = await res.json();
       setRecentLineItems(items.slice(-5).reverse());
       refreshEstimate();
     } catch {}
-  }, [sessionId, refreshEstimate]);
+  }, [sessionId, refreshEstimate, getAuthHeaders]);
 
   const refreshRooms = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/inspection/${sessionId}/rooms`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
       const data = await res.json();
       setRooms(data);
     } catch {}
-  }, [sessionId]);
+  }, [sessionId, getAuthHeaders]);
 
   const executeToolCall = useCallback(async (event: any) => {
     const { name, arguments: argsString, call_id } = event;
@@ -214,9 +231,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (args.structure) setCurrentStructure(args.structure);
           if (args.area) setCurrentArea(args.area);
           if (sessionId) {
+            const headers = await getAuthHeaders();
             await fetch(`/api/inspection/${sessionId}`, {
               method: "PATCH",
-              headers: { "Content-Type": "application/json" },
+              headers,
               body: JSON.stringify({
                 currentPhase: args.phase,
                 currentStructure: args.structure,
@@ -232,9 +250,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const dimensions = args.length && args.width
             ? { length: args.length, width: args.width, height: args.height }
             : undefined;
+          const roomHeaders = await getAuthHeaders();
           const roomRes = await fetch(`/api/inspection/${sessionId}/rooms`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: roomHeaders,
             body: JSON.stringify({
               name: args.name,
               roomType: args.roomType,
@@ -255,7 +274,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const roomToComplete = rooms.find((r) => r.name === args.roomName);
           if (roomToComplete) {
-            await fetch(`/api/inspection/${sessionId}/rooms/${roomToComplete.id}/complete`, { method: "POST" });
+            const completeHeaders = await getAuthHeaders();
+            await fetch(`/api/inspection/${sessionId}/rooms/${roomToComplete.id}/complete`, { method: "POST", headers: completeHeaders });
             await refreshRooms();
           }
           result = { success: true, roomName: args.roomName };
@@ -267,9 +287,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const measurements: any = {};
           if (args.extent) measurements.extent = args.extent;
           if (args.hitCount) measurements.hitCount = args.hitCount;
+          const damageHeaders = await getAuthHeaders();
           const damageRes = await fetch(`/api/inspection/${sessionId}/damages`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: damageHeaders,
             body: JSON.stringify({
               roomId: currentRoomId,
               description: args.description,
@@ -296,14 +317,15 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           // If catalogCode provided, look it up and use catalog pricing
           if (catalogCode) {
             try {
-              const catalogRes = await fetch(`/api/pricing/catalog/search?q=${encodeURIComponent(catalogCode)}`);
+              const catalogHeaders = await getAuthHeaders();
+              const catalogRes = await fetch(`/api/pricing/catalog/search?q=${encodeURIComponent(catalogCode)}`, { headers: catalogHeaders });
               if (catalogRes.ok) {
                 const catalogItems = await catalogRes.json();
                 const matched = catalogItems.find((item: any) => item.code === catalogCode);
                 if (matched) {
                   const priceRes = await fetch(`/api/pricing/scope`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: catalogHeaders,
                     body: JSON.stringify({
                       items: [{ code: catalogCode, quantity: quantity || 1 }],
                       regionId: "US_NATIONAL",
@@ -329,9 +351,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const qty = quantity || 1;
           const totalPrice = qty * finalUnitPrice * (1 + (finalWasteFactor || 0) / 100);
 
+          const lineHeaders = await getAuthHeaders();
           const lineRes = await fetch(`/api/inspection/${sessionId}/line-items`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: lineHeaders,
             body: JSON.stringify({
               roomId: currentRoomId,
               category: category || "General",
@@ -379,9 +402,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "log_moisture_reading": {
           if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
+          const moistureHeaders = await getAuthHeaders();
           await fetch(`/api/inspection/${sessionId}/moisture`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: moistureHeaders,
             body: JSON.stringify({
               roomId: currentRoomId,
               location: args.location,
@@ -397,7 +421,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "get_progress": {
           if (!sessionId) { result = { success: false }; break; }
-          const progressRes = await fetch(`/api/inspection/${sessionId}`);
+          const progressHeaders = await getAuthHeaders();
+          const progressRes = await fetch(`/api/inspection/${sessionId}`, { headers: progressHeaders });
           const progress = await progressRes.json();
           result = {
             totalRooms: progress.rooms.length,
@@ -411,14 +436,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "get_estimate_summary": {
           if (!sessionId) { result = { success: false }; break; }
-          const estRes = await fetch(`/api/inspection/${sessionId}/estimate-summary`);
+          const estHeaders = await getAuthHeaders();
+          const estRes = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers: estHeaders });
           result = await estRes.json();
           break;
         }
 
         case "complete_inspection": {
           if (!sessionId) { result = { success: false }; break; }
-          await fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" });
+          const finishHeaders = await getAuthHeaders();
+          await fetch(`/api/inspection/${sessionId}/complete`, { method: "POST", headers: finishHeaders });
           result = { success: true, message: "Inspection finalized." };
           setTimeout(() => setLocation(`/inspection/${claimId}/review`), 2000);
           break;
@@ -442,7 +469,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }));
       dcRef.current.send(JSON.stringify({ type: "response.create" }));
     }
-  }, [sessionId, currentRoomId, rooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation]);
+  }, [sessionId, currentRoomId, rooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders]);
 
   const handleRealtimeEvent = useCallback((event: any) => {
     switch (event.type) {
@@ -507,9 +534,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     setVoiceState("processing");
 
     try {
+      const authHeaders = await getAuthHeaders();
       const tokenRes = await fetch("/api/realtime/session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ claimId, sessionId }),
       });
       const tokenData = await tokenRes.json();
@@ -582,7 +610,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       isConnectingRef.current = false;
       setIsConnecting(false);
     }
-  }, [sessionId, claimId, handleRealtimeEvent]);
+  }, [sessionId, claimId, handleRealtimeEvent, getAuthHeaders]);
 
   const disconnectVoice = useCallback(() => {
     if (streamRef.current) {
@@ -645,9 +673,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           .replace(/[^\w\s-]/g, "")
           .replace(/\s+/g, "_")
           .substring(0, 40);
+        const photoHeaders = await getAuthHeaders();
         const saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: photoHeaders,
           body: JSON.stringify({
             roomId: currentRoomId,
             imageBase64: dataUrl,
@@ -665,11 +694,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         // Step 2: Send to GPT-4o Vision for analysis
         let analysis: any = null;
         try {
+          const analyzeHeaders = await getAuthHeaders();
           const analyzeRes = await fetch(
             `/api/inspection/${sessionId}/photos/${savedPhoto.photoId}/analyze`,
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: analyzeHeaders,
               body: JSON.stringify({
                 imageBase64: dataUrl,
                 expectedLabel: cameraMode.label,
@@ -767,14 +797,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const leftSidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-primary/15">
+      <div className="p-4 border-b border-primary/25">
         <div className="flex items-center gap-2 mb-3">
-          <Link href={`/briefing/${claimId}`} className="text-purple-300/60 hover:text-purple-100" data-testid="link-back-briefing">
+          <Link href={`/briefing/${claimId}`} className="text-secondary/60 hover:text-primary-foreground" data-testid="link-back-briefing">
             <ChevronLeft size={20} />
           </Link>
           <h1 className="font-display font-bold text-sm truncate">{claimNumber}</h1>
         </div>
-        {insuredName && <p className="text-xs text-purple-300/60 mb-3">{insuredName}</p>}
+        {insuredName && <p className="text-xs text-secondary/60 mb-3">{insuredName}</p>}
 
         <div className="space-y-0.5">
           {PHASES.map((phase) => (
@@ -786,7 +816,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   ? "bg-primary/20 text-primary font-semibold"
                   : currentPhase > phase.id
                   ? "text-green-400/80"
-                  : "text-purple-300/40"
+                  : "text-secondary/40"
               )}
             >
               <div
@@ -808,9 +838,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2 px-1">Rooms / Areas</p>
+        <p className="text-[10px] uppercase tracking-widest text-secondary/50 mb-2 px-1">Rooms / Areas</p>
         {rooms.length === 0 && (
-          <p className="text-xs text-purple-300/40 px-1">No rooms yet. Start the voice session to begin.</p>
+          <p className="text-xs text-secondary/40 px-1">No rooms yet. Start the voice session to begin.</p>
         )}
         {rooms.map((room) => (
           <div
@@ -836,18 +866,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               {room.status === "in_progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />}
             </div>
             <div className="flex gap-3 mt-1">
-              <span className="text-[10px] text-purple-300/50">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
-              <span className="text-[10px] text-purple-300/50">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
+              <span className="text-[10px] text-secondary/50">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
+              <span className="text-[10px] text-secondary/50">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="p-3 border-t border-primary/15 space-y-2">
+      <div className="p-3 border-t border-primary/25 space-y-2">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-xs text-purple-300/70 hover:text-purple-100 hover:bg-primary/15"
+          className="w-full text-xs text-secondary/70 hover:text-primary-foreground hover:bg-primary/15"
           onClick={() => setShowProgressMap(true)}
         >
           <MapPin className="h-3 w-3 mr-1" />
@@ -858,7 +888,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           className="w-full border-primary/20 text-white hover:bg-primary/15 text-xs"
           onClick={() => {
             if (sessionId) {
-              fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation(`/inspection/${claimId}/review`));
+              getAuthHeaders().then(h => fetch(`/api/inspection/${sessionId}/complete`, { method: "POST", headers: h })).then(() => setLocation(`/inspection/${claimId}/review`));
             } else {
               setLocation("/");
             }
@@ -873,7 +903,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const rightPanelContent = (
     <div className="flex-1 overflow-y-auto p-3 space-y-4">
-      <div className="bg-primary/5 rounded-lg p-3 border border-primary/15">
+      <div className="bg-primary/5 rounded-lg p-3 border border-primary/25">
         <div className="flex items-center gap-1.5 mb-2">
           <DollarSign size={14} className="text-accent" />
           <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
@@ -881,7 +911,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         <div className="text-2xl font-display font-bold text-white">
           ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
-        <div className="flex justify-between mt-1 text-[10px] text-purple-300/50">
+        <div className="flex justify-between mt-1 text-[10px] text-secondary/50">
           <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span>{estimateSummary.itemCount} items</span>
         </div>
@@ -900,9 +930,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       />
 
       <div>
-        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2">Recent Line Items</p>
+        <p className="text-[10px] uppercase tracking-widest text-secondary/50 mb-2">Recent Line Items</p>
         {recentLineItems.length === 0 && (
-          <p className="text-xs text-purple-300/30">No items yet</p>
+          <p className="text-xs text-secondary/30">No items yet</p>
         )}
         <AnimatePresence>
           {recentLineItems.map((item: any) => (
@@ -918,7 +948,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   ${(item.totalPrice || 0).toFixed(2)}
                 </span>
               </div>
-              <p className="text-[10px] text-purple-300/40 mt-0.5">
+              <p className="text-[10px] text-secondary/40 mt-0.5">
                 {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
               </p>
             </motion.div>
@@ -943,10 +973,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   );
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-[#1a1525] text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+    <div className="h-[calc(100vh-4rem)] bg-[#2D2248] text-white flex overflow-hidden relative" data-testid="active-inspection-page">
       {/* LEFT SIDEBAR - Desktop only */}
       {!isMobile && (
-        <div className="w-72 bg-[#1a1525] border-r border-primary/15 flex flex-col z-20">
+        <div className="w-72 bg-[#2D2248] border-r border-primary/25 flex flex-col z-20">
           {leftSidebarContent}
         </div>
       )}
@@ -954,7 +984,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* LEFT SIDEBAR - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileLeftOpen} onOpenChange={setMobileLeftOpen}>
-          <SheetContent side="left" className="w-[280px] bg-[#1a1525] text-white border-primary/15 p-0">
+          <SheetContent side="left" className="w-[280px] bg-[#2D2248] text-white border-primary/25 p-0">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             {leftSidebarContent}
           </SheetContent>
@@ -964,7 +994,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* RIGHT PANEL - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileRightOpen} onOpenChange={setMobileRightOpen}>
-          <SheetContent side="right" className="w-[280px] bg-[#1a1525] text-white border-primary/15 p-0">
+          <SheetContent side="right" className="w-[280px] bg-[#2D2248] text-white border-primary/25 p-0">
             <SheetTitle className="sr-only">Estimate</SheetTitle>
             {rightPanelContent}
           </SheetContent>
@@ -974,10 +1004,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* CENTER STAGE */}
       <div className="flex-1 relative flex flex-col">
         {/* Top Bar */}
-        <div className="h-14 bg-[#13101c]/80 backdrop-blur-md border-b border-primary/15 z-10 px-3 md:px-5 flex justify-between items-center">
+        <div className="h-14 bg-[#231A3B]/80 backdrop-blur-md border-b border-primary/25 z-10 px-3 md:px-5 flex justify-between items-center">
           <div className="flex items-center gap-2 md:gap-3">
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
+              <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
                 <Menu size={18} />
               </Button>
             )}
@@ -996,16 +1026,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           <div className="flex gap-1 md:gap-2">
             {isConnected && (
               <>
-                <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 px-2" onClick={togglePause} data-testid="button-pause">
+                <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 px-2" onClick={togglePause} data-testid="button-pause">
                   {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 </Button>
-                <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 px-2 hidden sm:flex" data-testid="button-flag">
+                <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 px-2 hidden sm:flex" data-testid="button-flag">
                   <Flag size={14} />
                 </Button>
               </>
             )}
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
+              <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
                 <BarChart3 size={18} />
               </Button>
             )}
@@ -1014,8 +1044,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         {/* Mobile current area indicator */}
         {isMobile && currentArea && (
-          <div className="bg-primary/5 px-3 py-1.5 border-b border-primary/15 sm:hidden">
-            <span className="text-[11px] text-purple-300/70">{currentStructure} &rsaquo; {currentArea}</span>
+          <div className="bg-primary/5 px-3 py-1.5 border-b border-primary/25 sm:hidden">
+            <span className="text-[11px] text-secondary/70">{currentStructure} &rsaquo; {currentArea}</span>
           </div>
         )}
 
@@ -1029,7 +1059,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             <Button
               variant="ghost"
               size="sm"
-              className="text-white hover:text-purple-100/80 hover:bg-primary/15"
+              className="text-white hover:text-primary-foreground/80 hover:bg-primary/15"
               onClick={connectVoice}
             >
               Reconnect Now
@@ -1049,7 +1079,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           {/* Transcript Log */}
           <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-3">
             {transcript.length === 0 && !agentPartialText && (
-              <div className="flex flex-col items-center justify-center h-full text-purple-300/40">
+              <div className="flex flex-col items-center justify-center h-full text-secondary/40">
                 <Mic size={40} className="mb-3 opacity-50" />
                 <p className="text-sm">
                   {isConnected ? "Listening... Start speaking to begin the inspection." : "Tap the microphone to start the voice inspection."}
@@ -1066,10 +1096,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     "max-w-xl rounded-xl px-4 py-3",
                     entry.role === "agent"
                       ? "bg-primary/15 border border-primary/20 mr-auto"
-                      : "bg-primary/10 border border-primary/15 ml-auto"
+                      : "bg-primary/10 border border-primary/25 ml-auto"
                   )}
                 >
-                  <p className="text-[10px] uppercase tracking-wider mb-1 text-purple-300/50">
+                  <p className="text-[10px] uppercase tracking-wider mb-1 text-secondary/50">
                     {entry.role === "agent" ? "Claims IQ" : "You"}
                   </p>
                   <p className="text-sm leading-relaxed">{entry.text}</p>
@@ -1083,7 +1113,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 animate={{ opacity: 1 }}
                 className="max-w-xl rounded-xl px-4 py-3 bg-primary/15 border border-primary/20 mr-auto"
               >
-                <p className="text-[10px] uppercase tracking-wider mb-1 text-purple-300/50">Claims IQ</p>
+                <p className="text-[10px] uppercase tracking-wider mb-1 text-secondary/50">Claims IQ</p>
                 <p className="text-sm leading-relaxed">{agentPartialText}<span className="animate-pulse">|</span></p>
               </motion.div>
             )}
@@ -1091,7 +1121,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
 
           {/* Voice Status + Controls */}
-          <div className="h-24 md:h-28 bg-[#13101c]/80 backdrop-blur-xl border-t border-primary/15 flex items-center justify-between px-4 md:px-8">
+          <div className="h-24 md:h-28 bg-[#231A3B]/80 backdrop-blur-xl border-t border-primary/25 flex items-center justify-between px-4 md:px-8">
             <Button
               size="lg"
               variant="outline"
@@ -1124,7 +1154,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     ? voiceState === "listening"
                       ? "bg-primary border-primary/50 animate-pulse"
                       : "bg-primary border-primary/50"
-                    : "bg-white border-primary/40"
+                    : "bg-accent border-accent/50"
                 )}
               >
                 {isConnecting ? (
@@ -1132,13 +1162,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 ) : isConnected ? (
                   <Mic className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 ) : (
-                  <MicOff className="h-5 w-5 md:h-6 md:w-6 text-foreground" />
+                  <MicOff className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 )}
               </button>
               <div className="mt-2 h-6">
                 {isConnected && <VoiceIndicator status={voiceState} />}
                 {!isConnected && !isConnecting && (
-                  <span className="text-[10px] text-purple-300/50">Tap to connect</span>
+                  <span className="text-[10px] text-secondary/50">Tap to connect</span>
                 )}
                 {isConnecting && (
                   <span className="text-[10px] text-accent animate-pulse">Connecting...</span>
@@ -1150,7 +1180,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-purple-300/70 hover:text-purple-100 hidden sm:flex"
+                className="text-xs text-secondary/70 hover:text-primary-foreground hidden sm:flex"
                 onClick={() => setLocation(`/inspection/${claimId}/review`)}
               >
                 <FileText className="h-4 w-4 mr-1" />
@@ -1174,13 +1204,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {!isMobile && (
         <div
           className={cn(
-            "bg-[#1a1525] border-l border-primary/15 flex flex-col z-20 transition-all",
+            "bg-[#2D2248] border-l border-primary/25 flex flex-col z-20 transition-all",
             rightPanelCollapsed ? "w-10" : "w-72"
           )}
         >
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="h-10 flex items-center justify-center border-b border-primary/15 text-purple-300/50 hover:text-purple-100"
+            className="h-10 flex items-center justify-center border-b border-primary/25 text-secondary/50 hover:text-primary-foreground"
             data-testid="button-toggle-right-panel"
           >
             <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
@@ -1210,9 +1240,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#0d0a14] flex flex-col"
+            className="fixed inset-0 z-50 bg-[#1A1230] flex flex-col"
           >
-            <div className="bg-[#13101c]/90 px-4 py-3 flex justify-between items-center border-b border-primary/15">
+            <div className="bg-[#231A3B]/90 px-4 py-3 flex justify-between items-center border-b border-primary/25">
               <div>
                 <p className="text-accent text-xs font-bold uppercase tracking-wider">{cameraMode.photoType.replace("_", " ")}</p>
                 <p className="text-white text-sm font-medium">{cameraMode.label}</p>
@@ -1261,7 +1291,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-[#13101c]/90 p-4 border-t border-primary/15">
+            <div className="bg-[#231A3B]/90 p-4 border-t border-primary/25">
               {cameraMode.label === "Analyzing photo..." ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 text-accent animate-spin" />
@@ -1274,7 +1304,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     className="h-16 w-16 rounded-full bg-white border-4 border-primary/40 hover:scale-105 active:scale-95 transition-transform"
                     data-testid="button-camera-capture"
                   />
-                  <p className="text-[10px] text-purple-300/50">Tap to capture</p>
+                  <p className="text-[10px] text-secondary/50">Tap to capture</p>
                 </div>
               )}
             </div>
