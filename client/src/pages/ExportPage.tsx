@@ -17,8 +17,6 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
   const [esxUrl, setEsxUrl] = useState<string | null>(null);
   const [esxFileName, setEsxFileName] = useState("");
-  const [pdfData, setPdfData] = useState<any>(null);
-  const [showPdfPreview, setShowPdfPreview] = useState(false);
 
   const { data: claimData } = useQuery({
     queryKey: [`/api/claims/${claimId}`],
@@ -88,10 +86,23 @@ export default function ExportPage({ params }: { params: { id: string } }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-      const data = await res.json();
-      setPdfData(data);
-      setShowPdfPreview(true);
-      return data;
+
+      if (!res.ok) {
+        throw new Error("Failed to generate PDF");
+      }
+
+      // Get the PDF as a blob
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${claim?.claimNumber || "inspection"}_report.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      return { success: true, message: "PDF downloaded successfully" };
     },
   });
 
@@ -115,9 +126,6 @@ export default function ExportPage({ params }: { params: { id: string } }) {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20" data-testid="export-page">
@@ -261,32 +269,28 @@ export default function ExportPage({ params }: { params: { id: string } }) {
               <div className="flex-1 min-w-0">
                 <h3 className="font-display font-bold text-foreground text-base md:text-lg">PDF Inspection Report</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Full inspection report with photos, damage documentation, and estimate
+                  Professional inspection report with photos, damage documentation, and estimate
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
                   {summary.photoCount || 0} photos &bull; {summary.lineItemCount || 0} line items &bull; {summary.roomCount || 0} rooms
                 </p>
 
                 <div className="mt-4 flex gap-2">
-                  {!showPdfPreview ? (
-                    <Button
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                      onClick={() => pdfMutation.mutate()}
-                      disabled={pdfMutation.isPending}
-                    >
-                      {pdfMutation.isPending ? (
-                        <><Loader2 size={14} className="mr-1 animate-spin" /> Generating...</>
-                      ) : (
-                        <>Generate PDF</>
-                      )}
-                    </Button>
-                  ) : (
+                  <Button
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                    onClick={() => pdfMutation.mutate()}
+                    disabled={pdfMutation.isPending}
+                  >
+                    {pdfMutation.isPending ? (
+                      <><Loader2 size={14} className="mr-1 animate-spin" /> Generating PDF...</>
+                    ) : (
+                      <>Generate & Download PDF</>
+                    )}
+                  </Button>
+                  {pdfMutation.isSuccess && (
                     <div className="flex items-center gap-2">
                       <CheckCircle2 size={16} className="text-[#22C55E]" />
-                      <span className="text-sm text-[#22C55E] font-medium">Report ready</span>
-                      <Button size="sm" variant="outline" onClick={handlePrint}>
-                        Print / Save as PDF
-                      </Button>
+                      <span className="text-sm text-[#22C55E] font-medium">Downloaded</span>
                     </div>
                   )}
                 </div>
@@ -349,88 +353,6 @@ export default function ExportPage({ params }: { params: { id: string } }) {
           </motion.div>
         )}
 
-        {/* PDF Preview (printable) */}
-        {showPdfPreview && pdfData && (
-          <div className="print:block border border-border rounded-xl p-8 bg-white mt-6" id="pdf-preview">
-            <div className="text-center mb-6 border-b border-gray-200 pb-4">
-              <h1 className="font-display text-2xl font-bold text-[#342A4F]">Inspection Report</h1>
-              <p className="text-sm text-muted-foreground mt-1">Generated {new Date(pdfData.generatedAt).toLocaleString()}</p>
-            </div>
-
-            {/* Claim Info */}
-            <div className="mb-6">
-              <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Claim Information</h2>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <p><strong>Claim #:</strong> {pdfData.claim?.claimNumber}</p>
-                <p><strong>Insured:</strong> {pdfData.claim?.insuredName}</p>
-                <p><strong>Address:</strong> {pdfData.claim?.propertyAddress}</p>
-                <p><strong>Date of Loss:</strong> {pdfData.claim?.dateOfLoss}</p>
-                <p><strong>Peril:</strong> {pdfData.claim?.perilType}</p>
-              </div>
-            </div>
-
-            {/* Rooms Summary */}
-            {pdfData.rooms?.map((room: any, i: number) => (
-              <div key={i} className="mb-4 border-t border-gray-100 pt-3">
-                <h3 className="font-display font-semibold text-[#342A4F]">{room.name} ({room.structure})</h3>
-                {room.damages?.length > 0 && (
-                  <div className="mt-1">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Damages:</p>
-                    {room.damages.map((d: any, j: number) => (
-                      <p key={j} className="text-sm ml-3">{d.description} — {d.severity || "—"}</p>
-                    ))}
-                  </div>
-                )}
-                {room.lineItems?.length > 0 && (
-                  <div className="mt-1">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Line Items:</p>
-                    {room.lineItems.map((li: any, j: number) => (
-                      <p key={j} className="text-sm ml-3">{li.description} — {li.quantity} {li.unit} @ ${li.unitPrice} = ${li.totalPrice?.toFixed(2)}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Estimate Summary */}
-            {pdfData.estimate && (
-              <div className="mt-6 border-t border-gray-200 pt-4">
-                <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Estimate Summary</h2>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <p><strong>RCV:</strong> ${pdfData.estimate.totalRCV?.toFixed(2)}</p>
-                  <p><strong>Depreciation:</strong> ${pdfData.estimate.totalDepreciation?.toFixed(2)}</p>
-                  <p><strong>ACV:</strong> ${pdfData.estimate.totalACV?.toFixed(2)}</p>
-                  <p><strong>Items:</strong> {pdfData.estimate.itemCount}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Moisture Readings */}
-            {pdfData.moistureReadings?.length > 0 && (
-              <div className="mt-6 border-t border-gray-200 pt-4">
-                <h2 className="font-display font-semibold text-lg text-[#342A4F] mb-2">Moisture Readings</h2>
-                <table className="w-full text-sm border">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-2 py-1 border">Location</th>
-                      <th className="text-right px-2 py-1 border">Reading</th>
-                      <th className="text-left px-2 py-1 border">Material</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pdfData.moistureReadings.map((m: any, i: number) => (
-                      <tr key={i}>
-                        <td className="px-2 py-1 border">{m.location}</td>
-                        <td className="px-2 py-1 border text-right">{m.reading}%</td>
-                        <td className="px-2 py-1 border">{m.materialType || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Bottom Link */}

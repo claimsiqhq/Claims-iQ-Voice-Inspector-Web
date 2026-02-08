@@ -919,6 +919,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           matchesRequest: p.matchesRequest,
           analysis: p.analysis,
         }))}
+        sessionId={sessionId || undefined}
       />
     </div>
   );

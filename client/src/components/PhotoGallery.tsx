@@ -14,8 +14,10 @@ import {
   Filter,
   Grid3X3,
   List,
+  Pen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import PhotoAnnotator from "./PhotoAnnotator";
 
 export interface PhotoData {
   id: number;
@@ -39,6 +41,7 @@ export interface PhotoData {
 interface PhotoGalleryProps {
   photos: PhotoData[];
   className?: string;
+  sessionId?: number;
 }
 
 const PHOTO_TYPE_LABELS: Record<string, string> = {
@@ -63,11 +66,12 @@ const qualityStars = (score: number) => {
   ));
 };
 
-export default function PhotoGallery({ photos, className }: PhotoGalleryProps) {
+export default function PhotoGallery({ photos, className, sessionId }: PhotoGalleryProps) {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [filterType, setFilterType] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [annotatingPhoto, setAnnotatingPhoto] = useState<any>(null);
 
   const photoTypes = useMemo(() => {
     const types = new Set(photos.map((p) => p.photoType || "photo"));
@@ -292,9 +296,23 @@ export default function PhotoGallery({ photos, className }: PhotoGalleryProps) {
               <p className="text-sm font-medium text-white truncate max-w-[60%]">
                 {currentPhoto.caption || "Photo"}
               </p>
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={closeViewer} data-testid="button-close-viewer">
-                <X size={18} />
-              </Button>
+              <div className="flex items-center gap-1">
+                {currentPhoto && !annotatingPhoto && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-white/60 hover:text-white h-8 px-2"
+                    onClick={() => setAnnotatingPhoto(currentPhoto)}
+                    title="Annotate photo"
+                  >
+                    <Pen size={16} className="mr-1" />
+                    Annotate
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={closeViewer} data-testid="button-close-viewer">
+                  <X size={18} />
+                </Button>
+              </div>
             </div>
 
             <div className="flex-1 relative flex items-center justify-center overflow-hidden">
@@ -400,6 +418,38 @@ export default function PhotoGallery({ photos, className }: PhotoGalleryProps) {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Photo Annotator Modal */}
+      <AnimatePresence>
+        {annotatingPhoto && (
+          <PhotoAnnotator
+            imageUrl={annotatingPhoto.thumbnail || ""}
+            imageBase64={annotatingPhoto.storagePath || ""}
+            photoCaption={annotatingPhoto.caption || "Photo"}
+            onSaveAnnotations={async (annotatedBase64, shapes) => {
+              try {
+                const res = await fetch(
+                  `/api/inspection/${sessionId}/photos/${annotatingPhoto.id}/annotations`,
+                  {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      shapes,
+                      annotatedImageBase64: annotatedBase64,
+                    }),
+                  }
+                );
+                if (res.ok) {
+                  setAnnotatingPhoto(null);
+                }
+              } catch (e) {
+                console.error("Error saving annotations:", e);
+              }
+            }}
+            onCancel={() => setAnnotatingPhoto(null)}
+          />
         )}
       </AnimatePresence>
     </>

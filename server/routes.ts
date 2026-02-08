@@ -1526,58 +1526,76 @@ Respond in JSON format:
       const moisture = await storage.getMoistureReadingsForSession(sessionId);
       const estimate = await storage.getEstimateSummary(sessionId);
 
-      res.json({
-        claim: {
-          claimNumber: claim?.claimNumber,
-          insuredName: claim?.insuredName,
-          propertyAddress: claim?.propertyAddress,
-          city: claim?.city,
-          state: claim?.state,
-          zip: claim?.zip,
-          dateOfLoss: claim?.dateOfLoss,
-          perilType: claim?.perilType,
+      // Import the PDF generator
+      const { generateInspectionPDF } = await import("./pdfGenerator");
+
+      // Build categories from line items
+      const categoryMap = new Map<string, typeof items>();
+      for (const item of items) {
+        const cat = item.category || "General";
+        if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+        categoryMap.get(cat)!.push(item);
+      }
+      const categories = Array.from(categoryMap.entries()).map(([category, catItems]) => ({
+        category,
+        subtotal: catItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0),
+        items: catItems,
+      }));
+
+      // Build the data object for PDF generation
+      const pdfData = {
+        claim: claim || null,
+        session,
+        rooms,
+        damages,
+        lineItems: items,
+        photos,
+        moistureReadings: moisture,
+        estimate: {
+          totalRCV: estimate?.totalRCV || 0,
+          totalDepreciation: estimate?.totalDepreciation || 0,
+          totalACV: estimate?.totalACV || 0,
+          itemCount: items.length,
+          categories,
         },
-        inspection: {
-          startedAt: session.startedAt,
-          completedAt: session.completedAt,
-          roomCount: rooms.length,
-          completedRooms: rooms.filter(r => r.status === "complete").length,
-        },
-        rooms: rooms.map(r => ({
-          name: r.name,
-          structure: r.structure,
-          status: r.status,
-          damages: damages.filter(d => d.roomId === r.id).map(d => ({
-            description: d.description,
-            damageType: d.damageType,
-            severity: d.severity,
-            location: d.location,
-          })),
-          lineItems: items.filter(li => li.roomId === r.id).map(li => ({
-            category: li.category,
-            action: li.action,
-            description: li.description,
-            quantity: li.quantity,
-            unit: li.unit,
-            unitPrice: li.unitPrice,
-            totalPrice: li.totalPrice,
-          })),
-          photos: photos.filter(p => p.roomId === r.id).map(p => ({
-            caption: p.caption,
-            photoType: p.photoType,
-            autoTag: p.autoTag,
-          })),
-        })),
-        moistureReadings: moisture.map(m => ({
-          location: m.location,
-          reading: m.reading,
-          materialType: m.materialType,
-          dryStandard: m.dryStandard,
-        })),
-        estimate,
-        generatedAt: new Date().toISOString(),
-      });
+        inspectorName: "Claims IQ Agent",
+      };
+
+      // Generate the PDF buffer
+      const pdfBuffer = await generateInspectionPDF(pdfData);
+
+      // Send as attachment
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${claim?.claimNumber || "inspection"}_report.pdf"`
+      );
+      res.send(pdfBuffer);
     } catch (error: any) {
+      console.error("PDF generation error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Photo Annotations Endpoint ──────────────────────
+
+  app.put("/api/inspection/:sessionId/photos/:photoId/annotations", async (req, res) => {
+    try {
+      const photoId = parseInt(req.params.photoId);
+      const { shapes, annotatedImageBase64 } = req.body;
+
+      if (!shapes || !Array.isArray(shapes)) {
+        return res.status(400).json({ message: "shapes array is required" });
+      }
+
+      // Save annotation data to the photo record
+      const updatedPhoto = await storage.updatePhoto(photoId, {
+        annotations: shapes,
+      });
+
+      res.json({ success: true, photo: updatedPhoto });
+    } catch (error: any) {
+      console.error("Photo annotation save error:", error);
       res.status(500).json({ message: error.message });
     }
   });
