@@ -442,7 +442,29 @@ export class DatabaseStorage implements IStorage {
   async getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number }> {
     const items = await this.getLineItems(sessionId);
     const totalRCV = items.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
-    const totalDepreciation = totalRCV * 0.15;
+
+    const categoryDepreciationRates: Record<string, number> = {
+      roofing: 0.20,
+      siding: 0.15,
+      gutters: 0.12,
+      interior: 0.10,
+      painting: 0.08,
+      flooring: 0.15,
+      plumbing: 0.12,
+      electrical: 0.10,
+      drywall: 0.08,
+      windows: 0.18,
+      fencing: 0.15,
+    };
+    const defaultRate = 0.12;
+
+    let totalDepreciation = 0;
+    for (const item of items) {
+      const cat = (item.category || "").toLowerCase();
+      const rate = categoryDepreciationRates[cat] ?? defaultRate;
+      totalDepreciation += (item.totalPrice || 0) * rate;
+    }
+
     const totalACV = totalRCV - totalDepreciation;
     return { totalRCV, totalDepreciation, totalACV, itemCount: items.length };
   }

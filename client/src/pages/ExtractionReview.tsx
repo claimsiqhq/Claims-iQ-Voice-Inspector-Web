@@ -206,13 +206,53 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
   const policyInfo = data.policyInfo || {};
   const deductibles = data.deductibles || {};
   const coverages = data.coverages || {};
+  const { toast } = useToast();
+
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const hasEdits = Object.keys(edits).length > 0;
+
+  const getVal = (field: string, original: string) => field in edits ? edits[field] : original;
+  const setField = (field: string) => (val: string) => setEdits(prev => ({ ...prev, [field]: val }));
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const updatedData = { ...data };
+      for (const [key, value] of Object.entries(edits)) {
+        updatedData[key] = value;
+      }
+      await apiRequest("PUT", `/api/claims/${extraction.claimId}/extractions/${extraction.documentType}`, {
+        extractedData: updatedData,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Changes saved", description: "Extraction data has been updated." });
+      setEdits({});
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${extraction.claimId}/extractions`] });
+    },
+    onError: () => {
+      toast({ title: "Save failed", description: "Could not save changes. Please try again.", variant: "destructive" });
+    },
+  });
 
   return (
     <Card className="border-border">
       <CardHeader className="pb-4 border-b border-border/50 space-y-3">
-        <CardTitle className="text-lg font-display flex items-center gap-2">
-          <Check className="h-5 w-5 text-green-600" /> FNOL / Claim Information Report
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-display flex items-center gap-2">
+            <Check className="h-5 w-5 text-green-600" /> FNOL / Claim Information Report
+          </CardTitle>
+          {hasEdits && (
+            <Button
+              data-testid="button-save-fnol-edits"
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save Changes
+            </Button>
+          )}
+        </div>
         {data.catCode && (
           <Badge data-testid="text-cat-code" variant="destructive" className="w-fit">CAT: {data.catCode}</Badge>
         )}
@@ -220,15 +260,15 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 pt-6">
         <SectionHeader title="Claim Details" />
-        <EditableField label="Claim Number" value={data.claimNumber || ""} confidence={conf.claimNumber} onChange={() => {}} />
-        <EditableField label="Date of Loss" value={data.dateOfLoss || ""} confidence={conf.dateOfLoss} onChange={() => {}} />
+        <EditableField label="Claim Number" value={getVal("claimNumber", data.claimNumber || "")} confidence={conf.claimNumber} onChange={setField("claimNumber")} />
+        <EditableField label="Date of Loss" value={getVal("dateOfLoss", data.dateOfLoss || "")} confidence={conf.dateOfLoss} onChange={setField("dateOfLoss")} />
         <ReadOnlyField label="Time of Loss" value={data.timeOfLoss || ""} />
         <ReadOnlyField label="Claim Status" value={data.claimStatus || ""} />
         <ReadOnlyField label="Operating Company" value={data.operatingCompany || ""} />
-        <EditableField label="Policy Number" value={data.policyNumber || ""} confidence={conf.policyNumber} onChange={() => {}} />
+        <EditableField label="Policy Number" value={getVal("policyNumber", data.policyNumber || "")} confidence={conf.policyNumber} onChange={setField("policyNumber")} />
 
         <SectionHeader title="Insured Information" />
-        <EditableField label="Insured Name" value={data.insuredName || ""} confidence={conf.insuredName} onChange={() => {}} />
+        <EditableField label="Insured Name" value={getVal("insuredName", data.insuredName || "")} confidence={conf.insuredName} onChange={setField("insuredName")} />
         {data.insuredName2 && (
           <ReadOnlyField label="Insured Name 2" value={data.insuredName2} />
         )}
@@ -246,7 +286,7 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
         <ReadOnlyField label="Email" value={contact.email || ""} />
 
         <SectionHeader title="Loss & Damage Information" />
-        <EditableField label="Peril Type" value={data.perilType || ""} confidence={conf.perilType} onChange={() => {}} />
+        <EditableField label="Peril Type" value={getVal("perilType", data.perilType || "")} confidence={conf.perilType} onChange={setField("perilType")} />
         <ReadOnlyField label="Damage Areas" value={data.damageAreas || ""} />
         <ReadOnlyField label="Roof Damage" value={data.roofDamage != null ? (data.roofDamage ? "Yes" : "No") : ""} />
         <div className="space-y-2 md:col-span-2 lg:col-span-3">
@@ -262,8 +302,8 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
         </div>
 
         <SectionHeader title="Property Details" />
-        <EditableField label="Property Type" value={data.propertyType || ""} confidence={conf.propertyType} onChange={() => {}} />
-        <EditableField label="Year Built" value={data.yearBuilt?.toString() || ""} confidence={conf.yearBuilt} onChange={() => {}} />
+        <EditableField label="Property Type" value={getVal("propertyType", data.propertyType || "")} confidence={conf.propertyType} onChange={setField("propertyType")} />
+        <EditableField label="Year Built" value={getVal("yearBuilt", data.yearBuilt?.toString() || "")} confidence={conf.yearBuilt} onChange={setField("yearBuilt")} />
         <ReadOnlyField label="Year Roof Installed" value={data.yearRoofInstalled?.toString() || ""} />
         <ReadOnlyField label="Wood Roof" value={data.woodRoof != null ? (data.woodRoof ? "Yes" : "No") : ""} />
         <ReadOnlyField label="Mortgagee" value={data.thirdPartyInterest || ""} />

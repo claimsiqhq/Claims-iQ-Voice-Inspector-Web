@@ -51,9 +51,10 @@ const aiLimiter = rateLimit({
 
 app.use("/api/", generalLimiter);
 app.use("/api/auth/", authLimiter);
-app.use("/api/claims/*/parse", aiLimiter);
-app.use("/api/claims/*/briefing", aiLimiter);
-app.use("/api/inspection/*/photos/*/analyze", aiLimiter);
+app.use("/api/claims/:id/parse", aiLimiter);
+app.use("/api/claims/:id/parse-batch", aiLimiter);
+app.use("/api/claims/:id/briefing", aiLimiter);
+app.use("/api/inspection/:sessionId/photos/:photoId/analyze", aiLimiter);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

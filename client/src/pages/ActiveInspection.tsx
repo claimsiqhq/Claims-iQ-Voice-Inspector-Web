@@ -598,7 +598,17 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       audioRef.current.srcObject = null;
       audioRef.current = null;
     }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (errorRecoveryTimeoutRef.current) {
+      clearTimeout(errorRecoveryTimeoutRef.current);
+      errorRecoveryTimeoutRef.current = null;
+    }
+    isConnectingRef.current = false;
     setIsConnected(false);
+    setIsConnecting(false);
     setVoiceState("disconnected");
   }, []);
 

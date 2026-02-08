@@ -27,13 +27,8 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
   const claim = claimData as any;
 
-  // We need to get session ID for this claim
   const { data: sessionData } = useQuery({
-    queryKey: [`/api/claims/${claimId}/inspection/start`],
-    queryFn: async () => {
-      const res = await fetch(`/api/claims/${claimId}/inspection/start`, { method: "POST", headers: { "Content-Type": "application/json" } });
-      return res.json();
-    },
+    queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
   });
 
@@ -738,7 +733,20 @@ function CompletenessTab({ completeness, claimId, setLocation }: any) {
 // ─── NOTES TAB ───────────────────────────────────────────
 
 function NotesTab({ transcriptEntries, sessionId }: any) {
-  const [notes, setNotes] = useState("");
+  const storageKey = sessionId ? `adjuster-notes-${sessionId}` : null;
+  const [notes, setNotes] = useState(() => {
+    if (storageKey) {
+      try { return localStorage.getItem(storageKey) || ""; } catch { return ""; }
+    }
+    return "";
+  });
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, value); } catch {}
+    }
+  };
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   return (
@@ -748,7 +756,7 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
         <h3 className="font-display font-semibold text-sm text-foreground mb-2">Adjuster Notes</h3>
         <textarea
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => handleNotesChange(e.target.value)}
           rows={6}
           className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-primary focus:border-primary"
           placeholder="Add any final observations, special circumstances, or notes for the reviewer..."

@@ -663,6 +663,17 @@ export async function registerRoutes(
 
   // ── Inspection Session Management ──────────────────
 
+  app.get("/api/claims/:id/inspection/active", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const session = await storage.getActiveSessionForClaim(claimId);
+      if (!session) return res.status(404).json({ message: "No active session for this claim" });
+      res.json({ sessionId: session.id, session });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/claims/:id/inspection/start", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
@@ -877,7 +888,25 @@ export async function registerRoutes(
   app.patch("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const item = await storage.updateLineItem(id, req.body);
+      const allowedFields = z.object({
+        category: z.string().optional(),
+        action: z.string().optional(),
+        description: z.string().optional(),
+        xactCode: z.string().optional(),
+        quantity: z.number().optional(),
+        unit: z.string().optional(),
+        unitPrice: z.number().optional(),
+        totalPrice: z.number().optional(),
+        depreciationType: z.string().optional(),
+        wasteFactor: z.number().optional(),
+        roomId: z.number().optional(),
+        damageId: z.number().optional(),
+      }).strict();
+      const parsed = allowedFields.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update fields", errors: parsed.error.flatten() });
+      }
+      const item = await storage.updateLineItem(id, parsed.data);
       res.json(item);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
@@ -1795,11 +1824,33 @@ Respond in JSON format:
       );
       const activeSessions = sessions.filter((s) => s !== undefined).length;
 
+      let totalEstimateValue = 0;
+      const completedSessions = sessions.filter(Boolean);
+      for (const session of completedSessions) {
+        if (session) {
+          const summary = await storage.getEstimateSummary(session.id);
+          totalEstimateValue += summary.totalRCV;
+        }
+      }
+
+      let avgInspectionTime = 0;
+      const completedWithTimes = completedSessions.filter(
+        (s) => s && s.completedAt && s.startedAt
+      );
+      if (completedWithTimes.length > 0) {
+        const totalMinutes = completedWithTimes.reduce((sum, s) => {
+          const start = new Date(s!.startedAt!).getTime();
+          const end = new Date(s!.completedAt!).getTime();
+          return sum + (end - start) / 60000;
+        }, 0);
+        avgInspectionTime = Math.round(totalMinutes / completedWithTimes.length);
+      }
+
       res.json({
         totalClaims: allClaims.length,
         activeSessions,
-        avgInspectionTime: 45,
-        totalEstimateValue: allClaims.reduce((sum, _c) => sum + 25000, 0),
+        avgInspectionTime,
+        totalEstimateValue,
       });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
@@ -1870,8 +1921,18 @@ Respond in JSON format:
   app.patch("/api/supplemental/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updates = req.body;
-      const supplemental = await storage.updateSupplemental(id, updates);
+      const allowedFields = z.object({
+        reason: z.string().optional(),
+        newLineItems: z.any().optional(),
+        removedLineItemIds: z.any().optional(),
+        modifiedLineItems: z.any().optional(),
+        status: z.enum(["draft", "submitted", "approved", "rejected"]).optional(),
+      }).strict();
+      const parsed = allowedFields.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update fields", errors: parsed.error.flatten() });
+      }
+      const supplemental = await storage.updateSupplemental(id, parsed.data);
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
       res.json(supplemental);
     } catch (error: any) {
