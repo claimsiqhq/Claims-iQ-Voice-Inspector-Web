@@ -123,7 +123,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/claims", async (_req, res) => {
+  app.get("/api/claims", authenticateRequest, async (req, res) => {
     try {
       const claims = await storage.getClaims();
       res.json(claims);
@@ -145,20 +145,21 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims", async (req, res) => {
+  app.post("/api/claims", authenticateRequest, async (req, res) => {
     try {
       const parsed = createClaimSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid claim data", errors: parsed.error.flatten().fieldErrors });
       }
-      const claim = await storage.createClaim(parsed.data);
+      const claimData = { ...parsed.data, assignedTo: req.user?.id ?? null };
+      const claim = await storage.createClaim(claimData);
       res.status(201).json(claim);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.get("/api/claims/:id", async (req, res) => {
+  app.get("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const claim = await storage.getClaim(id);
@@ -172,7 +173,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/claims/:id", async (req, res) => {
+  app.patch("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { status } = req.body;
@@ -186,7 +187,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/claims/purge-all", async (_req, res) => {
+  app.delete("/api/claims/purge-all", authenticateRequest, async (req, res) => {
     try {
       const allClaims = await storage.getClaims();
       for (const claim of allClaims) {
@@ -215,7 +216,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/claims/:id", async (req, res) => {
+  app.delete("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const docs = await storage.getDocuments(id);
@@ -243,7 +244,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/documents/all", async (_req, res) => {
+  app.get("/api/documents/all", authenticateRequest, async (req, res) => {
     try {
       const docs = await storage.getAllDocuments();
       res.json(docs);
@@ -252,7 +253,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/documents/status-summary", async (_req, res) => {
+  app.get("/api/documents/status-summary", authenticateRequest, async (req, res) => {
     try {
       const docs = await storage.getAllDocuments();
       const allClaims = await storage.getClaims();
@@ -295,7 +296,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/claims/:id/documents", async (req, res) => {
+  app.get("/api/claims/:id/documents", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const docs = await storage.getDocuments(claimId);
@@ -305,7 +306,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/documents/:id/signed-url", async (req, res) => {
+  app.get("/api/documents/:id/signed-url", authenticateRequest, async (req, res) => {
     try {
       const docId = parseInt(req.params.id);
       const doc = await storage.getDocumentById(docId);
@@ -327,7 +328,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/documents/upload", async (req, res) => {
+  app.post("/api/claims/:id/documents/upload", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const parsed = uploadBodySchema.safeParse(req.body);
@@ -370,7 +371,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/documents/upload-batch", async (req, res) => {
+  app.post("/api/claims/:id/documents/upload-batch", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const parsed = batchUploadBodySchema.safeParse(req.body);
@@ -421,7 +422,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/documents/:type/parse", async (req, res) => {
+  app.post("/api/claims/:id/documents/:type/parse", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const documentType = req.params.type;
@@ -515,7 +516,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/claims/:id/extractions", async (req, res) => {
+  app.get("/api/claims/:id/extractions", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const exts = await storage.getExtractions(claimId);
@@ -525,7 +526,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/claims/:id/extractions/:type", async (req, res) => {
+  app.get("/api/claims/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const ext = await storage.getExtraction(claimId, req.params.type);
@@ -536,7 +537,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/claims/:id/extractions/:type", async (req, res) => {
+  app.put("/api/claims/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const ext = await storage.getExtraction(claimId, req.params.type);
@@ -559,7 +560,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/extractions/:type/confirm", async (req, res) => {
+  app.post("/api/claims/:id/extractions/:type/confirm", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const ext = await storage.getExtraction(claimId, req.params.type);
@@ -580,7 +581,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/extractions/confirm-all", async (req, res) => {
+  app.post("/api/claims/:id/extractions/confirm-all", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const exts = await storage.getExtractions(claimId);
@@ -604,7 +605,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/briefing/generate", async (req, res) => {
+  app.post("/api/claims/:id/briefing/generate", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const exts = await storage.getExtractions(claimId);
@@ -647,7 +648,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/claims/:id/briefing", async (req, res) => {
+  app.get("/api/claims/:id/briefing", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const briefing = await storage.getBriefing(claimId);
@@ -678,7 +679,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId", async (req, res) => {
+  app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.getInspectionSession(sessionId);
@@ -693,7 +694,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/inspection/:sessionId", async (req, res) => {
+  app.patch("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const parsed = sessionUpdateSchema.safeParse(req.body);
@@ -708,7 +709,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/inspection/:sessionId/complete", async (req, res) => {
+  app.post("/api/inspection/:sessionId/complete", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.completeSession(sessionId);
@@ -723,7 +724,7 @@ export async function registerRoutes(
 
   // ── Rooms ─────────────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/rooms", async (req, res) => {
+  app.post("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const parsed = roomCreateSchema.safeParse(req.body);
@@ -747,7 +748,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId/rooms", async (req, res) => {
+  app.get("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const rooms = await storage.getRooms(sessionId);
@@ -757,7 +758,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/inspection/:sessionId/rooms/:roomId", async (req, res) => {
+  app.patch("/api/inspection/:sessionId/rooms/:roomId", authenticateRequest, async (req, res) => {
     try {
       const roomId = parseInt(req.params.roomId);
       const room = await storage.updateRoomStatus(roomId, req.body.status);
@@ -767,7 +768,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/inspection/:sessionId/rooms/:roomId/complete", async (req, res) => {
+  app.post("/api/inspection/:sessionId/rooms/:roomId/complete", authenticateRequest, async (req, res) => {
     try {
       const roomId = parseInt(req.params.roomId);
       const room = await storage.completeRoom(roomId);
@@ -779,7 +780,7 @@ export async function registerRoutes(
 
   // ── Damage Observations ──────────────────────────
 
-  app.post("/api/inspection/:sessionId/damages", async (req, res) => {
+  app.post("/api/inspection/:sessionId/damages", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { roomId, description, damageType, severity, location, measurements } = req.body;
@@ -802,7 +803,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId/damages", async (req, res) => {
+  app.get("/api/inspection/:sessionId/damages", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
@@ -817,7 +818,7 @@ export async function registerRoutes(
 
   // ── Line Items ───────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/line-items", async (req, res) => {
+  app.post("/api/inspection/:sessionId/line-items", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const parsed = lineItemCreateSchema.safeParse(req.body);
@@ -851,7 +852,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId/line-items", async (req, res) => {
+  app.get("/api/inspection/:sessionId/line-items", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const items = await storage.getLineItems(sessionId);
@@ -861,7 +862,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId/estimate-summary", async (req, res) => {
+  app.get("/api/inspection/:sessionId/estimate-summary", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const summary = await storage.getEstimateSummary(sessionId);
@@ -871,7 +872,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/inspection/:sessionId/line-items/:id", async (req, res) => {
+  app.patch("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const item = await storage.updateLineItem(id, req.body);
@@ -881,7 +882,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/inspection/:sessionId/line-items/:id", async (req, res) => {
+  app.delete("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteLineItem(id);
@@ -893,7 +894,7 @@ export async function registerRoutes(
 
   // ── Photos ───────────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/photos", async (req, res) => {
+  app.post("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { roomId, damageId, imageBase64, autoTag, caption, photoType } = req.body;
@@ -948,7 +949,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/inspection/:sessionId/photos", async (req, res) => {
+  app.get("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const photos = await storage.getPhotos(sessionId);
@@ -959,7 +960,7 @@ export async function registerRoutes(
   });
 
   // POST /api/inspection/:sessionId/photos/:photoId/analyze
-  app.post("/api/inspection/:sessionId/photos/:photoId/analyze", async (req, res) => {
+  app.post("/api/inspection/:sessionId/photos/:photoId/analyze", authenticateRequest, async (req, res) => {
     try {
       const photoId = parseInt(req.params.photoId);
       if (isNaN(photoId)) {
@@ -1084,7 +1085,7 @@ Respond in JSON format:
 
   // ── Moisture Readings ─────────────────────────────
 
-  app.post("/api/inspection/:sessionId/moisture", async (req, res) => {
+  app.post("/api/inspection/:sessionId/moisture", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { roomId, location, reading, materialType, dryStandard } = req.body;
@@ -1105,7 +1106,7 @@ Respond in JSON format:
     }
   });
 
-  app.get("/api/inspection/:sessionId/moisture", async (req, res) => {
+  app.get("/api/inspection/:sessionId/moisture", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
@@ -1120,7 +1121,7 @@ Respond in JSON format:
 
   // ── Transcript ────────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/transcript", async (req, res) => {
+  app.post("/api/inspection/:sessionId/transcript", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { speaker, content } = req.body;
@@ -1134,7 +1135,7 @@ Respond in JSON format:
     }
   });
 
-  app.get("/api/inspection/:sessionId/transcript", async (req, res) => {
+  app.get("/api/inspection/:sessionId/transcript", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const transcript = await storage.getTranscript(sessionId);
@@ -1146,7 +1147,7 @@ Respond in JSON format:
 
   // ── OpenAI Realtime Session ───────────────────────
 
-  app.post("/api/realtime/session", async (req, res) => {
+  app.post("/api/realtime/session", authenticateRequest, async (req, res) => {
     try {
       const { claimId, sessionId } = req.body;
       if (!claimId) {
@@ -1210,7 +1211,7 @@ Respond in JSON format:
 
   // ── Completeness Check ────────────────────────────
 
-  app.get("/api/inspection/:sessionId/completeness", async (req, res) => {
+  app.get("/api/inspection/:sessionId/completeness", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.getInspectionSession(sessionId);
@@ -1348,7 +1349,7 @@ Respond in JSON format:
 
   // ── Grouped Estimate ────────────────────────────────
 
-  app.get("/api/inspection/:sessionId/estimate-grouped", async (req, res) => {
+  app.get("/api/inspection/:sessionId/estimate-grouped", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const items = await storage.getLineItems(sessionId);
@@ -1389,7 +1390,7 @@ Respond in JSON format:
 
   // ── Photos Grouped by Room ──────────────────────────
 
-  app.get("/api/inspection/:sessionId/photos-grouped", async (req, res) => {
+  app.get("/api/inspection/:sessionId/photos-grouped", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const photos = await storage.getPhotos(sessionId);
@@ -1418,7 +1419,7 @@ Respond in JSON format:
 
   // ── Export Validation ───────────────────────────────
 
-  app.post("/api/inspection/:sessionId/export/validate", async (req, res) => {
+  app.post("/api/inspection/:sessionId/export/validate", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.getInspectionSession(sessionId);
@@ -1460,7 +1461,7 @@ Respond in JSON format:
 
   // ── ESX Export ──────────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/export/esx", async (req, res) => {
+  app.post("/api/inspection/:sessionId/export/esx", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.getInspectionSession(sessionId);
@@ -1511,7 +1512,7 @@ Respond in JSON format:
 
   // ── PDF Export Data ─────────────────────────────────
 
-  app.post("/api/inspection/:sessionId/export/pdf", async (req, res) => {
+  app.post("/api/inspection/:sessionId/export/pdf", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const session = await storage.getInspectionSession(sessionId);
@@ -1583,7 +1584,7 @@ Respond in JSON format:
 
   // ── Session Status Update ───────────────────────────
 
-  app.patch("/api/inspection/:sessionId/status", async (req, res) => {
+  app.patch("/api/inspection/:sessionId/status", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const { status } = req.body;
@@ -1601,7 +1602,7 @@ Respond in JSON format:
 
   // ── Pricing Catalog Endpoints ──────────────────────────────
 
-  app.get("/api/pricing/catalog", async (_req, res) => {
+  app.get("/api/pricing/catalog", authenticateRequest, async (req, res) => {
     try {
       const items = await storage.getScopeLineItems();
       res.json(items);
@@ -1610,7 +1611,7 @@ Respond in JSON format:
     }
   });
 
-  app.get("/api/pricing/catalog/search", async (req, res) => {
+  app.get("/api/pricing/catalog/search", authenticateRequest, async (req, res) => {
     try {
       const q = (req.query.q as string || "").toLowerCase();
       if (!q) {
@@ -1627,7 +1628,7 @@ Respond in JSON format:
     }
   });
 
-  app.get("/api/pricing/catalog/:tradeCode", async (req, res) => {
+  app.get("/api/pricing/catalog/:tradeCode", authenticateRequest, async (req, res) => {
     try {
       const tradeCode = req.params.tradeCode;
       const items = await storage.getScopeLineItemsByTrade(tradeCode);
@@ -1637,7 +1638,7 @@ Respond in JSON format:
     }
   });
 
-  app.post("/api/pricing/scope", async (req, res) => {
+  app.post("/api/pricing/scope", authenticateRequest, async (req, res) => {
     try {
       const { items, regionId, taxRate } = req.body;
       if (!items || !Array.isArray(items)) {
@@ -1670,7 +1671,7 @@ Respond in JSON format:
     }
   });
 
-  app.post("/api/pricing/validate", async (req, res) => {
+  app.post("/api/pricing/validate", authenticateRequest, async (req, res) => {
     try {
       const { items } = req.body;
       if (!items || !Array.isArray(items)) {
@@ -1685,7 +1686,7 @@ Respond in JSON format:
     }
   });
 
-  app.get("/api/pricing/regions", async (_req, res) => {
+  app.get("/api/pricing/regions", authenticateRequest, async (req, res) => {
     try {
       const allPrices = await storage.getRegionalPricesForRegion("US_NATIONAL");
       const regions = new Set(allPrices.map(p => p.regionId));
