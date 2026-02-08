@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface RoomData {
@@ -21,618 +20,477 @@ interface FloorPlanSketchProps {
   expanded?: boolean;
 }
 
-const COLORS = {
-  wall: "#1F2937",
-  wallStroke: "#374151",
-  roomComplete: "rgba(34,197,94,0.08)",
-  roomCompleteStroke: "#22C55E",
-  roomActive: "rgba(119,99,183,0.12)",
-  roomActiveStroke: "#7763B7",
-  roomPending: "rgba(241,245,249,0.6)",
-  roomPendingStroke: "#94A3B8",
-  currentHighlight: "#C6A54E",
-  dimensionText: "#6B7280",
-  labelText: "#374151",
-  roofFill: "rgba(161,98,7,0.06)",
-  roofStroke: "#92400E",
-  ridgeLine: "#B45309",
-  elevationFill: "rgba(59,130,246,0.04)",
-  elevationStroke: "#3B82F6",
-  groundLine: "#78716C",
-  sectionLabel: "#9CA3AF",
-  damageMarker: "#EF4444",
-  photoMarker: "rgba(119,99,183,0.7)",
+const FONT = "Work Sans, sans-serif";
+const MONO = "Space Mono, monospace";
+
+const STATUS_STYLES = {
+  complete: { fill: "rgba(34,197,94,0.08)", stroke: "#22C55E", text: "#166534", dash: "" },
+  in_progress: { fill: "rgba(119,99,183,0.10)", stroke: "#7763B7", text: "#4C3D8F", dash: "" },
+  not_started: { fill: "rgba(241,245,249,0.5)", stroke: "#94A3B8", text: "#64748B", dash: "4,2" },
 };
+const CURRENT_STROKE = "#C6A54E";
+const WALL_COLOR = "#334155";
+const DIM_COLOR = "#94A3B8";
+const LABEL_COLOR = "#475569";
+const HEADER_COLOR = "#64748B";
+const SECTION_COLOR = "#94A3B8";
+const DAMAGE_COLOR = "#EF4444";
+const PHOTO_COLOR = "rgba(119,99,183,0.7)";
 
-const WALL_THICKNESS = 3;
-
-interface LayoutRoom {
-  room: RoomData;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+function getStyle(room: RoomData, isCurrent: boolean) {
+  const s = STATUS_STYLES[room.status as keyof typeof STATUS_STYLES] || STATUS_STYLES.not_started;
+  return {
+    fill: s.fill,
+    stroke: isCurrent ? CURRENT_STROKE : s.stroke,
+    strokeWidth: isCurrent ? 2 : 1,
+    dash: s.dash,
+    text: isCurrent ? CURRENT_STROKE : s.text,
+  };
 }
 
-function getRoomDims(room: RoomData, scale: number, minW: number, minH: number) {
-  const dims = room.dimensions as any;
-  if (dims?.length && dims?.width) {
-    return {
-      w: Math.max(dims.length * scale, minW),
-      h: Math.max(dims.width * scale, minH),
-    };
-  }
-  return { w: minW + 10, h: minH };
-}
-
-function roomFill(room: RoomData) {
-  if (room.status === "complete") return COLORS.roomComplete;
-  if (room.status === "in_progress") return COLORS.roomActive;
-  return COLORS.roomPending;
-}
-
-function roomStroke(room: RoomData, isCurrent: boolean) {
-  if (isCurrent) return COLORS.currentHighlight;
-  if (room.status === "complete") return COLORS.roomCompleteStroke;
-  if (room.status === "in_progress") return COLORS.roomActiveStroke;
-  return COLORS.roomPendingStroke;
-}
-
-function layoutFloorPlan(interiorRooms: RoomData[], maxWidth: number, scale: number): { rooms: LayoutRoom[]; width: number; height: number; sharedWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> } {
-  if (interiorRooms.length === 0) return { rooms: [], width: 0, height: 0, sharedWalls: [] };
-
-  const minRoomW = 48;
-  const minRoomH = 36;
-  const pad = WALL_THICKNESS;
-  const usableWidth = maxWidth - pad * 2;
-
-  const sized = interiorRooms.map(r => ({ room: r, ...getRoomDims(r, scale, minRoomW, minRoomH) }));
-  const placed: LayoutRoom[] = [];
-  const sharedWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-
-  let cursorX = pad;
-  let cursorY = pad;
-  let rowHeight = 0;
-  let rowStartIdx = 0;
-
-  for (let i = 0; i < sized.length; i++) {
-    const { room, w, h } = sized[i];
-
-    if (cursorX + w > usableWidth + pad && cursorX > pad) {
-      cursorX = pad;
-      cursorY += rowHeight;
-      rowHeight = 0;
-      rowStartIdx = placed.length;
-    }
-
-    placed.push({ room, x: cursorX, y: cursorY, w, h });
-
-    if (cursorX > pad) {
-      const prev = placed[placed.length - 2];
-      if (prev && prev.y === cursorY) {
-        const wallTop = Math.max(prev.y, cursorY);
-        const wallBot = Math.min(prev.y + prev.h, cursorY + h);
-        if (wallBot > wallTop) {
-          sharedWalls.push({ x1: cursorX, y1: wallTop, x2: cursorX, y2: wallBot });
-        }
-      }
-    }
-
-    if (rowStartIdx < placed.length - 1 || cursorY > pad) {
-      for (let pi = 0; pi < placed.length - 1; pi++) {
-        const above = placed[pi];
-        if (above.y + above.h === cursorY) {
-          const overlapLeft = Math.max(above.x, cursorX);
-          const overlapRight = Math.min(above.x + above.w, cursorX + w);
-          if (overlapRight > overlapLeft) {
-            sharedWalls.push({ x1: overlapLeft, y1: cursorY, x2: overlapRight, y2: cursorY });
-          }
-        }
-      }
-    }
-
-    cursorX += w;
-    rowHeight = Math.max(rowHeight, h);
-  }
-
-  if (placed.length > 0) {
-    const lastRowRooms = placed.filter(p => p.y + p.h === cursorY + rowHeight);
-    if (lastRowRooms.length > 0) {
-      const maxH = Math.max(...lastRowRooms.map(r => r.h));
-      for (const r of lastRowRooms) {
-        if (r.h < maxH) {
-          r.h = maxH;
-        }
-      }
-    }
-  }
-
-  const totalW = Math.max(...placed.map(p => p.x + p.w)) + pad;
-  const totalH = cursorY + rowHeight + pad;
-
-  return { rooms: placed, width: totalW, height: totalH, sharedWalls };
-}
-
-function DimensionLabel({ x1, y1, x2, y2, label, offset = 10 }: { x1: number; y1: number; x2: number; y2: number; label: string; offset?: number }) {
-  const isHorizontal = Math.abs(y2 - y1) < 2;
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-  const tickLen = 3;
-
-  if (isHorizontal) {
-    const ly = y1 + offset;
-    return (
-      <g>
-        <line x1={x1} y1={ly - tickLen} x2={x1} y2={ly + tickLen} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <line x1={x1} y1={ly} x2={x2} y2={ly} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <line x1={x2} y1={ly - tickLen} x2={x2} y2={ly + tickLen} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <text x={mx} y={ly - 2} textAnchor="middle" fontSize="5.5" fontFamily="Space Mono, monospace" fill={COLORS.dimensionText}>{label}</text>
-      </g>
-    );
-  } else {
-    const lx = x1 + offset;
-    return (
-      <g>
-        <line x1={lx - tickLen} y1={y1} x2={lx + tickLen} y2={y1} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <line x1={lx} y1={y1} x2={lx} y2={y2} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <line x1={lx - tickLen} y1={y2} x2={lx + tickLen} y2={y2} stroke={COLORS.dimensionText} strokeWidth={0.5} />
-        <text x={lx + 4} y={my} textAnchor="start" dominantBaseline="middle" fontSize="5.5" fontFamily="Space Mono, monospace" fill={COLORS.dimensionText}>{label}</text>
-      </g>
-    );
-  }
-}
-
-function DoorOpening({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
-  const isVertical = Math.abs(x2 - x1) < 2;
-  const doorWidth = 8;
-
-  if (isVertical) {
-    const midY = (y1 + y2) / 2;
-    const top = midY - doorWidth / 2;
-    const bot = midY + doorWidth / 2;
-    return (
-      <g>
-        <rect x={x1 - 2} y={top} width={4} height={doorWidth} fill="white" />
-        <path d={`M ${x1} ${top} Q ${x1 + 6} ${top} ${x1 + 6} ${top + 3}`} fill="none" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-        <path d={`M ${x1} ${bot} Q ${x1 + 6} ${bot} ${x1 + 6} ${bot - 3}`} fill="none" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-      </g>
-    );
-  } else {
-    const midX = (x1 + x2) / 2;
-    const left = midX - doorWidth / 2;
-    const right = midX + doorWidth / 2;
-    return (
-      <g>
-        <rect x={left} y={y1 - 2} width={doorWidth} height={4} fill="white" />
-        <path d={`M ${left} ${y1} Q ${left} ${y1 + 6} ${left + 3} ${y1 + 6}`} fill="none" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-        <path d={`M ${right} ${y1} Q ${right} ${y1 + 6} ${right - 3} ${y1 + 6}`} fill="none" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-      </g>
-    );
-  }
-}
-
-function InteriorFloorPlan({ rooms: layoutRooms, width, height, sharedWalls, currentRoomId, onRoomClick }: {
-  rooms: LayoutRoom[]; width: number; height: number; sharedWalls: Array<{ x1: number; y1: number; x2: number; y2: number }>; currentRoomId: number | null; onRoomClick?: (id: number) => void;
-}) {
-  if (layoutRooms.length === 0) return null;
-
+function Badges({ room, x, y, w }: { room: RoomData; x: number; y: number; w: number }) {
   return (
-    <g>
-      <rect x={0} y={0} width={width} height={height}
-        fill="none" stroke={COLORS.wall} strokeWidth={WALL_THICKNESS} rx={1} />
-
-      {layoutRooms.map(({ room, x, y, w, h }, i) => {
-        const isCurrent = room.id === currentRoomId;
-        const dims = room.dimensions as any;
-        const displayName = room.name.length > 16 ? room.name.substring(0, 15) + "…" : room.name;
-
-        return (
-          <g key={room.id} onClick={() => onRoomClick?.(room.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-            <motion.rect
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: i * 0.05 }}
-              x={x} y={y} width={w} height={h}
-              fill={roomFill(room)}
-              stroke={roomStroke(room, isCurrent)}
-              strokeWidth={isCurrent ? 1.5 : 1}
-              strokeDasharray={room.status === "not_started" ? "4,2" : "none"}
-            />
-
-            {isCurrent && (
-              <rect x={x - 1} y={y - 1} width={w + 2} height={h + 2} fill="none"
-                stroke={COLORS.currentHighlight} strokeWidth={0.5} strokeDasharray="2,2" opacity={0.5} />
-            )}
-
-            <text x={x + w / 2} y={y + h / 2 - (dims?.length ? 5 : 0)}
-              textAnchor="middle" dominantBaseline="middle"
-              fontSize="7" fontFamily="Work Sans, sans-serif" fontWeight="600"
-              fill={COLORS.labelText}>
-              {displayName}
-            </text>
-
-            {dims?.length && dims?.width && (
-              <text x={x + w / 2} y={y + h / 2 + 6}
-                textAnchor="middle" dominantBaseline="middle"
-                fontSize="5.5" fontFamily="Space Mono, monospace" fill={COLORS.dimensionText}>
-                {dims.length}' × {dims.width}'
-              </text>
-            )}
-
-            {room.damageCount > 0 && (
-              <>
-                <circle cx={x + w - 7} cy={y + 7} r={5} fill={COLORS.damageMarker} opacity={0.9} />
-                <text x={x + w - 7} y={y + 7} textAnchor="middle" dominantBaseline="middle"
-                  fontSize="5" fill="white" fontWeight="bold">{room.damageCount}</text>
-              </>
-            )}
-
-            {room.photoCount > 0 && (
-              <>
-                <circle cx={x + 7} cy={y + h - 7} r={4} fill={COLORS.photoMarker} />
-                <text x={x + 7} y={y + h - 7} textAnchor="middle" dominantBaseline="middle"
-                  fontSize="4.5" fill="white" fontWeight="bold">{room.photoCount}</text>
-              </>
-            )}
-          </g>
-        );
-      })}
-
-      {sharedWalls.map((wall, wi) => (
-        <g key={`wall-${wi}`}>
-          <line x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2}
-            stroke={COLORS.wall} strokeWidth={WALL_THICKNESS} />
-          <DoorOpening x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} />
-        </g>
-      ))}
-
-      {layoutRooms.length > 0 && (() => {
-        const outerRight = Math.max(...layoutRooms.map(r => r.x + r.w));
-        const outerBottom = Math.max(...layoutRooms.map(r => r.y + r.h));
-        const outerLeft = Math.min(...layoutRooms.map(r => r.x));
-        const outerTop = Math.min(...layoutRooms.map(r => r.y));
-        const totalW = outerRight - outerLeft;
-        const totalH = outerBottom - outerTop;
-        const firstDims = layoutRooms[0].room.dimensions as any;
-        return (
-          <>
-            {firstDims?.length && (
-              <DimensionLabel x1={outerLeft} y1={outerBottom} x2={outerRight} y2={outerBottom} label={`${Math.round(totalW / 3)}'`} offset={12} />
-            )}
-          </>
-        );
-      })()}
-    </g>
-  );
-}
-
-function ElevationView({ room, x, y, viewWidth, viewHeight, isCurrent, onClick }: {
-  room: RoomData; x: number; y: number; viewWidth: number; viewHeight: number;
-  isCurrent: boolean; onClick?: () => void;
-}) {
-  const dims = room.dimensions as any;
-  const wallH = viewHeight * 0.55;
-  const roofPeakH = viewHeight * 0.35;
-  const groundY = y + viewHeight;
-  const wallTopY = groundY - wallH;
-  const roofPeakY = wallTopY - roofPeakH;
-
-  const wallLeftX = x + viewWidth * 0.12;
-  const wallRightX = x + viewWidth * 0.88;
-  const wallWidth = wallRightX - wallLeftX;
-  const roofOverhang = wallWidth * 0.08;
-
-  const elevType = room.roomType || "";
-  const isFrontOrRear = elevType.includes("front") || elevType.includes("rear");
-
-  const displayName = room.name.length > 20 ? room.name.substring(0, 19) + "…" : room.name;
-
-  return (
-    <g onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
-      <rect x={x} y={y} width={viewWidth} height={viewHeight} fill="none" stroke="none" />
-
-      <line x1={x} y1={groundY} x2={x + viewWidth} y2={groundY}
-        stroke={COLORS.groundLine} strokeWidth={1.5} />
-      <line x1={x} y1={groundY + 1} x2={x + viewWidth} y2={groundY + 1}
-        stroke={COLORS.groundLine} strokeWidth={0.3} strokeDasharray="2,2" />
-
-      <rect x={wallLeftX} y={wallTopY} width={wallWidth} height={wallH}
-        fill={COLORS.elevationFill}
-        stroke={isCurrent ? COLORS.currentHighlight : COLORS.elevationStroke}
-        strokeWidth={isCurrent ? 1.5 : 1} />
-
-      {isFrontOrRear ? (
-        <polygon
-          points={`${wallLeftX - roofOverhang},${wallTopY} ${(wallLeftX + wallRightX) / 2},${roofPeakY} ${wallRightX + roofOverhang},${wallTopY}`}
-          fill={COLORS.roofFill}
-          stroke={isCurrent ? COLORS.currentHighlight : COLORS.roofStroke}
-          strokeWidth={1}
-          strokeLinejoin="round"
-        />
-      ) : (
-        <polygon
-          points={`${wallLeftX - roofOverhang},${wallTopY} ${wallLeftX + wallWidth * 0.15},${roofPeakY} ${wallRightX - wallWidth * 0.15},${roofPeakY} ${wallRightX + roofOverhang},${wallTopY}`}
-          fill={COLORS.roofFill}
-          stroke={isCurrent ? COLORS.currentHighlight : COLORS.roofStroke}
-          strokeWidth={1}
-          strokeLinejoin="round"
-        />
-      )}
-
-      {isFrontOrRear && (
-        <>
-          <rect x={wallLeftX + wallWidth * 0.42} y={groundY - wallH * 0.6}
-            width={wallWidth * 0.16} height={wallH * 0.6}
-            fill="white" stroke={COLORS.wallStroke} strokeWidth={0.7} />
-          <line x1={wallLeftX + wallWidth * 0.5} y1={groundY - wallH * 0.6}
-            x2={wallLeftX + wallWidth * 0.5} y2={groundY}
-            stroke={COLORS.wallStroke} strokeWidth={0.3} />
-
-          {[0.15, 0.72].map((pos, wi) => (
-            <g key={wi}>
-              <rect x={wallLeftX + wallWidth * pos} y={wallTopY + wallH * 0.2}
-                width={wallWidth * 0.12} height={wallH * 0.25}
-                fill="white" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-              <line x1={wallLeftX + wallWidth * (pos + 0.06)} y1={wallTopY + wallH * 0.2}
-                x2={wallLeftX + wallWidth * (pos + 0.06)} y2={wallTopY + wallH * 0.45}
-                stroke={COLORS.wallStroke} strokeWidth={0.3} />
-              <line x1={wallLeftX + wallWidth * pos} y1={wallTopY + wallH * 0.325}
-                x2={wallLeftX + wallWidth * (pos + 0.12)} y2={wallTopY + wallH * 0.325}
-                stroke={COLORS.wallStroke} strokeWidth={0.3} />
-            </g>
-          ))}
-        </>
-      )}
-
-      {!isFrontOrRear && (
-        <>
-          {[0.2, 0.5, 0.75].map((pos, wi) => (
-            <g key={wi}>
-              <rect x={wallLeftX + wallWidth * pos} y={wallTopY + wallH * 0.2}
-                width={wallWidth * 0.1} height={wallH * 0.25}
-                fill="white" stroke={COLORS.wallStroke} strokeWidth={0.5} />
-              <line x1={wallLeftX + wallWidth * (pos + 0.05)} y1={wallTopY + wallH * 0.2}
-                x2={wallLeftX + wallWidth * (pos + 0.05)} y2={wallTopY + wallH * 0.45}
-                stroke={COLORS.wallStroke} strokeWidth={0.3} />
-            </g>
-          ))}
-        </>
-      )}
-
-      <text x={x + viewWidth / 2} y={y + 8}
-        textAnchor="middle" fontSize="6.5" fontFamily="Work Sans, sans-serif" fontWeight="600"
-        fill={isCurrent ? COLORS.currentHighlight : COLORS.labelText}>
-        {displayName}
-      </text>
-
-      {dims?.length && (
-        <DimensionLabel
-          x1={wallLeftX} y1={groundY} x2={wallRightX} y2={groundY}
-          label={`${dims.length}'`} offset={6}
-        />
-      )}
-      {dims?.height && (
-        <text x={wallLeftX - 4} y={wallTopY + wallH / 2}
-          textAnchor="end" dominantBaseline="middle"
-          fontSize="5" fontFamily="Space Mono, monospace" fill={COLORS.dimensionText}>
-          {dims.height}'
-        </text>
-      )}
-
+    <>
       {room.damageCount > 0 && (
         <>
-          <circle cx={x + viewWidth - 8} cy={y + 8} r={5} fill={COLORS.damageMarker} opacity={0.9} />
-          <text x={x + viewWidth - 8} y={y + 8} textAnchor="middle" dominantBaseline="middle"
-            fontSize="5" fill="white" fontWeight="bold">{room.damageCount}</text>
+          <circle cx={x + w - 7} cy={y + 7} r={5} fill={DAMAGE_COLOR} opacity={0.9} />
+          <text x={x + w - 7} y={y + 7.5} textAnchor="middle" dominantBaseline="middle" fontSize="5" fill="white" fontWeight="bold">{room.damageCount}</text>
         </>
       )}
-
       {room.photoCount > 0 && (
         <>
-          <circle cx={x + viewWidth - 8} cy={y + 18} r={4} fill={COLORS.photoMarker} />
-          <text x={x + viewWidth - 8} y={y + 18} textAnchor="middle" dominantBaseline="middle"
-            fontSize="4.5" fill="white" fontWeight="bold">{room.photoCount}</text>
+          <circle cx={x + w - 7} cy={y + (room.damageCount > 0 ? 17 : 7)} r={4} fill={PHOTO_COLOR} />
+          <text x={x + w - 7} y={y + (room.damageCount > 0 ? 17.5 : 7.5)} textAnchor="middle" dominantBaseline="middle" fontSize="4.5" fill="white" fontWeight="bold">{room.photoCount}</text>
         </>
       )}
+    </>
+  );
+}
+
+function DimTick({ x1, y1, x2, y2, label, outside = 8 }: { x1: number; y1: number; x2: number; y2: number; label: string; outside?: number }) {
+  const horiz = Math.abs(y2 - y1) < 2;
+  const tick = 3;
+  if (horiz) {
+    const dy = y1 + outside;
+    return (
+      <g>
+        <line x1={x1} y1={dy - tick} x2={x1} y2={dy + tick} stroke={DIM_COLOR} strokeWidth={0.4} />
+        <line x1={x1} y1={dy} x2={x2} y2={dy} stroke={DIM_COLOR} strokeWidth={0.4} />
+        <line x1={x2} y1={dy - tick} x2={x2} y2={dy + tick} stroke={DIM_COLOR} strokeWidth={0.4} />
+        <text x={(x1 + x2) / 2} y={dy - 2} textAnchor="middle" fontSize="5" fontFamily={MONO} fill={DIM_COLOR}>{label}</text>
+      </g>
+    );
+  }
+  const dx = x1 + outside;
+  return (
+    <g>
+      <line x1={dx - tick} y1={y1} x2={dx + tick} y2={y1} stroke={DIM_COLOR} strokeWidth={0.4} />
+      <line x1={dx} y1={y1} x2={dx} y2={y2} stroke={DIM_COLOR} strokeWidth={0.4} />
+      <line x1={dx - tick} y1={y2} x2={dx + tick} y2={y2} stroke={DIM_COLOR} strokeWidth={0.4} />
+      <text x={dx + 3} y={(y1 + y2) / 2} textAnchor="start" dominantBaseline="middle" fontSize="5" fontFamily={MONO} fill={DIM_COLOR}>{label}</text>
     </g>
   );
 }
 
-function RoofPlanView({ roofRooms, x, y, planWidth, planHeight, currentRoomId, onRoomClick }: {
-  roofRooms: RoomData[]; x: number; y: number; planWidth: number; planHeight: number;
-  currentRoomId: number | null; onRoomClick?: (id: number) => void;
+interface StructureGroup {
+  name: string;
+  interior: RoomData[];
+  roofSlopes: RoomData[];
+  elevations: RoomData[];
+  otherExterior: RoomData[];
+}
+
+function categorizeRooms(rooms: RoomData[]): StructureGroup[] {
+  const map: Record<string, StructureGroup> = {};
+  for (const r of rooms) {
+    const s = r.structure || "Main Dwelling";
+    if (!map[s]) map[s] = { name: s, interior: [], roofSlopes: [], elevations: [], otherExterior: [] };
+    const rt = r.roomType || "";
+    if (rt.startsWith("exterior_elevation_")) map[s].elevations.push(r);
+    else if (rt === "exterior_roof_slope") map[s].roofSlopes.push(r);
+    else if (rt.startsWith("exterior_")) map[s].otherExterior.push(r);
+    else map[s].interior.push(r);
+  }
+  return Object.values(map);
+}
+
+function FloorPlanSection({ rooms, svgW, scale, currentRoomId, onRoomClick }: {
+  rooms: RoomData[]; svgW: number; scale: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
 }) {
-  if (roofRooms.length === 0) return null;
+  const minW = 44;
+  const minH = 32;
+  const wallT = 2.5;
+  const margin = 14;
+  const usable = svgW - margin * 2;
 
-  const ridgeCenterX = x + planWidth / 2;
-  const ridgeCenterY = y + planHeight / 2;
-  const ridgeHalfLen = planWidth * 0.25;
+  const sized = rooms.map(r => {
+    const d = r.dimensions as any;
+    const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
+    const h = d?.width ? Math.max(d.width * scale, minH) : minH;
+    return { room: r, w, h };
+  });
 
-  const ridgeLeft = ridgeCenterX - ridgeHalfLen;
-  const ridgeRight = ridgeCenterX + ridgeHalfLen;
+  const laid: Array<{ room: RoomData; x: number; y: number; w: number; h: number }> = [];
+  let cx = 0, cy = 0, rowH = 0;
 
-  return (
-    <g>
-      <rect x={x} y={y} width={planWidth} height={planHeight}
-        fill={COLORS.roofFill} stroke={COLORS.roofStroke} strokeWidth={1} />
+  for (const { room, w, h } of sized) {
+    if (cx + w > usable && cx > 0) {
+      cx = 0;
+      cy += rowH;
+      rowH = 0;
+    }
+    laid.push({ room, x: cx, y: cy, w, h });
+    cx += w;
+    rowH = Math.max(rowH, h);
+  }
 
-      <line x1={ridgeLeft} y1={ridgeCenterY} x2={ridgeRight} y2={ridgeCenterY}
-        stroke={COLORS.ridgeLine} strokeWidth={1.5} />
+  const totalW = Math.max(...laid.map(l => l.x + l.w));
+  const totalH = cy + rowH;
+  const offsetX = (svgW - totalW) / 2;
+  const sectionH = totalH + margin + 10;
 
-      <line x1={x} y1={y} x2={ridgeLeft} y2={ridgeCenterY}
-        stroke={COLORS.roofStroke} strokeWidth={0.7} strokeDasharray="3,2" />
-      <line x1={x + planWidth} y1={y} x2={ridgeRight} y2={ridgeCenterY}
-        stroke={COLORS.roofStroke} strokeWidth={0.7} strokeDasharray="3,2" />
-      <line x1={x} y1={y + planHeight} x2={ridgeLeft} y2={ridgeCenterY}
-        stroke={COLORS.roofStroke} strokeWidth={0.7} strokeDasharray="3,2" />
-      <line x1={x + planWidth} y1={y + planHeight} x2={ridgeRight} y2={ridgeCenterY}
-        stroke={COLORS.roofStroke} strokeWidth={0.7} strokeDasharray="3,2" />
+  return {
+    height: sectionH,
+    render: (yOff: number) => (
+      <g key="floorplan" transform={`translate(0, ${yOff})`}>
+        <text x={8} y={9} fontSize="6" fontFamily={MONO} fontWeight="700" fill={SECTION_COLOR} letterSpacing="0.8">FLOOR PLAN</text>
+        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{rooms.length} rooms</text>
+        <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
 
-      <text x={ridgeCenterX} y={ridgeCenterY - 5}
-        textAnchor="middle" fontSize="5.5" fontFamily="Space Mono, monospace" fill={COLORS.ridgeLine}>
-        RIDGE
-      </text>
+        <g transform={`translate(${offsetX}, 16)`}>
+          <rect x={-wallT} y={-wallT} width={totalW + wallT * 2} height={totalH + wallT * 2}
+            fill="none" stroke={WALL_COLOR} strokeWidth={wallT} />
 
-      {roofRooms.map((room, i) => {
-        const isCurrent = room.id === currentRoomId;
-        const slopeAreas = [
-          { lx: x + 8, ly: y + 8 },
-          { lx: x + planWidth - 8, ly: y + 8 },
-          { lx: x + 8, ly: y + planHeight - 8 },
-          { lx: x + planWidth - 8, ly: y + planHeight - 8 },
-        ];
-        const pos = slopeAreas[i % slopeAreas.length];
-        const dims = room.dimensions as any;
-        const pitchLabel = dims?.pitch ? `${dims.pitch}/12 pitch` : "slope";
-        const slopeName = room.name.length > 12 ? room.name.substring(0, 11) + "…" : room.name;
+          {laid.map(({ room, x, y, w, h }, i) => {
+            const isCurrent = room.id === currentRoomId;
+            const st = getStyle(room, isCurrent);
+            const dims = room.dimensions as any;
+            const name = room.name.length > 14 ? room.name.substring(0, 13) + "…" : room.name;
+            const hasDims = dims?.length && dims?.width;
 
-        return (
-          <g key={room.id} onClick={() => onRoomClick?.(room.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-            <text x={pos.lx} y={pos.ly}
-              textAnchor={pos.lx < ridgeCenterX ? "start" : "end"}
-              fontSize="6" fontFamily="Work Sans, sans-serif" fontWeight="500"
-              fill={isCurrent ? COLORS.currentHighlight : COLORS.labelText}>
-              {slopeName}
-            </text>
-            <text x={pos.lx} y={pos.ly + 9}
-              textAnchor={pos.lx < ridgeCenterX ? "start" : "end"}
-              fontSize="5" fontFamily="Space Mono, monospace" fill={COLORS.dimensionText}>
-              {pitchLabel}
-            </text>
-            {room.damageCount > 0 && (
-              <>
-                <circle cx={pos.lx + (pos.lx < ridgeCenterX ? 40 : -40)} cy={pos.ly - 2} r={4} fill={COLORS.damageMarker} opacity={0.9} />
-                <text x={pos.lx + (pos.lx < ridgeCenterX ? 40 : -40)} y={pos.ly - 2}
-                  textAnchor="middle" dominantBaseline="middle" fontSize="4.5" fill="white" fontWeight="bold">
-                  {room.damageCount}
+            return (
+              <g key={room.id} onClick={() => onRoomClick?.(room.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+                <rect x={x} y={y} width={w} height={h}
+                  fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
+                  strokeDasharray={st.dash || undefined} />
+
+                {i > 0 && x > 0 && laid[i - 1]?.y === y && (
+                  <g>
+                    <rect x={x - 1} y={y + h / 2 - 4} width={2} height={8} fill="white" />
+                    <line x1={x} y1={y + h / 2 - 4} x2={x} y2={y + h / 2 + 4}
+                      stroke={WALL_COLOR} strokeWidth={0.4} strokeDasharray="1.5,1" />
+                  </g>
+                )}
+
+                <text x={x + w / 2} y={y + h / 2 - (hasDims ? 4 : 0)}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize="6.5" fontFamily={FONT} fontWeight="600" fill={st.text}>
+                  {name}
                 </text>
-              </>
-            )}
-          </g>
-        );
-      })}
-    </g>
-  );
+
+                {hasDims && (
+                  <text x={x + w / 2} y={y + h / 2 + 5}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize="5" fontFamily={MONO} fill={DIM_COLOR}>
+                    {dims.length}' × {dims.width}'
+                  </text>
+                )}
+
+                <Badges room={room} x={x} y={y} w={w} />
+              </g>
+            );
+          })}
+
+          {laid.length > 0 && laid[0].room.dimensions && (
+            <DimTick x1={0} y1={totalH} x2={totalW} y2={totalH}
+              label={`${Math.round(totalW / scale)}'`} outside={10} />
+          )}
+        </g>
+      </g>
+    ),
+  };
 }
 
-function SectionHeader({ x, y, width, label, sublabel }: { x: number; y: number; width: number; label: string; sublabel?: string }) {
-  return (
-    <g>
-      <line x1={x} y1={y + 10} x2={x + width} y2={y + 10}
-        stroke={COLORS.sectionLabel} strokeWidth={0.3} />
-      <text x={x} y={y + 7} fontSize="6.5" fontFamily="Space Mono, monospace" fontWeight="700"
-        fill={COLORS.sectionLabel} letterSpacing="1">
-        {label}
-      </text>
-      {sublabel && (
-        <text x={x + width} y={y + 7} textAnchor="end"
-          fontSize="5.5" fontFamily="Space Mono, monospace" fill={COLORS.sectionLabel} opacity={0.6}>
-          {sublabel}
-        </text>
-      )}
-    </g>
-  );
+function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
+  slopes: RoomData[]; svgW: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+}) {
+  const pw = Math.min(svgW * 0.6, 180);
+  const ph = pw * 0.6;
+  const ox = (svgW - pw) / 2;
+  const sectionH = ph + 32;
+
+  const quadrants: Record<string, { x: number; y: number; anchor: "start" | "middle" | "end" }> = {
+    north: { x: pw / 2, y: 10, anchor: "middle" },
+    south: { x: pw / 2, y: ph - 6, anchor: "middle" },
+    east: { x: pw - 8, y: ph / 2, anchor: "end" },
+    west: { x: 8, y: ph / 2, anchor: "start" },
+    front: { x: pw / 2, y: ph - 6, anchor: "middle" },
+    rear: { x: pw / 2, y: 10, anchor: "middle" },
+    left: { x: 8, y: ph / 2, anchor: "start" },
+    right: { x: pw - 8, y: ph / 2, anchor: "end" },
+  };
+
+  function getSlopePosition(room: RoomData, idx: number) {
+    const n = room.name.toLowerCase();
+    for (const [key, pos] of Object.entries(quadrants)) {
+      if (n.includes(key)) return pos;
+    }
+    const fallback = [quadrants.north, quadrants.east, quadrants.south, quadrants.west];
+    return fallback[idx % 4];
+  }
+
+  return {
+    height: sectionH,
+    render: (yOff: number) => (
+      <g key="roofplan" transform={`translate(0, ${yOff})`}>
+        <text x={8} y={9} fontSize="6" fontFamily={MONO} fontWeight="700" fill={SECTION_COLOR} letterSpacing="0.8">ROOF PLAN</text>
+        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{slopes.length} slopes</text>
+        <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
+
+        <g transform={`translate(${ox}, 16)`}>
+          <rect x={0} y={0} width={pw} height={ph}
+            fill="rgba(120,53,15,0.03)" stroke="#92400E" strokeWidth={1} />
+
+          <line x1={pw * 0.2} y1={ph / 2} x2={pw * 0.8} y2={ph / 2}
+            stroke="#B45309" strokeWidth={1.5} />
+          <text x={pw / 2} y={ph / 2 - 4} textAnchor="middle" fontSize="5" fontFamily={MONO} fill="#B45309">RIDGE</text>
+
+          <line x1={0} y1={0} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
+          <line x1={pw} y1={0} x2={pw * 0.8} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
+          <line x1={0} y1={ph} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
+          <line x1={pw} y1={ph} x2={pw * 0.8} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
+
+          {slopes.map((slope, i) => {
+            const pos = getSlopePosition(slope, i);
+            const isCurrent = slope.id === currentRoomId;
+            const label = slope.name.length > 14 ? slope.name.substring(0, 13) + "…" : slope.name;
+            const dims = slope.dimensions as any;
+
+            return (
+              <g key={slope.id} onClick={() => onRoomClick?.(slope.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+                <text x={pos.x} y={pos.y} textAnchor={pos.anchor}
+                  fontSize="6" fontFamily={FONT} fontWeight="600"
+                  fill={isCurrent ? CURRENT_STROKE : LABEL_COLOR}>
+                  {label}
+                </text>
+                <text x={pos.x} y={pos.y + 8} textAnchor={pos.anchor}
+                  fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
+                  {dims?.pitch ? `${dims.pitch}/12 pitch` : dims?.length && dims?.width ? `${dims.length}' × ${dims.width}'` : "slope"}
+                </text>
+                {slope.damageCount > 0 && (
+                  <>
+                    <circle cx={pos.x + (pos.anchor === "start" ? 50 : pos.anchor === "end" ? -50 : 35)} cy={pos.y - 3} r={4} fill={DAMAGE_COLOR} opacity={0.9} />
+                    <text x={pos.x + (pos.anchor === "start" ? 50 : pos.anchor === "end" ? -50 : 35)} y={pos.y - 2.5} textAnchor="middle" dominantBaseline="middle" fontSize="4.5" fill="white" fontWeight="bold">{slope.damageCount}</text>
+                  </>
+                )}
+              </g>
+            );
+          })}
+        </g>
+      </g>
+    ),
+  };
+}
+
+function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomClick }: {
+  elevations: RoomData[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+}) {
+  const order = ["front", "left", "right", "rear"];
+  const sorted = [...elevations].sort((a, b) => {
+    const ai = order.findIndex(e => (a.roomType || a.name.toLowerCase()).includes(e));
+    const bi = order.findIndex(e => (b.roomType || b.name.toLowerCase()).includes(e));
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  const cols = expanded ? Math.min(sorted.length, 4) : Math.min(sorted.length, 2);
+  const gap = 6;
+  const itemW = (svgW - 16 - (cols - 1) * gap) / cols;
+  const itemH = expanded ? 65 : 50;
+  const rows = Math.ceil(sorted.length / cols);
+  const sectionH = rows * (itemH + gap) + 18;
+
+  return {
+    height: sectionH,
+    render: (yOff: number) => (
+      <g key="elevations" transform={`translate(0, ${yOff})`}>
+        <text x={8} y={9} fontSize="6" fontFamily={MONO} fontWeight="700" fill={SECTION_COLOR} letterSpacing="0.8">ELEVATIONS</text>
+        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{elevations.length} views</text>
+        <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
+
+        {sorted.map((elev, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const ex = 8 + col * (itemW + gap);
+          const ey = 16 + row * (itemH + gap);
+          const isCurrent = elev.id === currentRoomId;
+          const st = getStyle(elev, isCurrent);
+          const dims = elev.dimensions as any;
+          const label = elev.name.length > 16 ? elev.name.substring(0, 15) + "…" : elev.name;
+
+          const wallH = itemH * 0.5;
+          const roofH = itemH * 0.28;
+          const groundY = ey + itemH;
+          const wallTop = groundY - wallH;
+          const wallLeft = ex + itemW * 0.1;
+          const wallRight = ex + itemW * 0.9;
+          const wallW = wallRight - wallLeft;
+
+          const rt = elev.roomType || elev.name.toLowerCase();
+          const isFrontRear = rt.includes("front") || rt.includes("rear");
+
+          return (
+            <g key={elev.id} onClick={() => onRoomClick?.(elev.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+              <text x={ex + itemW / 2} y={ey + 7} textAnchor="middle"
+                fontSize="6" fontFamily={FONT} fontWeight="600" fill={st.text}>
+                {label}
+              </text>
+
+              <line x1={ex} y1={groundY} x2={ex + itemW} y2={groundY}
+                stroke="#78716C" strokeWidth={1} />
+
+              <rect x={wallLeft} y={wallTop} width={wallW} height={wallH}
+                fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
+                strokeDasharray={st.dash || undefined} />
+
+              {isFrontRear ? (
+                <polygon
+                  points={`${wallLeft},${wallTop} ${wallLeft + wallW / 2},${wallTop - roofH} ${wallRight},${wallTop}`}
+                  fill="rgba(120,53,15,0.04)" stroke={st.stroke} strokeWidth={0.8} strokeLinejoin="round" />
+              ) : (
+                <polygon
+                  points={`${wallLeft},${wallTop} ${wallLeft + wallW * 0.15},${wallTop - roofH} ${wallRight - wallW * 0.15},${wallTop - roofH} ${wallRight},${wallTop}`}
+                  fill="rgba(120,53,15,0.04)" stroke={st.stroke} strokeWidth={0.8} strokeLinejoin="round" />
+              )}
+
+              {dims?.height && (
+                <text x={wallLeft - 3} y={wallTop + wallH / 2}
+                  textAnchor="end" dominantBaseline="middle"
+                  fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
+                  {dims.height}'h
+                </text>
+              )}
+              {dims?.length && (
+                <text x={wallLeft + wallW / 2} y={groundY + 7}
+                  textAnchor="middle" fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
+                  {dims.length}'
+                </text>
+              )}
+
+              <Badges room={elev} x={ex} y={ey} w={itemW} />
+            </g>
+          );
+        })}
+      </g>
+    ),
+  };
+}
+
+function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClick }: {
+  items: RoomData[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+}) {
+  const cols = expanded ? 3 : 2;
+  const gap = 4;
+  const itemW = (svgW - 16 - (cols - 1) * gap) / cols;
+  const itemH = 22;
+  const rows = Math.ceil(items.length / cols);
+  const sectionH = rows * (itemH + gap) + 18;
+
+  return {
+    height: sectionH,
+    render: (yOff: number) => (
+      <g key="other" transform={`translate(0, ${yOff})`}>
+        <text x={8} y={9} fontSize="6" fontFamily={MONO} fontWeight="700" fill={SECTION_COLOR} letterSpacing="0.8">OTHER EXTERIOR</text>
+        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{items.length} areas</text>
+        <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
+
+        {items.map((item, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const ix = 8 + col * (itemW + gap);
+          const iy = 16 + row * (itemH + gap);
+          const isCurrent = item.id === currentRoomId;
+          const st = getStyle(item, isCurrent);
+          const dims = item.dimensions as any;
+          const label = item.name.length > 14 ? item.name.substring(0, 13) + "…" : item.name;
+
+          return (
+            <g key={item.id} onClick={() => onRoomClick?.(item.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+              <rect x={ix} y={iy} width={itemW} height={itemH} rx={2}
+                fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
+                strokeDasharray={st.dash || undefined} />
+              <text x={ix + 6} y={iy + itemH / 2 - (dims?.length ? 2 : 0)}
+                dominantBaseline="middle" fontSize="6" fontFamily={FONT} fontWeight="500" fill={st.text}>
+                {label}
+              </text>
+              {dims?.length && (
+                <text x={ix + 6} y={iy + itemH / 2 + 6}
+                  dominantBaseline="middle" fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
+                  {dims.length}'{dims.width ? ` × ${dims.width}'` : " LF"}
+                </text>
+              )}
+              <Badges room={item} x={ix} y={iy} w={itemW} />
+            </g>
+          );
+        })}
+      </g>
+    ),
+  };
 }
 
 export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, className, expanded }: FloorPlanSketchProps) {
-  const structureData = useMemo(() => {
-    const groups: Record<string, { interior: RoomData[]; elevations: RoomData[]; roof: RoomData[]; other: RoomData[] }> = {};
+  const structures = useMemo(() => categorizeRooms(rooms), [rooms]);
+  const svgW = expanded ? 520 : 260;
+  const scale = expanded ? 4 : 3;
 
-    for (const room of rooms) {
-      const structure = room.structure || "Main Dwelling";
-      if (!groups[structure]) groups[structure] = { interior: [], elevations: [], roof: [], other: [] };
+  const layout = useMemo(() => {
+    const sections: Array<{ height: number; render: (y: number) => React.ReactNode }> = [];
+    let y = 6;
 
-      const rt = room.roomType || "";
-      if (rt.startsWith("exterior_elevation_")) {
-        groups[structure].elevations.push(room);
-      } else if (rt === "exterior_roof_slope" || rt.startsWith("roof")) {
-        groups[structure].roof.push(room);
-      } else if (rt.startsWith("exterior_")) {
-        groups[structure].other.push(room);
-      } else {
-        groups[structure].interior.push(room);
-      }
-    }
-
-    return Object.entries(groups).map(([name, data]) => ({ name, ...data }));
-  }, [rooms]);
-
-  const svgWidth = expanded ? 520 : 260;
-  const scale = expanded ? 4.5 : 3;
-  const elevViewW = expanded ? 120 : 58;
-  const elevViewH = expanded ? 80 : 50;
-  const roofPlanSize = expanded ? 160 : 100;
-  const sectionGap = expanded ? 28 : 18;
-
-  const sections = useMemo(() => {
-    const result: Array<{ type: string; yOffset: number; height: number; data: any }> = [];
-    let runningY = 8;
-
-    for (const group of structureData) {
-      if (structureData.length > 1 || group.name !== "Main Dwelling") {
-        result.push({ type: "structureLabel", yOffset: runningY, height: 14, data: { name: group.name } });
-        runningY += 14;
+    for (const group of structures) {
+      if (structures.length > 1 || group.name !== "Main Dwelling") {
+        const headerY = y;
+        sections.push({
+          height: 16,
+          render: (yOff: number) => (
+            <g key={`hdr-${group.name}`} transform={`translate(0, ${yOff})`}>
+              <text x={svgW / 2} y={10} textAnchor="middle" fontSize="7" fontFamily={FONT}
+                fontWeight="700" fill={HEADER_COLOR} letterSpacing="0.5">
+                {group.name.toUpperCase()}
+              </text>
+              <line x1={8} y1={14} x2={svgW - 8} y2={14} stroke={HEADER_COLOR} strokeWidth={0.5} />
+            </g>
+          ),
+        });
+        y += 16;
       }
 
       if (group.interior.length > 0) {
-        const layout = layoutFloorPlan(group.interior, svgWidth - 30, scale);
-        const planWidth = Math.min(layout.width, svgWidth - 30);
-        const planHeight = layout.height;
-        result.push({
-          type: "floorPlan",
-          yOffset: runningY,
-          height: planHeight + sectionGap + 20,
-          data: { ...layout, planWidth, planHeight, rooms: layout.rooms },
-        });
-        runningY += planHeight + sectionGap + 20;
+        const sec = FloorPlanSection({ rooms: group.interior, svgW, scale, currentRoomId, onRoomClick });
+        sections.push(sec);
+        y += sec.height + 6;
       }
 
-      if (group.roof.length > 0) {
-        const rh = roofPlanSize * 0.65;
-        result.push({
-          type: "roofPlan",
-          yOffset: runningY,
-          height: rh + sectionGap + 10,
-          data: { roofRooms: group.roof, planWidth: roofPlanSize, planHeight: rh },
-        });
-        runningY += rh + sectionGap + 10;
+      if (group.roofSlopes.length > 0) {
+        const sec = RoofPlanSection({ slopes: group.roofSlopes, svgW, currentRoomId, onRoomClick });
+        sections.push(sec);
+        y += sec.height + 6;
       }
 
       if (group.elevations.length > 0) {
-        const elevOrder = ["front", "left", "right", "rear"];
-        const sorted = [...group.elevations].sort((a, b) => {
-          const aIdx = elevOrder.findIndex(e => (a.roomType || "").includes(e));
-          const bIdx = elevOrder.findIndex(e => (b.roomType || "").includes(e));
-          return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
-        });
-
-        const perRow = expanded ? 4 : 2;
-        const rowCount = Math.ceil(sorted.length / perRow);
-        const totalElevH = rowCount * (elevViewH + 8) + sectionGap;
-
-        result.push({
-          type: "elevations",
-          yOffset: runningY,
-          height: totalElevH,
-          data: { elevations: sorted, perRow },
-        });
-        runningY += totalElevH;
+        const sec = ElevationsSection({ elevations: group.elevations, svgW, expanded: !!expanded, currentRoomId, onRoomClick });
+        sections.push(sec);
+        y += sec.height + 6;
       }
 
-      if (group.other.length > 0) {
-        const otherH = Math.ceil(group.other.length / (expanded ? 4 : 2)) * 28 + sectionGap;
-        result.push({
-          type: "otherExterior",
-          yOffset: runningY,
-          height: otherH,
-          data: { items: group.other },
-        });
-        runningY += otherH;
+      if (group.otherExterior.length > 0) {
+        const sec = OtherExteriorSection({ items: group.otherExterior, svgW, expanded: !!expanded, currentRoomId, onRoomClick });
+        sections.push(sec);
+        y += sec.height + 6;
       }
     }
 
-    return { sections: result, totalHeight: runningY + 8 };
-  }, [structureData, svgWidth, scale, elevViewW, elevViewH, roofPlanSize, sectionGap, expanded]);
+    return { sections, totalHeight: y + 4 };
+  }, [structures, svgW, scale, currentRoomId, onRoomClick, expanded]);
 
   if (rooms.length === 0) {
     return (
@@ -645,157 +503,34 @@ export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, cla
     );
   }
 
+  let runningY = 0;
+
   return (
     <div className={cn("bg-white rounded-lg border border-slate-200 overflow-hidden", className)} data-testid="floor-plan-sketch">
       <div className="px-3 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
         <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">Property Sketch</p>
         <p className="text-[10px] text-slate-400 font-mono">
-          {structureData.length > 1 ? `${structureData.length} structures · ` : ""}
+          {structures.length > 1 ? `${structures.length} structures · ` : ""}
           {rooms.length} area{rooms.length !== 1 ? "s" : ""}
         </p>
       </div>
 
       <svg
-        viewBox={`0 0 ${svgWidth} ${sections.totalHeight}`}
+        viewBox={`0 0 ${svgW} ${layout.totalHeight}`}
         className="w-full"
         style={expanded ? undefined : { maxHeight: 500 }}
       >
         <defs>
-          <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#F1F5F9" strokeWidth="0.3" />
+          <pattern id="sketchGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#F1F5F9" strokeWidth={0.3} />
           </pattern>
         </defs>
-        <rect width={svgWidth} height={sections.totalHeight} fill="url(#grid)" />
+        <rect width={svgW} height={layout.totalHeight} fill="url(#sketchGrid)" />
 
-        {sections.sections.map((section, si) => {
-          switch (section.type) {
-            case "structureLabel":
-              return (
-                <g key={si}>
-                  <text x={8} y={section.yOffset + 9} fontSize="7" fontFamily="Work Sans, sans-serif"
-                    fontWeight="700" fill={COLORS.labelText} letterSpacing="0.5">
-                    {section.data.name.toUpperCase()}
-                  </text>
-                  <line x1={8} y1={section.yOffset + 12} x2={svgWidth - 8} y2={section.yOffset + 12}
-                    stroke={COLORS.wall} strokeWidth={0.5} />
-                </g>
-              );
-
-            case "floorPlan": {
-              const d = section.data;
-              const offsetX = (svgWidth - d.planWidth) / 2;
-              return (
-                <g key={si} transform={`translate(0, ${section.yOffset})`}>
-                  <SectionHeader x={8} y={0} width={svgWidth - 16} label="FLOOR PLAN" sublabel={`${d.rooms.length} rooms`} />
-                  <g transform={`translate(${offsetX}, 16)`}>
-                    <InteriorFloorPlan
-                      rooms={d.rooms}
-                      width={d.planWidth}
-                      height={d.planHeight}
-                      sharedWalls={d.sharedWalls || []}
-                      currentRoomId={currentRoomId}
-                      onRoomClick={onRoomClick}
-                    />
-                  </g>
-                </g>
-              );
-            }
-
-            case "roofPlan": {
-              const d = section.data;
-              const offsetX = (svgWidth - d.planWidth) / 2;
-              return (
-                <g key={si} transform={`translate(0, ${section.yOffset})`}>
-                  <SectionHeader x={8} y={0} width={svgWidth - 16} label="ROOF PLAN" sublabel={`${d.roofRooms.length} slopes`} />
-                  <g transform={`translate(${offsetX}, 16)`}>
-                    <RoofPlanView
-                      roofRooms={d.roofRooms}
-                      x={0} y={0}
-                      planWidth={d.planWidth}
-                      planHeight={d.planHeight}
-                      currentRoomId={currentRoomId}
-                      onRoomClick={onRoomClick}
-                    />
-                  </g>
-                </g>
-              );
-            }
-
-            case "elevations": {
-              const d = section.data;
-              const gap = expanded ? 8 : 4;
-              const totalRowWidth = d.perRow * elevViewW + (d.perRow - 1) * gap;
-              const startX = (svgWidth - totalRowWidth) / 2;
-
-              return (
-                <g key={si} transform={`translate(0, ${section.yOffset})`}>
-                  <SectionHeader x={8} y={0} width={svgWidth - 16} label="ELEVATIONS" sublabel={`${d.elevations.length} views`} />
-                  {d.elevations.map((elev: RoomData, ei: number) => {
-                    const col = ei % d.perRow;
-                    const row = Math.floor(ei / d.perRow);
-                    const ex = startX + col * (elevViewW + gap);
-                    const ey = 16 + row * (elevViewH + 8);
-
-                    return (
-                      <ElevationView
-                        key={elev.id}
-                        room={elev}
-                        x={ex} y={ey}
-                        viewWidth={elevViewW}
-                        viewHeight={elevViewH}
-                        isCurrent={elev.id === currentRoomId}
-                        onClick={onRoomClick ? () => onRoomClick(elev.id) : undefined}
-                      />
-                    );
-                  })}
-                </g>
-              );
-            }
-
-            case "otherExterior": {
-              const d = section.data;
-              const cols = expanded ? 4 : 2;
-              const itemW = (svgWidth - 24) / cols;
-
-              return (
-                <g key={si} transform={`translate(0, ${section.yOffset})`}>
-                  <SectionHeader x={8} y={0} width={svgWidth - 16} label="OTHER EXTERIOR" sublabel={`${d.items.length} areas`} />
-                  {d.items.map((item: RoomData, ii: number) => {
-                    const col = ii % cols;
-                    const row = Math.floor(ii / cols);
-                    const ix = 12 + col * itemW;
-                    const iy = 18 + row * 24;
-                    const isCurrent = item.id === currentRoomId;
-
-                    return (
-                      <g key={item.id} onClick={() => onRoomClick?.(item.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-                        <rect x={ix} y={iy} width={itemW - 6} height={20} rx={2}
-                          fill={roomFill(item)}
-                          stroke={roomStroke(item, isCurrent)}
-                          strokeWidth={isCurrent ? 1.5 : 0.7} />
-                        <text x={ix + (itemW - 6) / 2} y={iy + 10.5}
-                          textAnchor="middle" dominantBaseline="middle"
-                          fontSize="6" fontFamily="Work Sans, sans-serif" fontWeight="500"
-                          fill={isCurrent ? COLORS.currentHighlight : COLORS.labelText}>
-                          {item.name.length > 14 ? item.name.substring(0, 13) + "…" : item.name}
-                        </text>
-                        {item.damageCount > 0 && (
-                          <>
-                            <circle cx={ix + itemW - 10} cy={iy + 5} r={4} fill={COLORS.damageMarker} opacity={0.9} />
-                            <text x={ix + itemW - 10} y={iy + 5} textAnchor="middle" dominantBaseline="middle"
-                              fontSize="4.5" fill="white" fontWeight="bold">{item.damageCount}</text>
-                          </>
-                        )}
-                      </g>
-                    );
-                  })}
-                </g>
-              );
-            }
-
-            default:
-              return null;
-          }
+        {layout.sections.map((sec, i) => {
+          const thisY = runningY;
+          runningY += sec.height + 6;
+          return sec.render(thisY);
         })}
       </svg>
     </div>
