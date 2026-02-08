@@ -572,6 +572,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         setVoiceState("idle");
         isConnectingRef.current = false;
         setIsConnecting(false);
+
+        dc.send(JSON.stringify({
+          type: "response.create",
+          response: {
+            instructions: "Greet the adjuster with a brief welcome, confirm the claim number and property address, then tell them the first step: verifying the property with a front photo. Keep it to 2-3 sentences. Speak in English.",
+          },
+        }));
       };
 
       dc.onclose = () => {

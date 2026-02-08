@@ -1233,7 +1233,7 @@ Respond in JSON format:
           voice: voiceModel,
           instructions,
           tools: realtimeTools,
-          input_audio_transcription: { model: "whisper-1" },
+          input_audio_transcription: { model: "whisper-1", language: "en" },
           modalities: ["audio", "text"],
           turn_detection: s.pushToTalk
             ? null
