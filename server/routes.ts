@@ -843,6 +843,7 @@ export async function registerRoutes(
       const { name, roomType, structure, structureId, viewType, shapeType,
               parentRoomId, attachmentType, dimensions, polygon, position,
               floor, facetLabel, pitch, phase } = parsed.data;
+      const structureName = structure || "Main Dwelling";
 
       // Resolve structureId: use provided ID, or auto-create from legacy structure string
       let resolvedStructureId = structureId || null;
@@ -870,17 +871,37 @@ export async function registerRoutes(
         }
       }
 
-      // Check for duplicate name within same session
-      const existingRoom = await storage.getRoomByName(sessionId, name);
-      if (existingRoom) {
-        return res.json(existingRoom); // idempotent
+      // Check for duplicate: elevation rooms update dimensions, others return existing
+      const isElevation = roomType && roomType.startsWith("exterior_elevation_");
+      if (isElevation) {
+        const existingRooms = await storage.getRooms(sessionId);
+        const duplicate = existingRooms.find(
+          (r) => r.roomType === roomType && (r.structure || "Main Dwelling") === structureName
+        );
+        if (duplicate) {
+          if (dimensions) {
+            const updated = await storage.updateRoom(duplicate.id, { dimensions, status: "in_progress" });
+            if (updated) {
+              await storage.updateSessionRoom(sessionId, updated.id);
+              return res.status(200).json(updated);
+            }
+          }
+          await storage.updateSessionRoom(sessionId, duplicate.id);
+          return res.status(200).json(duplicate);
+        }
+      } else {
+        const existingRoom = await storage.getRoomByName(sessionId, name);
+        if (existingRoom) {
+          return res.json(existingRoom); // idempotent
+        }
       }
+
 
       const room = await storage.createRoom({
         sessionId,
         name,
         roomType: roomType || null,
-        structure: structure || "Main Dwelling",
+        structure: structureName,
         structureId: resolvedStructureId,
         viewType: viewType || "interior",
         shapeType: shapeType || "rectangle",
@@ -1650,6 +1671,81 @@ Respond in JSON format:
           totalPhotos: allPhotos.length,
           totalMoistureReadings: moistureReadings.length,
         },
+      });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Xactimate-Style Estimate by Room ────────────────
+
+  app.get("/api/inspection/:sessionId/estimate-by-room", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const items = await storage.getLineItems(sessionId);
+      const rooms = await storage.getRooms(sessionId);
+
+      const roomSections = rooms.map(room => {
+        const d = room.dimensions as any;
+        const length = d?.length || 0;
+        const width = d?.width || 0;
+        const height = d?.height || 8;
+        const floorArea = length * width;
+        const perimeter = 2 * (length + width);
+        const wallArea = perimeter * height;
+        const ceilingArea = floorArea;
+
+        const measurements = floorArea > 0 ? {
+          sfWalls: parseFloat(wallArea.toFixed(2)),
+          sfCeiling: parseFloat(ceilingArea.toFixed(2)),
+          sfWallsAndCeiling: parseFloat((wallArea + ceilingArea).toFixed(2)),
+          sfFloor: parseFloat(floorArea.toFixed(2)),
+          syFlooring: parseFloat((floorArea / 9).toFixed(2)),
+          lfFloorPerimeter: parseFloat(perimeter.toFixed(2)),
+          lfCeilPerimeter: parseFloat(perimeter.toFixed(2)),
+        } : null;
+
+        const roomItems = items.filter(i => i.roomId === room.id);
+        const roomTotal = roomItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+        const roomTax = roomItems.reduce((s, i) => {
+          const qty = i.quantity || 0;
+          const up = i.unitPrice || 0;
+          const tp = i.totalPrice || 0;
+          const laborMaterial = qty * up;
+          return s + Math.max(0, tp - laborMaterial);
+        }, 0);
+
+        return {
+          id: room.id,
+          name: room.name,
+          roomType: room.roomType,
+          structure: room.structure || "Main Dwelling",
+          dimensions: { length, width, height },
+          measurements,
+          items: roomItems.map((item, idx) => ({
+            lineNumber: idx + 1,
+            id: item.id,
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            action: item.action,
+            xactCode: item.xactCode,
+            unitPrice: item.unitPrice || 0,
+            totalPrice: item.totalPrice || 0,
+          })),
+          subtotal: parseFloat(roomTotal.toFixed(2)),
+          status: room.status,
+          damageCount: room.damageCount || 0,
+          photoCount: room.photoCount || 0,
+        };
+      });
+
+      const grandTotal = roomSections.reduce((s, r) => s + r.subtotal, 0);
+
+      res.json({
+        rooms: roomSections,
+        grandTotal: parseFloat(grandTotal.toFixed(2)),
+        totalLineItems: items.length,
       });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });

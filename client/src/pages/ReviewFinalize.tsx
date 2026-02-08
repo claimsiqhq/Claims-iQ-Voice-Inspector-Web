@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import MoistureMap from "@/components/MoistureMap";
 import PropertySketch from "@/components/PropertySketch";
+import XactimateEstimateView from "@/components/XactimateEstimateView";
 
 export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const claimId = parseInt(params.id);
@@ -66,12 +67,18 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
     enabled: !!sessionId,
   });
 
+  const { data: estimateByRoomData } = useQuery({
+    queryKey: [`/api/inspection/${sessionId}/estimate-by-room`],
+    enabled: !!sessionId,
+  });
+
   const estimate = estimateData as any;
   const photos = photosData as any;
   const completeness = completenessData as any;
   const transcriptEntries = (transcriptData || []) as any[];
   const briefing = briefingData as any;
   const rooms = (roomsData || []) as any[];
+  const estimateByRoom = estimateByRoomData as any;
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20" data-testid="review-finalize-page">
@@ -139,7 +146,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
           {/* SKETCH TAB */}
           <TabsContent value="sketch" className="flex-1 overflow-y-auto mt-0 p-0">
-            <SketchTab rooms={rooms} sessionId={sessionId} />
+            <SketchTab rooms={rooms} sessionId={sessionId} estimateByRoom={estimateByRoom} claim={claim} />
           </TabsContent>
         </Tabs>
       </div>
@@ -854,41 +861,9 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
 
 // ─── SKETCH TAB ─────────────────────────────────────────
 
-function SketchTab({ rooms, sessionId }: { rooms: any[]; sessionId: number | null }) {
-  if (rooms.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-        <MapPin size={32} className="mb-3 opacity-40" />
-        <p className="text-sm">No rooms recorded during inspection</p>
-      </div>
-    );
-  }
-
-  const completedRooms = rooms.filter((r: any) => r.status === "complete").length;
-  const totalDamages = rooms.reduce((sum: number, r: any) => sum + (r.damageCount || 0), 0);
-  const totalPhotos = rooms.reduce((sum: number, r: any) => sum + (r.photoCount || 0), 0);
-
+function SketchTab({ rooms, sessionId, estimateByRoom, claim }: { rooms: any[]; sessionId: number | null; estimateByRoom: any; claim: any }) {
   return (
     <div className="p-3 md:p-5 space-y-4" data-testid="sketch-tab">
-      <div className="flex gap-3 flex-wrap">
-        <div className="bg-muted/50 rounded-lg px-3 py-2 text-center">
-          <p className="text-lg font-bold text-foreground">{rooms.length}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Areas</p>
-        </div>
-        <div className="bg-green-50 rounded-lg px-3 py-2 text-center">
-          <p className="text-lg font-bold text-green-600">{completedRooms}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Complete</p>
-        </div>
-        <div className="bg-red-50 rounded-lg px-3 py-2 text-center">
-          <p className="text-lg font-bold text-red-600">{totalDamages}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Damages</p>
-        </div>
-        <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
-          <p className="text-lg font-bold text-primary">{totalPhotos}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Photos</p>
-        </div>
-      </div>
-
       <PropertySketch
         sessionId={sessionId}
         rooms={rooms.map((r: any) => ({
@@ -912,24 +887,11 @@ function SketchTab({ rooms, sessionId }: { rooms: any[]; sessionId: number | nul
         expanded
       />
 
-      <div className="flex gap-4 justify-center text-xs text-muted-foreground pt-2">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2 rounded-sm border border-green-500 bg-green-500/10" />
-          <span>Complete</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2 rounded-sm border border-primary bg-primary/15" />
-          <span>In Progress</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2 rounded-sm border border-gray-400 border-dashed bg-gray-100" />
-          <span>Not Started</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-red-500" />
-          <span>Damages</span>
-        </div>
-      </div>
+      <XactimateEstimateView
+        data={estimateByRoom}
+        claimNumber={claim?.claimNumber}
+        insuredName={claim?.insuredName}
+      />
     </div>
   );
 }

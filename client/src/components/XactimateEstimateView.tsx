@@ -1,0 +1,375 @@
+import React from "react";
+import { cn } from "@/lib/utils";
+
+interface RoomMeasurements {
+  sfWalls: number;
+  sfCeiling: number;
+  sfWallsAndCeiling: number;
+  sfFloor: number;
+  syFlooring: number;
+  lfFloorPerimeter: number;
+  lfCeilPerimeter: number;
+}
+
+interface LineItem {
+  lineNumber: number;
+  id: number;
+  description: string;
+  quantity: number | null;
+  unit: string | null;
+  action: string | null;
+  xactCode: string | null;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+interface RoomSection {
+  id: number;
+  name: string;
+  roomType: string | null;
+  structure: string;
+  dimensions: { length: number; width: number; height: number };
+  measurements: RoomMeasurements | null;
+  items: LineItem[];
+  subtotal: number;
+  status: string;
+  damageCount: number;
+  photoCount: number;
+}
+
+interface XactimateEstimateViewProps {
+  data: {
+    rooms: RoomSection[];
+    grandTotal: number;
+    totalLineItems: number;
+  } | null;
+  claimNumber?: string;
+  insuredName?: string;
+}
+
+function fmtDim(feet: number): string {
+  const wholeFeet = Math.floor(feet);
+  const inches = Math.round((feet - wholeFeet) * 12);
+  if (inches === 0) return `${wholeFeet}'`;
+  if (inches === 12) return `${wholeFeet + 1}'`;
+  return `${wholeFeet}' ${inches}"`;
+}
+
+function fmtNum(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; width: number; height: number }; name: string }) {
+  const { length, width } = dimensions;
+  if (!length || !width) return null;
+
+  const maxSvgW = 300;
+  const maxSvgH = 200;
+  const margin = 40;
+
+  const aspect = length / width;
+  let rectW: number, rectH: number;
+
+  if (aspect > (maxSvgW - margin * 2) / (maxSvgH - margin * 2)) {
+    rectW = Math.min(maxSvgW - margin * 2, 220);
+    rectH = rectW / aspect;
+  } else {
+    rectH = Math.min(maxSvgH - margin * 2, 130);
+    rectW = rectH * aspect;
+  }
+
+  rectW = Math.max(rectW, 90);
+  rectH = Math.max(rectH, 55);
+
+  const svgW = rectW + margin * 2;
+  const svgH = rectH + margin * 2;
+  const rx = margin;
+  const ry = margin;
+  const dimFont = "9";
+  const dimColor = "#333";
+  const lineColor = "#555";
+  const tickLen = 8;
+  const tickOff = 4;
+  const labelOff = 16;
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full max-w-[300px]" style={{ maxHeight: 210 }}>
+      <rect x={rx} y={ry} width={rectW} height={rectH}
+        fill="none" stroke="#1a1a1a" strokeWidth={2} />
+
+      <text x={rx + rectW / 2} y={ry + rectH / 2}
+        textAnchor="middle" dominantBaseline="middle"
+        fontSize="11" fontFamily="Work Sans, sans-serif" fontWeight="600" fill="#333">
+        {name}
+      </text>
+
+      {/* Top dimension (length) */}
+      <line x1={rx} y1={ry - tickOff} x2={rx} y2={ry - tickOff - tickLen} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx + rectW} y1={ry - tickOff} x2={rx + rectW} y2={ry - tickOff - tickLen} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx} y1={ry - tickOff - tickLen / 2} x2={rx + rectW} y2={ry - tickOff - tickLen / 2} stroke={lineColor} strokeWidth={0.8} />
+      <text x={rx + rectW / 2} y={ry - labelOff}
+        textAnchor="middle" fontSize={dimFont} fontFamily="monospace" fill={dimColor}>
+        {fmtDim(length)}
+      </text>
+
+      {/* Bottom dimension (length) */}
+      <line x1={rx} y1={ry + rectH + tickOff} x2={rx} y2={ry + rectH + tickOff + tickLen} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx + rectW} y1={ry + rectH + tickOff} x2={rx + rectW} y2={ry + rectH + tickOff + tickLen} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx} y1={ry + rectH + tickOff + tickLen / 2} x2={rx + rectW} y2={ry + rectH + tickOff + tickLen / 2} stroke={lineColor} strokeWidth={0.8} />
+      <text x={rx + rectW / 2} y={ry + rectH + labelOff + 6}
+        textAnchor="middle" fontSize={dimFont} fontFamily="monospace" fill={dimColor}>
+        {fmtDim(length)}
+      </text>
+
+      {/* Right dimension (width) */}
+      <line x1={rx + rectW + tickOff} y1={ry} x2={rx + rectW + tickOff + tickLen} y2={ry} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx + rectW + tickOff} y1={ry + rectH} x2={rx + rectW + tickOff + tickLen} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx + rectW + tickOff + tickLen / 2} y1={ry} x2={rx + rectW + tickOff + tickLen / 2} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
+      <text x={rx + rectW + labelOff + 4} y={ry + rectH / 2}
+        textAnchor="start" dominantBaseline="middle"
+        fontSize={dimFont} fontFamily="monospace" fill={dimColor}>
+        {fmtDim(width)}
+      </text>
+
+      {/* Left dimension (width) */}
+      <line x1={rx - tickOff} y1={ry} x2={rx - tickOff - tickLen} y2={ry} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx - tickOff} y1={ry + rectH} x2={rx - tickOff - tickLen} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
+      <line x1={rx - tickOff - tickLen / 2} y1={ry} x2={rx - tickOff - tickLen / 2} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
+      <text x={rx - labelOff - 4} y={ry + rectH / 2}
+        textAnchor="end" dominantBaseline="middle"
+        fontSize={dimFont} fontFamily="monospace" fill={dimColor}>
+        {fmtDim(width)}
+      </text>
+    </svg>
+  );
+}
+
+function MeasurementsBlock({ m }: { m: RoomMeasurements }) {
+  return (
+    <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] font-mono text-slate-700" data-testid="measurements-block">
+      <div className="flex justify-between">
+        <span>{fmtNum(m.sfWalls)} SF Walls</span>
+      </div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.sfCeiling)} SF Ceiling</span>
+      </div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.sfWallsAndCeiling)} SF Walls &amp; Ceiling</span>
+      </div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.sfFloor)} SF Floor</span>
+      </div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.syFlooring)} SY Flooring</span>
+      </div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.lfFloorPerimeter)} LF Floor Perimeter</span>
+      </div>
+      <div>&nbsp;</div>
+      <div className="flex justify-between">
+        <span>{fmtNum(m.lfCeilPerimeter)} LF Ceil. Perimeter</span>
+      </div>
+    </div>
+  );
+}
+
+function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; roomName: string; subtotal: number }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-3" data-testid="line-items-table">
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr className="border-b border-slate-300">
+            <th className="text-left py-1.5 pr-2 font-semibold text-slate-600 w-[40%]">DESCRIPTION</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[12%]">QTY</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">RESET</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">REMOVE</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">REPLACE</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">TAX</th>
+            <th className="text-right py-1.5 pl-1 font-semibold text-slate-600 w-[10%]">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const act = (item.action || "").toLowerCase();
+            const isRemove = act === "remove" || act === "tear out" || act === "demolition";
+            const isReset = act === "reset" || act === "detach & reset" || act === "d&r";
+            const qty = item.quantity || 0;
+            const up = item.unitPrice || 0;
+            const extendedCost = qty * up;
+            const tax = Math.max(0, item.totalPrice - extendedCost);
+            const removeCol = isRemove ? up : 0;
+            const replaceCol = isRemove ? 0 : (isReset ? 0 : up);
+
+            return (
+              <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                <td className="py-1.5 pr-2 text-slate-800">
+                  <span className="text-slate-400 mr-1">{item.lineNumber}.</span>
+                  {item.description}
+                </td>
+                <td className="text-right py-1.5 px-1 text-slate-600 font-mono whitespace-nowrap">
+                  {qty > 0 ? `${fmtNum(qty)} ${item.unit || ""}`.trim() : ""}
+                </td>
+                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
+                  {isReset ? fmtNum(item.totalPrice) : ""}
+                </td>
+                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
+                  {removeCol > 0 ? fmtNum(removeCol) : "0.00"}
+                </td>
+                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
+                  {replaceCol > 0 ? fmtNum(replaceCol) : "0.00"}
+                </td>
+                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
+                  {tax > 0.005 ? fmtNum(tax) : "0.00"}
+                </td>
+                <td className="text-right py-1.5 pl-1 font-mono font-semibold text-slate-800">
+                  {fmtNum(item.totalPrice)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-slate-300">
+            <td colSpan={6} className="py-2 pr-2 font-semibold text-slate-700">
+              Totals: {roomName}
+            </td>
+            <td className="text-right py-2 pl-1 font-mono font-bold text-slate-900">
+              {fmtNum(subtotal)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function RoomSectionView({ room }: { room: RoomSection }) {
+  const hasDimensions = room.dimensions.length > 0 && room.dimensions.width > 0;
+  const isExterior = (room.roomType || "").startsWith("exterior_");
+
+  return (
+    <div className="mb-8 break-inside-avoid" data-testid={`room-section-${room.id}`}>
+      {isExterior ? (
+        <div>
+          <div className="flex items-baseline justify-between mb-2 border-b border-slate-200 pb-1">
+            <h3 className="text-sm font-bold text-slate-800">{room.name}</h3>
+            {hasDimensions && (
+              <span className="text-[11px] font-mono text-slate-500">
+                {room.dimensions.length > 0 && room.dimensions.width > 0
+                  ? `${fmtDim(room.dimensions.length)} × ${fmtDim(room.dimensions.width)}`
+                  : room.dimensions.length > 0 ? `${fmtDim(room.dimensions.length)} LF` : ""}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-shrink-0">
+            {hasDimensions && (
+              <RoomSketchSVG dimensions={room.dimensions} name={room.name} />
+            )}
+            {!hasDimensions && (
+              <div className="w-[200px] h-[80px] border-2 border-dashed border-slate-300 flex items-center justify-center rounded">
+                <span className="text-xs text-slate-400 text-center px-2">{room.name}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between mb-2">
+              <h3 className="text-sm font-bold text-slate-800">{room.name}</h3>
+              <span className="text-[11px] font-mono text-slate-500">Height: {room.dimensions.height || 8}'</span>
+            </div>
+
+            {room.measurements && (
+              <MeasurementsBlock m={room.measurements} />
+            )}
+          </div>
+        </div>
+      )}
+
+      <LineItemsTable items={room.items} roomName={room.name} subtotal={room.subtotal} />
+
+      {room.items.length === 0 && (
+        <div className="mt-2 text-[11px] text-slate-400 italic">No line items recorded for this area.</div>
+      )}
+    </div>
+  );
+}
+
+export default function XactimateEstimateView({ data, claimNumber, insuredName }: XactimateEstimateViewProps) {
+  if (!data || data.rooms.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="mb-3 opacity-40">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+        <p className="text-sm">No inspection data available yet</p>
+      </div>
+    );
+  }
+
+  const structures = new Map<string, RoomSection[]>();
+  for (const room of data.rooms) {
+    const s = room.structure || "Main Dwelling";
+    if (!structures.has(s)) structures.set(s, []);
+    structures.get(s)!.push(room);
+  }
+
+  let globalLineNum = 0;
+  for (const room of data.rooms) {
+    for (const item of room.items) {
+      globalLineNum++;
+      item.lineNumber = globalLineNum;
+    }
+  }
+
+  return (
+    <div className="bg-white" data-testid="xactimate-estimate-view">
+      <div className="border-b border-slate-200 px-4 py-3 flex items-baseline justify-between">
+        <div>
+          {insuredName && (
+            <p className="text-xs font-mono text-slate-500 uppercase tracking-wider">{insuredName}</p>
+          )}
+          <h2 className="text-base font-bold text-slate-800 font-mono">
+            {claimNumber || "Estimate"}
+          </h2>
+        </div>
+        <div className="text-right text-[11px] font-mono text-slate-400">
+          <p>{data.totalLineItems} line items</p>
+          <p>{data.rooms.length} area{data.rooms.length !== 1 ? "s" : ""}</p>
+        </div>
+      </div>
+
+      <div className="px-4 py-4">
+        {Array.from(structures.entries()).map(([structureName, rooms]) => (
+          <div key={structureName}>
+            {structures.size > 1 && (
+              <div className="mb-4 pb-1 border-b-2 border-slate-300">
+                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider font-mono">
+                  {structureName}
+                </h2>
+              </div>
+            )}
+
+            {rooms.map((room) => (
+              <RoomSectionView key={room.id} room={room} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {data.grandTotal > 0 && (
+        <div className="border-t-2 border-slate-400 mx-4 py-3 flex justify-between items-center">
+          <span className="text-sm font-bold text-slate-800 font-mono">GRAND TOTAL</span>
+          <span className="text-lg font-bold text-slate-900 font-mono">${fmtNum(data.grandTotal)}</span>
+        </div>
+      )}
+    </div>
+  );
+}

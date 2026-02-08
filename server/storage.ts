@@ -88,6 +88,7 @@ export interface IStorage {
   getChildRooms(parentRoomId: number): Promise<InspectionRoom[]>;
   getRoom(roomId: number): Promise<InspectionRoom | undefined>;
   getRoomByName(sessionId: number, name: string): Promise<InspectionRoom | undefined>;
+  updateRoom(roomId: number, updates: Partial<InsertInspectionRoom>): Promise<InspectionRoom | undefined>;
   updateRoomStatus(roomId: number, status: string): Promise<InspectionRoom | undefined>;
   updateRoomGeometry(roomId: number, polygon: any, position: any): Promise<InspectionRoom | undefined>;
   completeRoom(roomId: number): Promise<InspectionRoom | undefined>;
@@ -480,6 +481,11 @@ export class DatabaseStorage implements IStorage {
   async getRoomByName(sessionId: number, name: string): Promise<InspectionRoom | undefined> {
     const [room] = await db.select().from(inspectionRooms)
       .where(and(eq(inspectionRooms.sessionId, sessionId), eq(inspectionRooms.name, name)));
+    return room;
+  }
+
+  async updateRoom(roomId: number, updates: Partial<InsertInspectionRoom>): Promise<InspectionRoom | undefined> {
+    const [room] = await db.update(inspectionRooms).set(updates).where(eq(inspectionRooms.id, roomId)).returning();
     return room;
   }
 
