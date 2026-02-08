@@ -158,13 +158,68 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isConnected, isPaused]);
 
+  const getAuthHeaders = useCallback(async () => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    } catch {}
+    return headers;
+  }, []);
+
+  const refreshEstimate = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
+      const data = await res.json();
+      setEstimateSummary(data);
+    } catch {}
+  }, [sessionId, getAuthHeaders]);
+
+  const refreshLineItems = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/line-items`, { headers });
+      const items = await res.json();
+      setRecentLineItems(items.slice(-5).reverse());
+      refreshEstimate();
+    } catch {}
+  }, [sessionId, refreshEstimate, getAuthHeaders]);
+
+  const refreshRooms = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
+      const data = await res.json();
+      setRooms(data);
+    } catch {}
+  }, [sessionId, getAuthHeaders]);
+
+  const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
+    if (!text.trim()) return;
+    setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
+    if (sessionId) {
+      try {
+        const headers = await getAuthHeaders();
+        fetch(`/api/inspection/${sessionId}/transcript`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ speaker: role, content: text }),
+        }).catch(() => {});
+      } catch {}
+    }
+  }, [sessionId, getAuthHeaders]);
+
   // Initial data load when session is available
   useEffect(() => {
     if (!sessionId) return;
     refreshRooms();
     refreshLineItems();
     refreshEstimate();
-    // Load existing photos
     (async () => {
       try {
         const headers = await getAuthHeaders();
@@ -183,7 +238,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
       } catch {}
     })();
-    // Also load session state (phase, structure)
     (async () => {
       try {
         const headers = await getAuthHeaders();
@@ -223,62 +277,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, agentPartialText]);
-
-  const getAuthHeaders = useCallback(async () => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {}
-    return headers;
-  }, []);
-
-  const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
-    if (!text.trim()) return;
-    setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
-    if (sessionId) {
-      try {
-        const headers = await getAuthHeaders();
-        fetch(`/api/inspection/${sessionId}/transcript`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ speaker: role, content: text }),
-        }).catch(() => {});
-      } catch {}
-    }
-  }, [sessionId, getAuthHeaders]);
-
-  const refreshEstimate = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
-      const data = await res.json();
-      setEstimateSummary(data);
-    } catch {}
-  }, [sessionId, getAuthHeaders]);
-
-  const refreshLineItems = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/line-items`, { headers });
-      const items = await res.json();
-      setRecentLineItems(items.slice(-5).reverse());
-      refreshEstimate();
-    } catch {}
-  }, [sessionId, refreshEstimate, getAuthHeaders]);
-
-  const refreshRooms = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
-      const data = await res.json();
-      setRooms(data);
-    } catch {}
-  }, [sessionId, getAuthHeaders]);
 
   const executeToolCall = useCallback(async (event: any) => {
     const { name, arguments: argsString, call_id } = event;
