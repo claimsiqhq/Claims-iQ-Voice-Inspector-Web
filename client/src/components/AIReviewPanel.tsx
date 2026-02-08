@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle, CheckCircle2, AlertCircle, ChevronDown,
@@ -23,7 +24,7 @@ export default function AIReviewPanel({ sessionId }: AIReviewPanelProps) {
   const { data: review, isLoading, refetch } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/review/ai`],
     queryFn: async () => {
-      const res = await fetch(`/api/inspection/${sessionId}/review/ai`, { method: "POST" });
+      const res = await apiRequest("POST", `/api/inspection/${sessionId}/review/ai`);
       return res.json();
     },
     enabled: !!sessionId,

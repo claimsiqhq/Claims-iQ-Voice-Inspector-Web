@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   ChevronLeft, Plus, Loader2, Send,
@@ -20,7 +21,7 @@ export default function SupplementalPage({ params }: { params: { id: string } })
   const { data: sessionData } = useQuery({
     queryKey: [`/api/claims/${claimId}/inspection/start`],
     queryFn: async () => {
-      const res = await fetch(`/api/claims/${claimId}/inspection/start`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
       return res.json();
     },
     enabled: !!claimId,
@@ -43,15 +44,11 @@ export default function SupplementalPage({ params }: { params: { id: string } })
   // Create supplemental
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/inspection/${sessionId}/supplemental`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reason: formData.reason,
-          newLineItems: formData.newItems,
-          removedLineItemIds: [],
-          modifiedLineItems: [],
-        }),
+      const res = await apiRequest("POST", `/api/inspection/${sessionId}/supplemental`, {
+        reason: formData.reason,
+        newLineItems: formData.newItems,
+        removedLineItemIds: [],
+        modifiedLineItems: [],
       });
       return res.json();
     },
@@ -65,10 +62,7 @@ export default function SupplementalPage({ params }: { params: { id: string } })
   // Submit supplemental
   const submitMutation = useMutation({
     mutationFn: async (supplementalId: number) => {
-      const res = await fetch(`/api/supplemental/${supplementalId}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await apiRequest("POST", `/api/supplemental/${supplementalId}/submit`);
       return res.json();
     },
     onSuccess: () => {

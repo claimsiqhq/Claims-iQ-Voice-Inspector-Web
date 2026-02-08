@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { supabase } from "@/lib/supabaseClient";
+import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import AIReviewPanel from "@/components/AIReviewPanel";
 import {
@@ -31,7 +30,7 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   const { data: sessionData } = useQuery({
     queryKey: [`/api/claims/${claimId}/inspection/start`],
     queryFn: async () => {
-      const res = await fetch(`/api/claims/${claimId}/inspection/start`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
       return res.json();
     },
     enabled: !!claimId,
@@ -43,7 +42,7 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   const { data: validation, isLoading: validationLoading } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/export/validate`],
     queryFn: async () => {
-      const res = await fetch(`/api/inspection/${sessionId}/export/validate`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await apiRequest("POST", `/api/inspection/${sessionId}/export/validate`);
       return res.json();
     },
     enabled: !!sessionId,
@@ -67,10 +66,13 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   // ESX Export
   const esxMutation = useMutation({
     mutationFn: async () => {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/export/esx`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        credentials: "include",
       });
+      if (!res.ok) throw new Error("Failed to generate ESX export");
       const blob = await res.blob();
       const contentDisposition = res.headers.get("Content-Disposition");
       const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || "export.esx";
@@ -84,20 +86,20 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   // PDF Export
   const pdfMutation = useMutation({
     mutationFn: async () => {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/export/pdf`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        credentials: "include",
       });
 
       if (!res.ok) {
         throw new Error("Failed to generate PDF");
       }
 
-      // Get the PDF as a blob
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      // Trigger download
       const a = document.createElement("a");
       a.href = url;
       a.download = `${claim?.claimNumber || "inspection"}_report.pdf`;
@@ -110,15 +112,10 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
   const photoReportPdfMutation = useMutation({
     mutationFn: async () => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (supabase) {
-        const { data } = await supabase.auth.getSession();
-        const token = data?.session?.access_token;
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-      }
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/export/photo-report/pdf`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json", ...authHeaders },
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to generate photo report PDF");
@@ -135,15 +132,10 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
   const photoReportDocxMutation = useMutation({
     mutationFn: async () => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (supabase) {
-        const { data } = await supabase.auth.getSession();
-        const token = data?.session?.access_token;
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-      }
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/export/photo-report/docx`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json", ...authHeaders },
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to generate photo report Word doc");

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getAuthHeaders } from "@/lib/queryClient";
 import Layout from "@/components/Layout";
 import { StageIndicator, getDocStage } from "@/components/DocumentStatusTracker";
 import { Card } from "@/components/ui/card";
@@ -121,7 +122,11 @@ function ClaimCard({ claim, docs }: { claim: Claim; docs: DocRecord[] }) {
     setLoadingPdf(true);
     setViewingDoc({ docId: doc.id, fileName: doc.fileName || "Document" });
     try {
-      const res = await fetch(`/api/documents/${doc.id}/signed-url`);
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch(`/api/documents/${doc.id}/signed-url`, {
+        headers: authHeaders,
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to get document URL");
       const data = await res.json();
       setPdfUrls(data.urls);

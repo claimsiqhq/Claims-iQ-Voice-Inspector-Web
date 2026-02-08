@@ -1,7 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   if (supabase) {
     try {
