@@ -102,16 +102,30 @@ RULE: Use for test square results, pitch notations, directional damage markers, 
    Phase 7: Estimate Assembly (review line items, labor minimums)
    Phase 8: Finalize (summary, completeness check)
 
-2. **Proactive Prompting:** After documenting damage, suggest related items the adjuster might miss. E.g., after roof shingles → ask about drip edge, ice barrier, felt, ridge cap, flashing. After siding → ask about house wrap, J-trim, light fixture D&R.
+2. **Proactive Prompting & Waterfall Logic:** After documenting damage or adding R&R items, ALWAYS call check_related_items silently to detect missing companion items. Examples:
+   - After roof shingles → drip edge, ice barrier, felt, ridge cap, flashing
+   - After siding → house wrap, J-trim, light fixture D&R
+   - After R&R vanity → detach/reset plumbing, angle stops, P-trap
+   - After R&R kitchen cabinets → disconnect/reconnect plumbing, electrical, countertop D&R
+   When check_related_items returns suggestions, speak them to the adjuster: "I'd also recommend adding [items]. Should I include those?"
 
 3. **Ambiguity Resolution:** If the adjuster is vague, ask for specifics. "Replace the fascia" → "Is that 6-inch or 8-inch? Aluminum or wood?" Material and size affect pricing significantly.
 
 4. **Peril Awareness:** For ${claim.perilType} claims:
-${claim.perilType === 'hail' ? '- Look for: bruised/dented shingles, soft metal dents (gutters, flashing, AC fins), spatter on paint\n- Always ask for test square hit counts — record using add_sketch_annotation with type "hail_count"\n- Distinguish hail hits from blistering/weathering' : ''}
-${claim.perilType === 'wind' ? '- Look for: missing/creased shingles, lifted edges, blown-off ridge caps, structural displacement\n- Check all four elevations for directional damage\n- Record storm direction using add_sketch_annotation with type "storm_direction"' : ''}
-${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/mildew, moisture readings\n- Trace water path from entry point to lowest affected area\n- Classify water category (1-3) and damage class (1-4) per IICRC S500' : ''}
+${claim.perilType === 'hail' ? '- Look for: bruised/dented shingles, soft metal dents (gutters, flashing, AC fins), spatter on paint\n- ALWAYS use log_test_square to record forensic 10x10 test squares on each roof facet — this is REQUIRED by most carriers\n- Also record using add_sketch_annotation with type "hail_count" for the sketch\n- Distinguish hail hits from blistering/weathering\n- If test square shows 8+ hits per 10x10, recommend full slope replacement' : ''}
+${claim.perilType === 'wind' ? '- Look for: missing/creased shingles, lifted edges, blown-off ridge caps, structural displacement\n- Check all four elevations for directional damage\n- Record storm direction using add_sketch_annotation with type "storm_direction"\n- Use log_test_square to document wind crease counts on each facet' : ''}
+${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/mildew, moisture readings\n- Trace water path from entry point to lowest affected area\n- Classify water category (1-3) and damage class (1-4) per IICRC S500\n- Consider using apply_smart_macro with "water_mitigation_dryout" for standard drying setups' : ''}
 
-5. **Photo Triggers:** Call trigger_photo_capture when:
+5. **Smart Macros:** When the adjuster confirms a standard repair scope (e.g., "full roof replacement", "paint the whole room"), use apply_smart_macro to add all required line items at once. This prevents missing standard items. Always confirm with the adjuster: "I'll add the full roof replacement bundle — tear off, laminated shingles, felt, ice barrier, drip edge, and ridge vent. Sound right?"
+
+6. **Coverage Buckets & O&P:** When adding line items:
+   - Default coverage_bucket to "Dwelling" for main structure items
+   - Use "Other_Structures" for detached garages, sheds, fences
+   - Use "Code_Upgrade" for items required by current building code but not in original construction
+   - Apply O&P (apply_o_and_p: true) when 3+ trades are involved per Xactimate industry standards
+   - Always specify quality_grade for materials where grade affects pricing (e.g., 'Standard' vs 'High Grade' shingles)
+
+7. **Photo Triggers:** Call trigger_photo_capture when:
    - Entering a new area (overview photo)
    - Adjuster describes visible damage (damage detail photo)
    - Test square count is mentioned (test square photo)
@@ -119,15 +133,15 @@ ${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/m
    - Adjuster says "take a photo" or "capture this"
    IMPORTANT: The camera will open and WAIT for capture. Do NOT continue talking until you receive the tool result.
 
-6. **Coverage Limits:** Deductible: $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A: $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert if the estimate approaches limits.
+8. **Coverage Limits:** Deductible: $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A: $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert if the estimate approaches limits.
 
-7. **Skip Steps (Password Protected):** If the adjuster wants to skip a step, they MUST first say the voice password **"123"** (spoken as "one two three"). Here's the flow:
+9. **Skip Steps (Password Protected):** If the adjuster wants to skip a step, they MUST first say the voice password **"123"** (spoken as "one two three"). Here's the flow:
    - If the adjuster says "skip" WITHOUT first saying "123", respond: "To skip a step, please say the voice password first."
    - Do NOT hint at or reveal what the password is.
    - Once the adjuster says "123" or "one two three", acknowledge: "Override confirmed." Then call skip_step with passwordConfirmed: true.
    - After skipping, move to the next logical step and prompt the adjuster.
 
-8. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
+10. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
 }
 
 export const realtimeTools = [
@@ -285,11 +299,11 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_line_item",
-    description: "Adds an Xactimate-compatible estimate line item. When possible, provide a catalogCode (e.g., 'RFG-SHIN-AR') for accurate pricing lookup. Otherwise describe the item and let the frontend look it up by description.",
+    description: "Adds an Xactimate-compatible estimate line item. When possible, provide a catalogCode (e.g., 'RFG-SHIN-AR') for accurate pricing lookup. Otherwise describe the item and let the frontend look it up by description. Use coverage_bucket to route items to the correct policy section, and apply_o_and_p for trades that qualify for Overhead & Profit.",
     parameters: {
       type: "object",
       properties: {
-        category: { type: "string", enum: ["Roofing", "Siding", "Soffit/Fascia", "Gutters", "Windows", "Doors", "Drywall", "Painting", "Flooring", "Plumbing", "Electrical", "HVAC", "Debris", "General", "Fencing"] },
+        category: { type: "string", enum: ["Roofing", "Siding", "Soffit/Fascia", "Gutters", "Windows", "Doors", "Drywall", "Painting", "Flooring", "Plumbing", "Electrical", "HVAC", "Debris", "General", "Fencing", "Cabinetry"] },
         action: { type: "string", enum: ["R&R", "Detach & Reset", "Repair", "Paint", "Clean", "Tear Off", "Labor Only", "Install"] },
         description: { type: "string", description: "Detailed item, e.g., 'Laminated composition shingles' or '6-inch aluminum fascia'" },
         catalogCode: { type: "string", description: "Xactimate-style code from pricing catalog (e.g., 'RFG-SHIN-AR' for architectural shingles). Enables accurate pricing lookup." },
@@ -297,7 +311,10 @@ export const realtimeTools = [
         unit: { type: "string", enum: ["SF", "LF", "EA", "SQ", "HR", "DAY"] },
         unitPrice: { type: "number", description: "Price per unit (estimate if not known exactly)" },
         wasteFactor: { type: "integer", description: "Waste percentage for materials (10, 12, 15)" },
-        depreciationType: { type: "string", enum: ["Recoverable", "Non-Recoverable", "Paid When Incurred"], description: "Default Recoverable unless roof schedule or fence" }
+        depreciationType: { type: "string", enum: ["Recoverable", "Non-Recoverable", "Paid When Incurred"], description: "Default Recoverable unless roof schedule or fence" },
+        coverage_bucket: { type: "string", enum: ["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"], description: "Policy coverage section. Default: Dwelling. Use Code_Upgrade for building code items, Other_Structures for detached buildings, Contents for personal property." },
+        quality_grade: { type: "string", description: "Material grade (e.g., 'MDF', 'Pine', 'Standard', 'High Grade', 'Builder Grade'). Prevents pricing disputes by documenting exact material spec." },
+        apply_o_and_p: { type: "boolean", description: "Whether to apply 10% Overhead + 10% Profit markup. Typically true when 3+ trades are involved per Xactimate standards." }
       },
       required: ["category", "action", "description"]
     }
@@ -361,6 +378,50 @@ export const realtimeTools = [
         passwordConfirmed: { type: "boolean", description: "Must be true — confirms the adjuster spoke the voice password '123' before this call" }
       },
       required: ["stepDescription", "passwordConfirmed"]
+    }
+  },
+  {
+    type: "function",
+    name: "apply_smart_macro",
+    description: "Applies a bundle of standard line items for common repair scopes. For example, 'Full Roof Replacement' adds tear-off, shingles, felt, ice & water barrier, drip edge, and ridge vent in one command. Saves time by bundling items that always go together per Xactimate standards.",
+    parameters: {
+      type: "object",
+      properties: {
+        macro_type: { type: "string", enum: ["roof_replacement_laminated", "roof_replacement_3tab", "interior_paint_walls_ceiling", "water_mitigation_dryout"], description: "The bundle to apply." },
+        severity: { type: "string", enum: ["average", "heavy", "premium"], description: "Affects quantities and material grade. Default: average." },
+        waste_factor: { type: "number", description: "Waste percentage override (e.g. 10, 15). Defaults vary by macro." }
+      },
+      required: ["macro_type"]
+    }
+  },
+  {
+    type: "function",
+    name: "check_related_items",
+    description: "Analyzes the current room's items to detect missing complementary line items ('leakage'). For example, after 'R&R Vanity' this tool suggests 'Detach/Reset Plumbing, Angle Stops, P-Trap'. Call this automatically after major R&R or removal actions to ensure the estimate is complete.",
+    parameters: {
+      type: "object",
+      properties: {
+        primary_category: { type: "string", enum: ["Cabinetry", "Roofing", "Drywall", "Siding", "Flooring", "Plumbing", "Electrical", "Windows", "Doors"], description: "The category of the action just performed." },
+        action_taken: { type: "string", description: "The main action just performed (e.g., 'Remove Vanity', 'R&R Kitchen Cabinets', 'Tear Off Shingles')." }
+      },
+      required: ["primary_category"]
+    }
+  },
+  {
+    type: "function",
+    name: "log_test_square",
+    description: "Logs a forensic 10x10 test square for hail/wind damage assessment. Required by most carriers for hail claims. Records hit counts, wind creases, roof pitch (critical for steep charges), and pass/fail determination. The pitch value directly impacts labor pricing — pitches above 7/12 trigger steep charges.",
+    parameters: {
+      type: "object",
+      properties: {
+        room_id: { type: "string", description: "The specific roof slope/facet ID or name (e.g., 'North Slope', 'F1')." },
+        hail_hits: { type: "integer", description: "Number of hail impacts counted in the 10x10 ft test square." },
+        wind_creases: { type: "integer", description: "Number of wind creases/lifted shingles in the test square." },
+        pitch: { type: "string", description: "Roof pitch, e.g., '7/12'. Critical: pitches above 7/12 trigger steep charges in Xactimate." },
+        result: { type: "string", enum: ["pass", "fail", "brittle_test_failure"], description: "Test outcome. 'fail' = enough damage for replacement. 'brittle_test_failure' = shingles failed brittle test (age/weathering)." },
+        notes: { type: "string", description: "Additional observations, e.g., 'Granule loss concentrated on south exposure'" }
+      },
+      required: ["hail_hits", "pitch"]
     }
   },
   {

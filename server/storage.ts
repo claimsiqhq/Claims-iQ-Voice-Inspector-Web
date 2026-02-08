@@ -4,6 +4,7 @@ import {
   inspectionSessions, inspectionRooms, damageObservations,
   lineItems, inspectionPhotos, moistureReadings, voiceTranscripts,
   supplementalClaims, structures, roomOpenings, sketchAnnotations, sketchTemplates,
+  testSquares,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
@@ -19,6 +20,7 @@ import {
   type LineItem, type InsertLineItem,
   type InspectionPhoto, type InsertInspectionPhoto,
   type MoistureReading, type InsertMoistureReading,
+  type TestSquare, type InsertTestSquare,
   type VoiceTranscript, type InsertVoiceTranscript,
   type SupplementalClaim, type InsertSupplementalClaim,
   scopeLineItems, regionalPriceSets,
@@ -141,6 +143,11 @@ export interface IStorage {
   createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
   getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
   getMoistureReadingsForSession(sessionId: number): Promise<MoistureReading[]>;
+
+  // Test squares (forensic hail/wind documentation)
+  createTestSquare(data: InsertTestSquare): Promise<TestSquare>;
+  getTestSquares(sessionId: number): Promise<TestSquare[]>;
+  getTestSquaresForRoom(roomId: number): Promise<TestSquare[]>;
 
   addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript>;
   getTranscript(sessionId: number): Promise<VoiceTranscript[]>;
@@ -744,6 +751,19 @@ export class DatabaseStorage implements IStorage {
 
   async getMoistureReadingsForSession(sessionId: number): Promise<MoistureReading[]> {
     return db.select().from(moistureReadings).where(eq(moistureReadings.sessionId, sessionId));
+  }
+
+  async createTestSquare(data: InsertTestSquare): Promise<TestSquare> {
+    const [sq] = await db.insert(testSquares).values(data).returning();
+    return sq;
+  }
+
+  async getTestSquares(sessionId: number): Promise<TestSquare[]> {
+    return db.select().from(testSquares).where(eq(testSquares.sessionId, sessionId));
+  }
+
+  async getTestSquaresForRoom(roomId: number): Promise<TestSquare[]> {
+    return db.select().from(testSquares).where(eq(testSquares.roomId, roomId));
   }
 
   async addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript> {

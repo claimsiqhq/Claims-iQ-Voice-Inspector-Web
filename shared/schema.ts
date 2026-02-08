@@ -273,6 +273,11 @@ export const lineItems = pgTable("line_items", {
   depreciationType: varchar("depreciation_type", { length: 30 }).default("Recoverable"),
   wasteFactor: integer("waste_factor"),
   provenance: varchar("provenance", { length: 20 }).default("voice"),
+  // Pro-Grade financial attributes
+  coverageBucket: varchar("coverage_bucket", { length: 30 }).default("Dwelling"),
+  qualityGrade: varchar("quality_grade", { length: 30 }),
+  applyOAndP: boolean("apply_o_and_p").default(false),
+  macroSource: varchar("macro_source", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -299,6 +304,20 @@ export const moistureReadings = pgTable("moisture_readings", {
   reading: real("reading").notNull(),
   materialType: varchar("material_type", { length: 50 }),
   dryStandard: real("dry_standard"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ── Test Squares (Forensic Hail/Wind Assessment) ──────────────
+// Logs 10x10 test square results for hail/wind damage claims
+export const testSquares = pgTable("test_squares", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+  hailHits: integer("hail_hits").notNull().default(0),
+  windCreases: integer("wind_creases").default(0),
+  pitch: varchar("pitch", { length: 10 }).notNull(),
+  result: varchar("result", { length: 30 }).notNull().default("pass"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -362,6 +381,7 @@ export const insertDamageObservationSchema = createInsertSchema(damageObservatio
 export const insertLineItemSchema = createInsertSchema(lineItems).omit({ id: true, createdAt: true });
 export const insertInspectionPhotoSchema = createInsertSchema(inspectionPhotos).omit({ id: true, createdAt: true });
 export const insertMoistureReadingSchema = createInsertSchema(moistureReadings).omit({ id: true, createdAt: true });
+export const insertTestSquareSchema = createInsertSchema(testSquares).omit({ id: true, createdAt: true });
 export const insertVoiceTranscriptSchema = createInsertSchema(voiceTranscripts).omit({ id: true, timestamp: true });
 
 export type InspectionSession = typeof inspectionSessions.$inferSelect;
@@ -384,6 +404,8 @@ export type InspectionPhoto = typeof inspectionPhotos.$inferSelect;
 export type InsertInspectionPhoto = z.infer<typeof insertInspectionPhotoSchema>;
 export type MoistureReading = typeof moistureReadings.$inferSelect;
 export type InsertMoistureReading = z.infer<typeof insertMoistureReadingSchema>;
+export type TestSquare = typeof testSquares.$inferSelect;
+export type InsertTestSquare = z.infer<typeof insertTestSquareSchema>;
 export type VoiceTranscript = typeof voiceTranscripts.$inferSelect;
 export type InsertVoiceTranscript = z.infer<typeof insertVoiceTranscriptSchema>;
 

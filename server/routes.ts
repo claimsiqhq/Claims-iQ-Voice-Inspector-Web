@@ -98,6 +98,31 @@ const lineItemCreateSchema = z.object({
   unitPrice: z.number().nonnegative().optional(),
   depreciationType: z.string().max(30).nullable().optional(),
   wasteFactor: z.number().int().nonnegative().optional(),
+  coverageBucket: z.enum(["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"]).optional(),
+  qualityGrade: z.string().max(30).nullable().optional(),
+  applyOAndP: z.boolean().optional(),
+  macroSource: z.string().max(50).nullable().optional(),
+});
+
+const testSquareCreateSchema = z.object({
+  roomId: z.number().int().positive().nullable().optional(),
+  hailHits: z.number().int().nonnegative(),
+  windCreases: z.number().int().nonnegative().optional(),
+  pitch: z.string().min(1).max(10),
+  result: z.enum(["pass", "fail", "brittle_test_failure"]).optional(),
+  notes: z.string().nullable().optional(),
+});
+
+const smartMacroSchema = z.object({
+  macroType: z.enum(["roof_replacement_laminated", "roof_replacement_3tab", "interior_paint_walls_ceiling", "water_mitigation_dryout"]),
+  severity: z.enum(["average", "heavy", "premium"]).optional(),
+  wasteFactor: z.number().nonnegative().optional(),
+  roomId: z.number().int().positive().nullable().optional(),
+});
+
+const checkRelatedItemsSchema = z.object({
+  primaryCategory: z.enum(["Cabinetry", "Roofing", "Drywall", "Siding", "Flooring", "Plumbing", "Electrical", "Windows", "Doors"]),
+  actionTaken: z.string().optional(),
 });
 
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
@@ -1111,11 +1136,14 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
-      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor } = parsed.data;
+      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource } = parsed.data;
       const wf = wasteFactor || 0;
       const qty = quantity || 1;
       const up = unitPrice || 0;
-      const totalPrice = qty * up * (1 + wf / 100);
+      let totalPrice = qty * up * (1 + wf / 100);
+      if (applyOAndP) {
+        totalPrice = totalPrice * 1.10 * 1.10; // 10% overhead + 10% profit
+      }
 
       const item = await storage.createLineItem({
         sessionId,
@@ -1131,6 +1159,10 @@ export async function registerRoutes(
         totalPrice,
         depreciationType: depreciationType || "Recoverable",
         wasteFactor: wf,
+        coverageBucket: coverageBucket || "Dwelling",
+        qualityGrade: qualityGrade || null,
+        applyOAndP: applyOAndP || false,
+        macroSource: macroSource || null,
       });
       res.status(201).json(item);
     } catch (error: any) {
@@ -1174,6 +1206,10 @@ export async function registerRoutes(
         wasteFactor: z.number().optional(),
         roomId: z.number().optional(),
         damageId: z.number().optional(),
+        coverageBucket: z.string().optional(),
+        qualityGrade: z.string().optional(),
+        applyOAndP: z.boolean().optional(),
+        macroSource: z.string().optional(),
       }).strict();
       const parsed = allowedFields.safeParse(req.body);
       if (!parsed.success) {
@@ -1191,6 +1227,210 @@ export async function registerRoutes(
       const id = parseInt(param(req.params.id));
       await storage.deleteLineItem(id);
       res.status(204).send();
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Smart Macros ─────────────────────────────────
+
+  const SMART_MACRO_BUNDLES: Record<string, Array<{ category: string; action: string; description: string; xactCode: string; unit: string; defaultWaste: number; depreciationType: string }>> = {
+    roof_replacement_laminated: [
+      { category: "Roofing", action: "Tear Off", description: "Remove composition shingles - laminated", xactCode: "RFG-TEAR-LM", unit: "SQ", defaultWaste: 0, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Laminated composition shingles (architectural)", xactCode: "RFG-SHIN-AR", unit: "SQ", defaultWaste: 10, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Roofing felt - 15 lb.", xactCode: "RFG-FELT-15", unit: "SQ", defaultWaste: 10, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Ice & water barrier", xactCode: "RFG-ICE-WB", unit: "SQ", defaultWaste: 5, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "R&R", description: "Drip edge - aluminum", xactCode: "RFG-DRIP-AL", unit: "LF", defaultWaste: 5, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Ridge vent - aluminum", xactCode: "RFG-RIDGE-V", unit: "LF", defaultWaste: 0, depreciationType: "Recoverable" },
+    ],
+    roof_replacement_3tab: [
+      { category: "Roofing", action: "Tear Off", description: "Remove composition shingles - 3 tab", xactCode: "RFG-TEAR-3T", unit: "SQ", defaultWaste: 0, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "3-tab composition shingles", xactCode: "RFG-SHIN-3T", unit: "SQ", defaultWaste: 10, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Roofing felt - 15 lb.", xactCode: "RFG-FELT-15", unit: "SQ", defaultWaste: 10, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Ice & water barrier", xactCode: "RFG-ICE-WB", unit: "SQ", defaultWaste: 5, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "R&R", description: "Drip edge - aluminum", xactCode: "RFG-DRIP-AL", unit: "LF", defaultWaste: 5, depreciationType: "Recoverable" },
+      { category: "Roofing", action: "Install", description: "Ridge vent - aluminum", xactCode: "RFG-RIDGE-V", unit: "LF", defaultWaste: 0, depreciationType: "Recoverable" },
+    ],
+    interior_paint_walls_ceiling: [
+      { category: "Painting", action: "Paint", description: "Seal/prime then paint walls - 2 coats", xactCode: "PTG-WALL-2C", unit: "SF", defaultWaste: 0, depreciationType: "Recoverable" },
+      { category: "Painting", action: "Paint", description: "Seal/prime then paint ceiling - 2 coats", xactCode: "PTG-CEIL-2C", unit: "SF", defaultWaste: 0, depreciationType: "Recoverable" },
+      { category: "Painting", action: "Paint", description: "Paint baseboard trim", xactCode: "PTG-TRIM-BS", unit: "LF", defaultWaste: 0, depreciationType: "Recoverable" },
+      { category: "Painting", action: "Paint", description: "Paint door/window casing trim", xactCode: "PTG-TRIM-CS", unit: "LF", defaultWaste: 0, depreciationType: "Recoverable" },
+    ],
+    water_mitigation_dryout: [
+      { category: "General", action: "Labor Only", description: "Water extraction - wet vacuum", xactCode: "WTR-EXTR-WV", unit: "SF", defaultWaste: 0, depreciationType: "Paid When Incurred" },
+      { category: "General", action: "Install", description: "Dehumidifier setup and monitoring", xactCode: "WTR-DEHU-SM", unit: "DAY", defaultWaste: 0, depreciationType: "Paid When Incurred" },
+      { category: "General", action: "Install", description: "Air mover / fan placement", xactCode: "WTR-AIRM-PL", unit: "DAY", defaultWaste: 0, depreciationType: "Paid When Incurred" },
+      { category: "General", action: "Labor Only", description: "Moisture monitoring and documentation", xactCode: "WTR-MONI-DC", unit: "HR", defaultWaste: 0, depreciationType: "Paid When Incurred" },
+      { category: "General", action: "Clean", description: "Anti-microbial treatment", xactCode: "WTR-ANTI-MC", unit: "SF", defaultWaste: 0, depreciationType: "Paid When Incurred" },
+    ],
+  };
+
+  app.post("/api/inspection/:sessionId/smart-macro", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const parsed = smartMacroSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid smart macro data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { macroType, severity, wasteFactor, roomId } = parsed.data;
+      const bundle = SMART_MACRO_BUNDLES[macroType];
+      if (!bundle) {
+        return res.status(400).json({ message: `Unknown macro type: ${macroType}` });
+      }
+
+      const createdItems = [];
+      for (const template of bundle) {
+        const wf = wasteFactor ?? template.defaultWaste;
+        const item = await storage.createLineItem({
+          sessionId,
+          roomId: roomId || null,
+          damageId: null,
+          category: template.category,
+          action: template.action,
+          description: severity === "premium" ? `${template.description} - Premium Grade` : template.description,
+          xactCode: template.xactCode,
+          quantity: 1,
+          unit: template.unit,
+          unitPrice: 0,
+          totalPrice: 0,
+          depreciationType: template.depreciationType,
+          wasteFactor: wf,
+          coverageBucket: "Dwelling",
+          qualityGrade: severity === "premium" ? "High Grade" : severity === "heavy" ? "Standard" : null,
+          applyOAndP: false,
+          macroSource: macroType,
+        });
+        createdItems.push(item);
+      }
+
+      res.status(201).json({
+        macroType,
+        itemCount: createdItems.length,
+        items: createdItems,
+        message: `Applied ${macroType} bundle: ${createdItems.length} line items created.`,
+      });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Related Items (Waterfall Logic) ────────────
+
+  const RELATED_ITEMS_MAP: Record<string, Record<string, string[]>> = {
+    Cabinetry: {
+      default: ["Detach/Reset Plumbing (angle stops, P-trap, supply lines)", "Disconnect/Reconnect Electrical (disposal, dishwasher)", "Countertop Detach & Reset", "Backsplash R&R if adhered to cabinet"],
+      "Remove Vanity": ["Detach/Reset Plumbing (angle stops, P-trap, supply lines)", "Disconnect faucet and drain assembly", "Mirror removal if mounted to vanity"],
+      "R&R Kitchen Cabinets": ["Detach/Reset Plumbing (angle stops, P-trap, supply lines)", "Disconnect/Reconnect Electrical (disposal, dishwasher)", "Countertop Detach & Reset", "Backsplash R&R", "Appliance pullout and reset"],
+    },
+    Roofing: {
+      default: ["Drip edge R&R", "Ice & water barrier at eaves/valleys", "Pipe jack/roof boot replacement", "Step flashing at wall intersections", "Ridge cap shingles", "Satellite dish detach & reset"],
+      "Tear Off Shingles": ["Felt/underlayment replacement", "Valley metal re-flash", "Pipe jack/boot replacement", "Drip edge inspection/replacement", "Starter strip shingles"],
+    },
+    Drywall: {
+      default: ["Texture matching (knock-down, orange peel, smooth)", "Prime and paint to match (2 coats minimum)", "Baseboard R&R if removing lower drywall", "Outlet/switch plate removal and reset"],
+      "R&R Drywall": ["Texture matching (knock-down, orange peel, smooth)", "Prime and paint to match (2 coats minimum)", "Baseboard R&R if removing lower drywall", "Outlet/switch plate removal and reset", "Insulation replacement behind drywall"],
+    },
+    Siding: {
+      default: ["House wrap / moisture barrier behind siding", "J-channel and trim pieces", "Light fixture detach & reset", "Hose bib detach & reset", "Address numbers/mailbox detach & reset"],
+    },
+    Flooring: {
+      default: ["Baseboard/shoe mold R&R", "Transition strips at doorways", "Furniture move-out and move-back", "Subfloor inspection/replacement if water damage", "Underlayment/padding replacement"],
+    },
+    Plumbing: {
+      default: ["Access panel creation if behind wall", "Drywall repair after access", "Fixture detach & reset"],
+    },
+    Electrical: {
+      default: ["Permit fees if code requires", "Outlet/switch upgrade to current code", "GFCI protection if near water source"],
+    },
+    Windows: {
+      default: ["Interior casing/trim R&R", "Exterior trim/J-channel", "Flashing and sealant", "Window screen R&R", "Blinds/window treatment detach & reset"],
+    },
+    Doors: {
+      default: ["Door hardware R&R (hinges, handle, deadbolt)", "Weatherstripping replacement", "Threshold R&R", "Door casing/trim R&R", "Lockset re-key if exterior door"],
+    },
+  };
+
+  app.post("/api/inspection/:sessionId/check-related-items", authenticateRequest, async (req, res) => {
+    try {
+      const parsed = checkRelatedItemsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { primaryCategory, actionTaken } = parsed.data;
+      const categoryMap = RELATED_ITEMS_MAP[primaryCategory];
+      if (!categoryMap) {
+        return res.json({ suggestions: [], message: "No related items found for this category." });
+      }
+
+      const suggestions = (actionTaken && categoryMap[actionTaken])
+        ? categoryMap[actionTaken]
+        : categoryMap.default || [];
+
+      res.json({
+        primaryCategory,
+        actionTaken: actionTaken || null,
+        suggestions,
+        message: suggestions.length > 0
+          ? `Check for: ${suggestions.join("; ")}`
+          : "No additional items suggested for this action.",
+      });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Test Squares ────────────────────────────────
+
+  app.post("/api/inspection/:sessionId/test-squares", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const parsed = testSquareCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid test square data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { roomId, hailHits, windCreases, pitch, result, notes } = parsed.data;
+
+      const testSquare = await storage.createTestSquare({
+        sessionId,
+        roomId: roomId || null,
+        hailHits,
+        windCreases: windCreases || 0,
+        pitch,
+        result: result || (hailHits >= 8 ? "fail" : "pass"),
+        notes: notes || null,
+      });
+
+      // Determine steep charge applicability
+      const pitchParts = pitch.split("/");
+      const pitchRise = parseInt(pitchParts[0]) || 0;
+      const steepCharge = pitchRise > 7;
+
+      res.status(201).json({
+        ...testSquare,
+        _analysis: {
+          steepCharge,
+          steepChargeNote: steepCharge ? `Pitch ${pitch} exceeds 7/12 — steep charge applies to labor.` : null,
+          recommendation: hailHits >= 8
+            ? "Test square FAILS — sufficient damage for full slope replacement."
+            : hailHits >= 4
+              ? "Borderline — consider additional test squares on this facet."
+              : "Test square passes — damage below replacement threshold.",
+        },
+      });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/test-squares", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
+      const squares = roomId
+        ? await storage.getTestSquaresForRoom(roomId)
+        : await storage.getTestSquares(sessionId);
+      res.json(squares);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
