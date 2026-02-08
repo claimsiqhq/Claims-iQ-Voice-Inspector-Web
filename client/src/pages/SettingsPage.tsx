@@ -2,7 +2,8 @@ import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trash2, Loader2, AlertTriangle, Database, Shield } from "lucide-react";
+import { Trash2, Loader2, AlertTriangle, Database, Shield, BookOpen } from "lucide-react";
+import OnboardingWizard, { resetOnboarding } from "@/components/OnboardingWizard";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +27,7 @@ interface Claim {
 export default function SettingsPage() {
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { toast } = useToast();
 
   const { data: claims = [] } = useQuery<Claim[]>({
@@ -99,6 +101,33 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground mt-2">No claims to purge.</p>
                 )}
               </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5 border-border">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <BookOpen className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-display font-semibold text-foreground">Onboarding Guide</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Review the guided walkthrough of key features and workflows.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 gap-2"
+                onClick={() => {
+                  resetOnboarding();
+                  setShowOnboarding(true);
+                }}
+                data-testid="button-replay-onboarding"
+              >
+                <BookOpen className="h-4 w-4" />
+                Replay Onboarding
+              </Button>
             </div>
           </div>
         </Card>
@@ -182,6 +211,8 @@ export default function SettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <OnboardingWizard open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
     </Layout>
   );
 }

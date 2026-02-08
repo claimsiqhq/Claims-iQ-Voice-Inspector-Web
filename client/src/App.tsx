@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import BottomNav from "@/components/BottomNav";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import LoginPage from "@/pages/LoginPage";
 import SupervisorDashboard from "@/pages/SupervisorDashboard";
+import OnboardingWizard, { isOnboardingCompleted } from "@/components/OnboardingWizard";
 
 // Pages
 import ClaimsList from "@/pages/ClaimsList";
@@ -38,6 +39,13 @@ function ScrollToTop() {
 
 function ProtectedRouter() {
   const { isAuthenticated, role, loading } = useAuth();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && !isOnboardingCompleted()) {
+      setShowOnboarding(true);
+    }
+  }, [isAuthenticated]);
 
   if (loading) {
     return (
@@ -54,6 +62,7 @@ function ProtectedRouter() {
   return (
     <>
       <ScrollToTop />
+      <OnboardingWizard open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <Switch>
         <Route path="/" component={ClaimsList} />
         {role === "supervisor" && <Route path="/dashboard" component={SupervisorDashboard} />}
