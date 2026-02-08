@@ -714,6 +714,91 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "apply_smart_macro": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const macroHeaders = await getAuthHeaders();
+          const macroRes = await fetch(`/api/inspection/${sessionId}/smart-macro`, {
+            method: "POST",
+            headers: macroHeaders,
+            body: JSON.stringify({
+              macroType: args.macro_type,
+              severity: args.severity || "average",
+              wasteFactor: args.waste_factor,
+              roomId: currentRoomId,
+            }),
+          });
+          const macroData = await macroRes.json();
+          if (!macroRes.ok) {
+            result = { success: false, error: macroData.message || "Failed to apply smart macro" };
+            break;
+          }
+          await refreshLineItems();
+          result = {
+            success: true,
+            macroType: args.macro_type,
+            itemCount: macroData.itemCount,
+            message: macroData.message,
+          };
+          break;
+        }
+
+        case "check_related_items": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const relatedHeaders = await getAuthHeaders();
+          const relatedRes = await fetch(`/api/inspection/${sessionId}/check-related-items`, {
+            method: "POST",
+            headers: relatedHeaders,
+            body: JSON.stringify({
+              primaryCategory: args.primary_category,
+              actionTaken: args.action_taken,
+            }),
+          });
+          const relatedData = await relatedRes.json();
+          if (!relatedRes.ok) {
+            result = { success: false, error: relatedData.message || "Failed to check related items" };
+            break;
+          }
+          result = {
+            success: true,
+            suggestions: relatedData.suggestions,
+            message: relatedData.message,
+          };
+          break;
+        }
+
+        case "log_test_square": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const tsRoom = args.room_id ? rooms.find(r => r.name === args.room_id || String(r.id) === String(args.room_id)) : null;
+          const tsHeaders = await getAuthHeaders();
+          const tsRes = await fetch(`/api/inspection/${sessionId}/test-squares`, {
+            method: "POST",
+            headers: tsHeaders,
+            body: JSON.stringify({
+              roomId: tsRoom?.id || currentRoomId,
+              hailHits: args.hail_hits,
+              windCreases: args.wind_creases || 0,
+              pitch: args.pitch,
+              result: args.result,
+              notes: args.notes,
+            }),
+          });
+          const tsData = await tsRes.json();
+          if (!tsRes.ok) {
+            result = { success: false, error: tsData.message || "Failed to log test square" };
+            break;
+          }
+          result = {
+            success: true,
+            testSquareId: tsData.id,
+            hailHits: args.hail_hits,
+            pitch: args.pitch,
+            result: tsData.result,
+            analysis: tsData._analysis,
+            message: `Test square logged: ${args.hail_hits} hail hits at ${args.pitch} pitch. ${tsData._analysis?.recommendation || ""}`,
+          };
+          break;
+        }
+
         case "skip_step": {
           if (!args.passwordConfirmed) {
             result = { success: false, error: "Voice password not confirmed. Ask the adjuster to say the voice password before skipping." };
@@ -722,7 +807,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const skipDescription = args.stepDescription || "Unknown step";
           const skipReason = args.reason || "Adjuster request";
           addTranscriptEntry("agent", `Step skipped: ${skipDescription} (${skipReason})`);
-          result = { success: true, skipped: skipDescription, reason: skipReason, message: `Skipped "${skipDescription}". Proceed to next step.` };
+          result = {
+            success: true,
+            skipped: skipDescription,
+            reason: skipReason,
+            message: `Skipped "${skipDescription}". Proceed to next step.`,
+            nextAction: "Call get_inspection_state to see current progress, then advance to the next phase or area in the flow. Prompt the adjuster for what comes next.",
+          };
           break;
         }
 
@@ -774,6 +865,38 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       case "conversation.item.input_audio_transcription.completed":
         if (event.transcript) {
           addTranscriptEntry("user", event.transcript);
+
+          // Voice-triggered photo cancel: if a photo capture is pending and the
+          // user says "skip", "cancel", or the voice password, auto-cancel the
+          // camera so the agent can resume the conversation.
+          if (pendingPhotoCallRef.current) {
+            const lower = event.transcript.toLowerCase();
+            const isSkipCommand = /\b(skip|cancel|next|one two three|1\s*2\s*3)\b/.test(lower);
+            if (isSkipCommand) {
+              const videoStream = videoRef.current?.srcObject as MediaStream | null;
+              if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
+              setCameraMode({ active: false, label: "", photoType: "", overlay: "none" });
+
+              const pendingCall = pendingPhotoCallRef.current;
+              if (pendingCall && dcRef.current && dcRef.current.readyState === "open") {
+                dcRef.current.send(JSON.stringify({
+                  type: "conversation.item.create",
+                  item: {
+                    type: "function_call_output",
+                    call_id: pendingCall.call_id,
+                    output: JSON.stringify({
+                      success: false,
+                      skipped: true,
+                      message: "Photo capture skipped by adjuster via voice command. The adjuster wants to move on. Proceed to the next step.",
+                    }),
+                  },
+                }));
+                dcRef.current.send(JSON.stringify({ type: "response.create" }));
+              }
+              pendingPhotoCallRef.current = null;
+              addTranscriptEntry("agent", "Photo capture skipped.");
+            }
+          }
         }
         break;
 
@@ -857,7 +980,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
-              instructions: "Begin the inspection now. Follow your system instructions for the mandatory first step.",
+              instructions: "Do NOT introduce yourself or make small talk. Execute these steps in order: 1) Silently call get_inspection_state. 2) If no structures exist, silently call create_structure for 'Main Dwelling'. 3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state where the inspection will begin. Keep the greeting to one or two sentences. 4) Then call trigger_photo_capture for the property verification photo.",
             },
           }));
         }
