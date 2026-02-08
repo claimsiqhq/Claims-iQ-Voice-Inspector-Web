@@ -986,10 +986,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   );
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-[#2D2248] text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+    <div className="h-[calc(100vh-4rem)] bg-background text-foreground flex overflow-hidden relative" data-testid="active-inspection-page">
       {/* LEFT SIDEBAR - Desktop only */}
       {!isMobile && (
-        <div className="w-72 bg-[#2D2248] border-r border-primary/25 flex flex-col z-20">
+        <div className="w-72 bg-card border-r border-border flex flex-col z-20">
           {leftSidebarContent}
         </div>
       )}
@@ -997,7 +997,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* LEFT SIDEBAR - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileLeftOpen} onOpenChange={setMobileLeftOpen}>
-          <SheetContent side="left" className="w-[280px] bg-[#2D2248] text-white border-primary/25 p-0">
+          <SheetContent side="left" className="w-[280px] bg-card text-foreground border-border p-0">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             {leftSidebarContent}
           </SheetContent>
@@ -1007,7 +1007,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* RIGHT PANEL - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileRightOpen} onOpenChange={setMobileRightOpen}>
-          <SheetContent side="right" className="w-[280px] bg-[#2D2248] text-white border-primary/25 p-0">
+          <SheetContent side="right" className="w-[280px] bg-card text-foreground border-border p-0">
             <SheetTitle className="sr-only">Estimate</SheetTitle>
             {rightPanelContent}
           </SheetContent>
@@ -1017,7 +1017,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* CENTER STAGE */}
       <div className="flex-1 relative flex flex-col">
         {/* Top Bar */}
-        <div className="h-14 bg-[#231A3B]/80 backdrop-blur-md border-b border-primary/25 z-10 px-3 md:px-5 flex justify-between items-center">
+        <div className="h-14 bg-card/80 backdrop-blur-md border-b border-border z-10 px-3 md:px-5 flex justify-between items-center">
           <div className="flex items-center gap-2 md:gap-3">
             {isMobile && (
               <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
