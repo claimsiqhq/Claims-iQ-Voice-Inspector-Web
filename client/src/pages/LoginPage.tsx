@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Mail, Lock, User } from "lucide-react";
 
 export default function LoginPage() {
@@ -10,13 +11,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("signin");
 
   async function handleSignIn() {
     setLoading(true);
     try {
-      await signIn(email, password);
+      await signIn(email, password, rememberMe);
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,23 @@ export default function LoginPage() {
                 />
               </div>
 
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="remember-me"
+                  data-testid="checkbox-remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked === true)}
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="text-sm font-medium text-gray-600 cursor-pointer select-none"
+                >
+                  Remember me
+                </label>
+              </div>
+
               <Button
+                data-testid="button-signin"
                 onClick={handleSignIn}
                 disabled={loading}
                 className="w-full"

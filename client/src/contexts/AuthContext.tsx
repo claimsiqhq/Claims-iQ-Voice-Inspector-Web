@@ -15,7 +15,7 @@ interface AuthContextType {
   user: AuthUser | null;
   role: string | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -34,6 +34,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+
+    const rememberMe = localStorage.getItem("claimsiq_remember_me") === "true";
+    const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
+
+    if (!rememberMe && !sessionActive) {
+      supabase.auth.signOut().catch(() => {});
+      setLoading(false);
+      return;
+    }
+
     checkSession();
     const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
@@ -119,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string, rememberMe: boolean = true) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -127,6 +137,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
       if (data.session && data.user) {
+        if (rememberMe) {
+          localStorage.setItem("claimsiq_remember_me", "true");
+        } else {
+          localStorage.removeItem("claimsiq_remember_me");
+          sessionStorage.setItem("claimsiq_session_active", "true");
+        }
         const token = data.session.access_token;
         const profile =
           (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
@@ -168,6 +184,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     try {
+      localStorage.removeItem("claimsiq_remember_me");
+      sessionStorage.removeItem("claimsiq_session_active");
       await supabase.auth.signOut();
       setUser(null);
       setLocation("/login");
