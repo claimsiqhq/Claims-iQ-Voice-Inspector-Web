@@ -1783,6 +1783,38 @@ Respond in JSON format:
     }
   });
 
+  // ── User Profile ───────────────────────────────────
+
+  const profileUpdateSchema = z.object({
+    fullName: z.string().min(1).max(100).optional(),
+  }).strict();
+
+  app.patch("/api/profile", authenticateRequest, async (req, res) => {
+    try {
+      const parsed = profileUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid profile data", errors: parsed.error.flatten().fieldErrors });
+      }
+      if (Object.keys(parsed.data).length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+      const userId = req.user!.id;
+      const updated = await storage.updateUserProfile(userId, parsed.data);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({
+        id: updated.id,
+        fullName: updated.fullName,
+        email: updated.email,
+        role: updated.role,
+      });
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── User Settings ──────────────────────────────────
 
   app.get("/api/settings", authenticateRequest, async (req, res) => {

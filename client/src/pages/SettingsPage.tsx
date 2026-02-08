@@ -112,9 +112,26 @@ export default function SettingsPage() {
   const [confirmText, setConfirmText] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
   const { toast } = useToast();
   const { settings, updateSetting, resetSettings } = useSettings();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshSession } = useAuth();
+
+  const profileMutation = useMutation({
+    mutationFn: async (fullName: string) => {
+      const res = await apiRequest("PATCH", "/api/profile", { fullName });
+      return res.json();
+    },
+    onSuccess: async () => {
+      await refreshSession();
+      setEditingName(false);
+      toast({ title: "Name updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update name", description: error.message, variant: "destructive" });
+    },
+  });
 
   const { data: claims = [] } = useQuery<Claim[]>({
     queryKey: ["/api/claims"],
@@ -155,22 +172,66 @@ export default function SettingsPage() {
           />
           <div className="space-y-1 ml-13">
             <SettingRow>
-              <SettingLabel title="Name" />
-              <span className="text-sm text-foreground font-medium">{user?.fullName || user?.email || "---"}</span>
+              <SettingLabel title="Name" description="Your display name shown on reports and inspections." />
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    data-testid="input-profile-name"
+                    className="w-[180px]"
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && nameValue.trim()) {
+                        profileMutation.mutate(nameValue.trim());
+                      }
+                      if (e.key === "Escape") { setEditingName(false); setNameValue(user?.fullName || ""); }
+                    }}
+                    autoFocus
+                  />
+                  <Button
+                    data-testid="button-save-name"
+                    size="sm"
+                    disabled={!nameValue.trim() || profileMutation.isPending}
+                    onClick={() => profileMutation.mutate(nameValue.trim())}
+                  >
+                    {profileMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </Button>
+                  <Button
+                    data-testid="button-cancel-name"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setEditingName(false); setNameValue(user?.fullName || ""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  data-testid="button-edit-name"
+                  className="text-sm text-foreground font-medium hover:text-primary cursor-pointer transition-colors"
+                  onClick={() => {
+                    setNameValue(user?.fullName || "");
+                    setEditingName(true);
+                  }}
+                >
+                  {user?.fullName || <span className="text-muted-foreground italic">Click to set name</span>}
+                </button>
+              )}
             </SettingRow>
             <Separator />
             <SettingRow>
-              <SettingLabel title="Email" />
-              <span className="text-sm text-muted-foreground">{user?.email || "---"}</span>
+              <SettingLabel title="Email" description="Managed through your login account." />
+              <span data-testid="text-profile-email" className="text-sm text-muted-foreground">{user?.email || "---"}</span>
             </SettingRow>
             <Separator />
             <SettingRow>
-              <SettingLabel title="Role" />
-              <span className="text-sm text-muted-foreground capitalize">{user?.role || "---"}</span>
+              <SettingLabel title="Role" description="Assigned by your administrator." />
+              <span data-testid="text-profile-role" className="text-sm text-muted-foreground capitalize">{user?.role || "---"}</span>
             </SettingRow>
             <Separator />
             <div className="pt-3">
               <Button
+                data-testid="button-sign-out"
                 variant="outline"
                 size="sm"
                 className="gap-2"
