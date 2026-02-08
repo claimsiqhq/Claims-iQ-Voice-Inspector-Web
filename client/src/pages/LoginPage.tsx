@@ -15,14 +15,20 @@ export default function LoginPage() {
 
   async function handleSignIn() {
     setLoading(true);
-    await signIn(email, password);
-    setLoading(false);
+    try {
+      await signIn(email, password);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSignUp() {
     setLoading(true);
-    await signUp(email, password, fullName);
-    setLoading(false);
+    try {
+      await signUp(email, password, fullName);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

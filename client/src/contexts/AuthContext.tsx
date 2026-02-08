@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkSession();
     const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        await syncUserToBackend(session.user.id, session.user.email || "", "");
+        await syncUserToBackend(session.user.id, session.user.email || "", "", session.access_token);
       } else {
         setUser(null);
       }
@@ -93,15 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function syncUserToBackend(
     supabaseId: string,
     email: string,
-    fullName: string
+    fullName: string,
+    accessToken?: string
   ): Promise<AuthUser | null> {
     try {
-      const { data: session } = await supabase.auth.getSession();
+      const token = accessToken || (await supabase.auth.getSession()).data.session?.access_token || "";
       const response = await fetch("/api/auth/sync", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.session?.access_token || ""}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ supabaseId, email, fullName }),
       });
@@ -125,9 +126,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
       });
       if (error) throw error;
-      if (data.user) {
+      if (data.session && data.user) {
+        const token = data.session.access_token;
         const profile =
-          (await syncUserToBackend(data.user.id, data.user.email || "", "")) ||
+          (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
           (await fetchUserProfile());
         if (!profile) {
           throw new Error("Unable to load your profile. Please try again.");
@@ -148,13 +150,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
       });
       if (error) throw error;
-      if (data.user) {
-        const profile = await syncUserToBackend(data.user.id, email, fullName);
+      if (data.session && data.user) {
+        const token = data.session.access_token;
+        const profile = await syncUserToBackend(data.user.id, email, fullName, token);
         if (!profile) {
           throw new Error("Unable to complete registration. Please try again.");
         }
         setLocation("/");
         toast({ title: "Account created successfully" });
+      } else if (data.user) {
+        toast({ title: "Check your email", description: "Please verify your email address to complete registration." });
       }
     } catch (error: any) {
       toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
