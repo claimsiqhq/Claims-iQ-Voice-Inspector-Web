@@ -750,11 +750,32 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid room data", errors: parsed.error.flatten().fieldErrors });
       }
       const { name, roomType, structure, dimensions, phase } = parsed.data;
+      const structureName = structure || "Main Dwelling";
+
+      const isElevation = roomType && roomType.startsWith("exterior_elevation_");
+      if (isElevation) {
+        const existingRooms = await storage.getRooms(sessionId);
+        const duplicate = existingRooms.find(
+          (r) => r.roomType === roomType && (r.structure || "Main Dwelling") === structureName
+        );
+        if (duplicate) {
+          if (dimensions) {
+            const updated = await storage.updateRoom(duplicate.id, { dimensions, status: "in_progress" });
+            if (updated) {
+              await storage.updateSessionRoom(sessionId, updated.id);
+              return res.status(200).json(updated);
+            }
+          }
+          await storage.updateSessionRoom(sessionId, duplicate.id);
+          return res.status(200).json(duplicate);
+        }
+      }
+
       const room = await storage.createRoom({
         sessionId,
         name,
         roomType: roomType || null,
-        structure: structure || "Main Dwelling",
+        structure: structureName,
         dimensions: dimensions || null,
         status: "in_progress",
         phase: phase || null,
