@@ -18,6 +18,7 @@ interface FloorPlanSketchProps {
   currentRoomId: number | null;
   onRoomClick?: (roomId: number) => void;
   className?: string;
+  expanded?: boolean;
 }
 
 const SCALE = 5;
@@ -129,7 +130,7 @@ function RoomRect({ room, x, y, w, h, isCurrent, onClick }: {
   );
 }
 
-export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, className }: FloorPlanSketchProps) {
+export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, className, expanded }: FloorPlanSketchProps) {
   const structureGroups = useMemo(() => {
     const groups: Record<string, { interior: RoomData[]; exterior: RoomData[] }> = {};
 
@@ -200,7 +201,7 @@ export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, cla
         </p>
       </div>
 
-      <svg viewBox={`0 0 ${SVG_WIDTH} ${totalHeight}`} className="w-full" style={{ maxHeight: 400 }}>
+      <svg viewBox={`0 0 ${SVG_WIDTH} ${totalHeight}`} className="w-full" style={expanded ? undefined : { maxHeight: 400 }}>
         {sections.map((section, si) => (
           <g key={si} transform={`translate(0, ${section.yOffset})`}>
             <text x={PADDING} y={10} fontSize="7" fontFamily="Space Mono, monospace" fill="rgba(157,139,191,0.4)">
