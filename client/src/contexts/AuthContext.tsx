@@ -39,24 +39,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
 
     if (!rememberMe && !sessionActive) {
-      supabase.auth.signOut().catch(() => {});
-      setLoading(false);
+      supabase.auth.getSession().then(({ data }) => {
+        if (!data.session) {
+          setLoading(false);
+          return;
+        }
+        supabase.auth.signOut().catch(() => {});
+        setLoading(false);
+      }).catch(() => setLoading(false));
       return;
     }
 
-    checkSession();
+    async function initSession() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error || !session) {
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          if (refreshData.session) {
+            const profile = await syncUserToBackend(
+              refreshData.session.user.id,
+              refreshData.session.user.email || "",
+              "",
+              refreshData.session.access_token
+            );
+            if (!profile) {
+              const fetched = await fetchUserProfile();
+              if (fetched) setUser(fetched);
+            }
+          }
+        } else {
+          const profile = await syncUserToBackend(
+            session.user.id,
+            session.user.email || "",
+            "",
+            session.access_token
+          );
+          if (!profile) {
+            const fetched = await fetchUserProfile();
+            if (fetched) setUser(fetched);
+          }
+        }
+      } catch (err) {
+        console.error("Session init failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    initSession();
+
     const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         await syncUserToBackend(session.user.id, session.user.email || "", "", session.access_token);
       } else {
-        setUser(null);
+        if (!localStorage.getItem("claimsiq_remember_me")) {
+          setUser(null);
+        }
       }
-      setLoading(false);
     });
     return () => data.subscription.unsubscribe();
   }, []);
 
-  // Safety timeout: if auth hasn't resolved in 5 seconds, stop loading
   useEffect(() => {
     const timeout = setTimeout(() => {
       setLoading((prev) => {
@@ -66,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return prev;
       });
-    }, 5000);
+    }, 8000);
     return () => clearTimeout(timeout);
   }, []);
 
