@@ -491,16 +491,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       case "error":
         console.error("Realtime error:", event.error);
         setVoiceState("error");
-        // Auto-recover after 5 seconds
-        setTimeout(() => {
+        if (errorRecoveryTimeoutRef.current) clearTimeout(errorRecoveryTimeoutRef.current);
+        errorRecoveryTimeoutRef.current = setTimeout(() => {
           setVoiceState((prev) => prev === "error" ? "idle" : prev);
+          errorRecoveryTimeoutRef.current = null;
         }, 5000);
         break;
     }
   }, [addTranscriptEntry, executeToolCall]);
 
   const connectVoice = useCallback(async () => {
-    if (!sessionId || isConnecting) return;
+    if (!sessionId || isConnectingRef.current) return;
+    isConnectingRef.current = true;
     setIsConnecting(true);
     setVoiceState("processing");
 
