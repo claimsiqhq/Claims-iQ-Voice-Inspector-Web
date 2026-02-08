@@ -539,14 +539,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       dc.onopen = () => {
         setIsConnected(true);
         setVoiceState("idle");
+        isConnectingRef.current = false;
         setIsConnecting(false);
       };
 
       dc.onclose = () => {
         setIsConnected(false);
         setVoiceState("disconnected");
-        // Auto-reconnect after 3 seconds
-        setTimeout(() => {
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
           if (!pcRef.current || pcRef.current.connectionState === "closed") {
             connectVoice();
           }
@@ -577,9 +579,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     } catch (error: any) {
       console.error("Voice connection error:", error);
       setVoiceState("error");
+      isConnectingRef.current = false;
       setIsConnecting(false);
     }
-  }, [sessionId, claimId, isConnecting, handleRealtimeEvent]);
+  }, [sessionId, claimId, handleRealtimeEvent]);
 
   const disconnectVoice = useCallback(() => {
     if (streamRef.current) {
