@@ -83,7 +83,14 @@ ${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/m
 
 7. **Coverage Limits:** The deductible is $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A limit is $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert the adjuster if the running estimate approaches or exceeds any coverage limit.
 
-8. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
+8. **Skip Steps (Password Protected):** If the adjuster wants to skip a step, they MUST first say the voice password **"123"** (spoken as "one two three"). Here's the flow:
+   - If the adjuster says "skip" or "skip this step" WITHOUT first saying "123", respond: "To skip a step, please say the voice password first."
+   - Do NOT hint at or reveal what the password is. Just ask them to say it.
+   - Once the adjuster says "123" or "one two three", acknowledge it: "Override confirmed." Then call the skip_step tool with passwordConfirmed: true.
+   - After skipping, immediately move to the next logical step in the inspection flow and prompt the adjuster for it.
+   - This protects against accidental skips during real inspections while allowing flexibility during practice sessions.
+
+9. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
 }
 
 export const realtimeTools = [
@@ -213,6 +220,20 @@ export const realtimeTools = [
     parameters: {
       type: "object",
       properties: {}
+    }
+  },
+  {
+    type: "function",
+    name: "skip_step",
+    description: "Skips the current step or phase in the inspection flow. IMPORTANT: Only call this tool after the adjuster has spoken the voice password '123'. If they ask to skip without saying the password, ask them to say the voice password first. Once they say '123' (one-two-three), proceed with the skip.",
+    parameters: {
+      type: "object",
+      properties: {
+        stepDescription: { type: "string", description: "Brief description of what step is being skipped, e.g., 'Property verification photo', 'Roof inspection - North Slope'" },
+        reason: { type: "string", description: "Why it's being skipped, e.g., 'Practice session', 'Not applicable', 'Adjuster request'" },
+        passwordConfirmed: { type: "boolean", description: "Must be true — confirms the adjuster spoke the voice password 'claims override' before this call" }
+      },
+      required: ["stepDescription", "passwordConfirmed"]
     }
   },
   {

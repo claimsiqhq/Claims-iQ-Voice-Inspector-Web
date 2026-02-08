@@ -446,6 +446,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "skip_step": {
+          if (!args.passwordConfirmed) {
+            result = { success: false, error: "Voice password not confirmed. Ask the adjuster to say the voice password before skipping." };
+            break;
+          }
+          const skipDescription = args.stepDescription || "Unknown step";
+          const skipReason = args.reason || "Adjuster request";
+          addTranscriptEntry("agent", `Step skipped: ${skipDescription} (${skipReason})`);
+          result = { success: true, skipped: skipDescription, reason: skipReason, message: `Skipped "${skipDescription}". Proceed to next step.` };
+          break;
+        }
+
         case "complete_inspection": {
           if (!sessionId) { result = { success: false }; break; }
           const finishHeaders = await getAuthHeaders();
