@@ -1,5 +1,6 @@
 import { type Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
+import { supabase } from "./supabase";
 
 declare global {
   namespace Express {
@@ -29,19 +30,13 @@ export async function authenticateRequest(
 
     const token = authHeader.substring(7);
 
-    let supabaseAuthId: string;
-    try {
-      const parts = token.split(".");
-      if (parts.length !== 3) {
-        res.status(401).json({ message: "Invalid token format" });
-        return;
-      }
-      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
-      supabaseAuthId = payload.sub;
-    } catch (parseError) {
-      res.status(401).json({ message: "Invalid token" });
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authData?.user) {
+      res.status(401).json({ message: "Invalid or expired token" });
       return;
     }
+
+    const supabaseAuthId = authData.user.id;
 
     const user = await storage.getUserBySupabaseId(supabaseAuthId);
     if (!user) {
@@ -57,6 +52,33 @@ export async function authenticateRequest(
       supabaseAuthId: user.supabaseAuthId,
     };
 
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Authentication failed" });
+  }
+}
+
+export async function authenticateSupabaseToken(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ message: "Missing or invalid Authorization header" });
+      return;
+    }
+
+    const token = authHeader.substring(7);
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authData?.user) {
+      res.status(401).json({ message: "Invalid or expired token" });
+      return;
+    }
+
+    (req as any).supabaseUser = authData.user;
     next();
   } catch (error) {
     res.status(500).json({ message: "Authentication failed" });
@@ -91,16 +113,15 @@ export async function optionalAuth(
     }
 
     const token = authHeader.substring(7);
-    const parts = token.split(".");
-    if (parts.length !== 3) {
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authData?.user) {
       req.user = undefined;
       next();
       return;
     }
 
-    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
-    const supabaseAuthId = payload.sub;
-    const user = await storage.getUserBySupabaseId(supabaseAuthId);
+    const user = await storage.getUserBySupabaseId(authData.user.id);
 
     if (user) {
       req.user = {

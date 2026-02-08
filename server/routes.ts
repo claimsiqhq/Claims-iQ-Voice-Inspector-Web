@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { generateESXFile } from "./esxGenerator";
 import { reviewEstimate } from "./aiReview";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
-import { authenticateRequest, requireRole, optionalAuth } from "./auth";
+import { authenticateRequest, authenticateSupabaseToken, requireRole, optionalAuth } from "./auth";
 import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
@@ -130,7 +130,7 @@ export async function registerRoutes(
       const claims = await storage.getClaims();
       res.json(claims);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -143,7 +143,7 @@ export async function registerRoutes(
       }
       res.json(claims);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -157,7 +157,7 @@ export async function registerRoutes(
       const claim = await storage.createClaim(claimData);
       res.status(201).json(claim);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -171,7 +171,7 @@ export async function registerRoutes(
       const briefing = await storage.getBriefing(id);
       res.json({ ...claim, documents: docs, extractions: exts, briefing });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -185,11 +185,11 @@ export async function registerRoutes(
       }
       res.status(400).json({ message: "No valid update fields" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
-  app.delete("/api/claims/purge-all", authenticateRequest, async (req, res) => {
+  app.delete("/api/claims/purge-all", authenticateRequest, requireRole("admin"), async (req, res) => {
     try {
       const allClaims = await storage.getClaims();
       for (const claim of allClaims) {
@@ -214,7 +214,7 @@ export async function registerRoutes(
       const count = await storage.deleteAllClaims();
       res.json({ message: `Purged ${count} claims and all related data` });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -242,7 +242,7 @@ export async function registerRoutes(
       if (!deleted) return res.status(404).json({ message: "Claim not found" });
       res.json({ message: "Claim and all related data deleted" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -251,7 +251,7 @@ export async function registerRoutes(
       const docs = await storage.getAllDocuments();
       res.json(docs);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -294,7 +294,7 @@ export async function registerRoutes(
       }
       res.json(summaries);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -304,7 +304,7 @@ export async function registerRoutes(
       const docs = await storage.getDocuments(claimId);
       res.json(docs);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -326,7 +326,7 @@ export async function registerRoutes(
       }
       res.json({ urls, fileName: doc.fileName, documentType: doc.documentType });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -369,7 +369,7 @@ export async function registerRoutes(
 
       res.status(201).json({ documentId: doc.id, storagePath, status: "uploaded" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -420,7 +420,7 @@ export async function registerRoutes(
 
       res.status(201).json({ documentId: doc.id, storagePaths, fileCount: files.length, status: "uploaded" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -514,7 +514,7 @@ export async function registerRoutes(
 
       res.json({ extraction, confidence: extractResult.confidence });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -524,7 +524,7 @@ export async function registerRoutes(
       const exts = await storage.getExtractions(claimId);
       res.json(exts);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -535,7 +535,7 @@ export async function registerRoutes(
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
       res.json(ext);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -558,7 +558,7 @@ export async function registerRoutes(
 
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -579,7 +579,7 @@ export async function registerRoutes(
 
       res.json({ confirmed: true, documentType: req.params.type });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -603,7 +603,7 @@ export async function registerRoutes(
       await storage.updateClaimStatus(claimId, "extractions_confirmed");
       res.json({ confirmed: exts.length });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -646,7 +646,7 @@ export async function registerRoutes(
       await storage.updateClaimStatus(claimId, "briefing_ready");
       res.json(briefing);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -657,7 +657,7 @@ export async function registerRoutes(
       if (!briefing) return res.status(404).json({ message: "Briefing not found" });
       res.json(briefing);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -677,7 +677,7 @@ export async function registerRoutes(
       await storage.updateClaimStatus(claimId, "inspecting");
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -692,7 +692,7 @@ export async function registerRoutes(
       const estimate = await storage.getEstimateSummary(sessionId);
       res.json({ session, rooms, lineItemCount: allLineItems.length, photoCount: photos.length, estimate });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -707,7 +707,7 @@ export async function registerRoutes(
       const session = await storage.updateSession(sessionId, updates);
       res.json(session);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -720,7 +720,7 @@ export async function registerRoutes(
       }
       res.json(session);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -746,7 +746,7 @@ export async function registerRoutes(
       await storage.updateSessionRoom(sessionId, room.id);
       res.status(201).json(room);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -756,7 +756,7 @@ export async function registerRoutes(
       const rooms = await storage.getRooms(sessionId);
       res.json(rooms);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -766,7 +766,7 @@ export async function registerRoutes(
       const room = await storage.updateRoomStatus(roomId, req.body.status);
       res.json(room);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -776,7 +776,7 @@ export async function registerRoutes(
       const room = await storage.completeRoom(roomId);
       res.json(room);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -801,7 +801,7 @@ export async function registerRoutes(
       await storage.incrementRoomDamageCount(roomId);
       res.status(201).json(damage);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -814,7 +814,7 @@ export async function registerRoutes(
         : await storage.getDamagesForSession(sessionId);
       res.json(damages);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -850,7 +850,7 @@ export async function registerRoutes(
       });
       res.status(201).json(item);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -860,7 +860,7 @@ export async function registerRoutes(
       const items = await storage.getLineItems(sessionId);
       res.json(items);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -870,7 +870,7 @@ export async function registerRoutes(
       const summary = await storage.getEstimateSummary(sessionId);
       res.json(summary);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -880,7 +880,7 @@ export async function registerRoutes(
       const item = await storage.updateLineItem(id, req.body);
       res.json(item);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -890,7 +890,7 @@ export async function registerRoutes(
       await storage.deleteLineItem(id);
       res.status(204).send();
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -947,7 +947,7 @@ export async function registerRoutes(
 
       res.status(201).json({ photoId: photo.id, storagePath: photo.storagePath });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -957,7 +957,7 @@ export async function registerRoutes(
       const photos = await storage.getPhotos(sessionId);
       res.json(photos);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1104,7 +1104,7 @@ Respond in JSON format:
       });
       res.status(201).json(entry);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1117,7 +1117,7 @@ Respond in JSON format:
         : await storage.getMoistureReadingsForSession(sessionId);
       res.json(readings);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1133,7 +1133,7 @@ Respond in JSON format:
       const entry = await storage.addTranscript({ sessionId, speaker, content });
       res.status(201).json(entry);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1143,7 +1143,7 @@ Respond in JSON format:
       const transcript = await storage.getTranscript(sessionId);
       res.json(transcript);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1207,7 +1207,7 @@ Respond in JSON format:
         sessionId,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1345,7 +1345,7 @@ Respond in JSON format:
         },
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1386,7 +1386,7 @@ Respond in JSON format:
 
       res.json({ categories, ...estimateSummary });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1415,7 +1415,7 @@ Respond in JSON format:
         totalPhotos: photos.length,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1457,7 +1457,7 @@ Respond in JSON format:
         },
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1477,7 +1477,7 @@ Respond in JSON format:
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       res.send(esxBuffer);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1489,7 +1489,7 @@ Respond in JSON format:
       const review = await reviewEstimate(sessionId, storage);
       res.json(review);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1556,13 +1556,13 @@ Respond in JSON format:
       res.send(pdfBuffer);
     } catch (error: any) {
       console.error("PDF generation error:", error);
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
   // ── Photo Annotations Endpoint ──────────────────────
 
-  app.put("/api/inspection/:sessionId/photos/:photoId/annotations", async (req, res) => {
+  app.put("/api/inspection/:sessionId/photos/:photoId/annotations", authenticateRequest, async (req, res) => {
     try {
       const photoId = parseInt(req.params.photoId);
       const { shapes, annotatedImageBase64 } = req.body;
@@ -1579,7 +1579,7 @@ Respond in JSON format:
       res.json({ success: true, photo: updatedPhoto });
     } catch (error: any) {
       console.error("Photo annotation save error:", error);
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1597,7 +1597,7 @@ Respond in JSON format:
       if (!session) return res.status(404).json({ message: "Session not found" });
       res.json(session);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1608,7 +1608,7 @@ Respond in JSON format:
       const items = await storage.getScopeLineItems();
       res.json(items);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1625,7 +1625,7 @@ Respond in JSON format:
       );
       res.json(filtered);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1635,7 +1635,7 @@ Respond in JSON format:
       const items = await storage.getScopeLineItemsByTrade(tradeCode);
       res.json(items);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1668,7 +1668,7 @@ Respond in JSON format:
 
       res.json({ items: pricedItems, totals });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1683,7 +1683,7 @@ Respond in JSON format:
 
       res.json(validation);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1696,12 +1696,12 @@ Respond in JSON format:
         available: Array.from(regions).length > 0,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
   // Pricing Catalog Seed
-  app.post("/api/pricing/seed", async (_req, res) => {
+  app.post("/api/pricing/seed", authenticateRequest, requireRole("admin"), async (req, res) => {
     try {
       const { seedCatalog } = require("./seed-catalog");
       await seedCatalog();
@@ -1710,17 +1710,21 @@ Respond in JSON format:
       if (error.message.includes("unique constraint") || error.message.includes("duplicate key")) {
         return res.json({ message: "Catalog already seeded" });
       }
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
   // ── Authentication Routes ──────────────────────────
 
-  app.post("/api/auth/sync", async (req, res) => {
+  app.post("/api/auth/sync", authenticateSupabaseToken, async (req, res) => {
     try {
+      const supabaseUser = (req as any).supabaseUser;
       const { supabaseId, email, fullName } = req.body;
       if (!supabaseId || !email) {
         return res.status(400).json({ message: "supabaseId and email required" });
+      }
+      if (supabaseUser.id !== supabaseId) {
+        return res.status(403).json({ message: "Token does not match provided supabaseId" });
       }
       const user = await storage.syncSupabaseUser(supabaseId, email, fullName || "");
       res.json({
@@ -1730,7 +1734,7 @@ Respond in JSON format:
         role: user.role,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1746,7 +1750,7 @@ Respond in JSON format:
         role: req.user.role,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1766,7 +1770,7 @@ Respond in JSON format:
         }));
       res.json(teamMembers);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1779,7 +1783,7 @@ Respond in JSON format:
       const claim = await storage.updateClaimFields(claimId, { assignedTo: userId });
       res.json(claim);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1798,7 +1802,7 @@ Respond in JSON format:
         totalEstimateValue: allClaims.reduce((sum, _c) => sum + 25000, 0),
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1823,7 +1827,7 @@ Respond in JSON format:
       }
       res.json(allSessions);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1849,7 +1853,7 @@ Respond in JSON format:
 
       res.json(supplemental);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1859,7 +1863,7 @@ Respond in JSON format:
       const supplementals = await storage.getSupplementalsForSession(sessionId);
       res.json(supplementals);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1871,7 +1875,7 @@ Respond in JSON format:
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
       res.json(supplemental);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1882,7 +1886,7 @@ Respond in JSON format:
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
       res.json(supplemental);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1901,7 +1905,7 @@ Respond in JSON format:
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       res.send(Buffer.from("supplemental esx placeholder"));
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });
 
