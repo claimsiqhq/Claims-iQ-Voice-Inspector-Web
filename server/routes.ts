@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { generateESXFile } from "./esxGenerator";
+import { reviewEstimate } from "./aiReview";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
 import { authenticateRequest, requireRole, optionalAuth } from "./auth";
 import pdfParse from "pdf-parse";
@@ -1459,7 +1461,7 @@ Respond in JSON format:
     }
   });
 
-  // ── ESX Export ──────────────────────────────────────
+  // ── ESX Export (Xactimate-compatible ZIP) ────────────
 
   app.post("/api/inspection/:sessionId/export/esx", authenticateRequest, async (req, res) => {
     try {
@@ -1468,43 +1470,24 @@ Respond in JSON format:
       if (!session) return res.status(404).json({ message: "Session not found" });
 
       const claim = await storage.getClaim(session.claimId);
-      const items = await storage.getLineItems(sessionId);
-      const rooms = await storage.getRooms(sessionId);
+      const esxBuffer = await generateESXFile(sessionId, storage);
 
-      const xmlLines: string[] = [];
-      xmlLines.push('<?xml version="1.0" encoding="UTF-8"?>');
-      xmlLines.push('<Estimate>');
-      xmlLines.push(`  <ClaimNumber>${claim?.claimNumber || ""}</ClaimNumber>`);
-      xmlLines.push(`  <InsuredName>${claim?.insuredName || ""}</InsuredName>`);
-      xmlLines.push(`  <PropertyAddress>${claim?.propertyAddress || ""}</PropertyAddress>`);
-      xmlLines.push(`  <DateOfLoss>${claim?.dateOfLoss || ""}</DateOfLoss>`);
-      xmlLines.push('  <LineItems>');
-
-      for (const item of items) {
-        const room = rooms.find(r => r.id === item.roomId);
-        xmlLines.push('    <LineItem>');
-        xmlLines.push(`      <Category>${item.category}</Category>`);
-        xmlLines.push(`      <Action>${item.action || ""}</Action>`);
-        xmlLines.push(`      <Description>${item.description}</Description>`);
-        xmlLines.push(`      <Room>${room?.name || "Unassigned"}</Room>`);
-        xmlLines.push(`      <Quantity>${item.quantity || 0}</Quantity>`);
-        xmlLines.push(`      <Unit>${item.unit || "EA"}</Unit>`);
-        xmlLines.push(`      <UnitPrice>${item.unitPrice || 0}</UnitPrice>`);
-        xmlLines.push(`      <TotalPrice>${item.totalPrice || 0}</TotalPrice>`);
-        xmlLines.push(`      <WasteFactor>${item.wasteFactor || 0}</WasteFactor>`);
-        xmlLines.push(`      <DepreciationType>${item.depreciationType || "Recoverable"}</DepreciationType>`);
-        xmlLines.push('    </LineItem>');
-      }
-
-      xmlLines.push('  </LineItems>');
-      xmlLines.push('</Estimate>');
-
-      const xml = xmlLines.join("\n");
       const fileName = `${claim?.claimNumber || "estimate"}_export.esx`;
-
-      res.setHeader("Content-Type", "application/xml");
+      res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-      res.send(xml);
+      res.send(esxBuffer);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── AI Estimate Review ──────────────────────────────
+
+  app.post("/api/inspection/:sessionId/review/ai", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const review = await reviewEstimate(sessionId, storage);
+      res.json(review);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1839,6 +1822,84 @@ Respond in JSON format:
         }
       }
       res.json(allSessions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Supplemental Claims ─────────────────────────────
+
+  app.post("/api/inspection/:sessionId/supplemental", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const { reason, newLineItems, removedLineItemIds, modifiedLineItems } = req.body;
+
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const supplemental = await storage.createSupplementalClaim({
+        originalSessionId: sessionId,
+        claimId: session.claimId,
+        reason,
+        newLineItems,
+        removedLineItemIds,
+        modifiedLineItems,
+        status: "draft",
+      });
+
+      res.json(supplemental);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/supplementals", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const supplementals = await storage.getSupplementalsForSession(sessionId);
+      res.json(supplementals);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/supplemental/:id", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const supplemental = await storage.updateSupplemental(id, updates);
+      if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
+      res.json(supplemental);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/supplemental/:id/submit", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const supplemental = await storage.submitSupplemental(id);
+      if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
+      res.json(supplemental);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/supplemental/:id/export/esx", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const supplemental = await storage.getSupplemental(id);
+      if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
+
+      const claim = await storage.getClaim(supplemental.claimId);
+      // For now, export the supplemental as ESX showing only new/modified items
+      // In production, generate a delta ESX
+      const fileName = `${claim?.claimNumber || "supplemental"}_supplemental.esx`;
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(Buffer.from("supplemental esx placeholder"));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import AIReviewPanel from "@/components/AIReviewPanel";
 import {
   FileSpreadsheet, FileText, Send, CheckCircle2,
   AlertTriangle, Download, Loader2, ChevronLeft, ShieldCheck,
@@ -194,6 +195,17 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                 </li>
               ))}
             </ul>
+          </motion.div>
+        )}
+
+        {/* AI Review Panel */}
+        {!validationLoading && sessionId && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+          >
+            <AIReviewPanel sessionId={sessionId} />
           </motion.div>
         )}
 

@@ -3,7 +3,7 @@
 ## Overview
 Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assistant for insurance adjusters. It aims to streamline the insurance claims process by automating document analysis, guiding inspections, and facilitating report generation. The project's core purpose is to enhance accuracy, reduce manual effort, and accelerate claim processing, providing significant value to insurance companies and adjusters.
 
-Key capabilities include: AI-powered document parsing of claim reports and policy forms, guided voice inspections using real-time AI, multi-structure inspection support, AI-enhanced photo capture and damage annotation, moisture reading logging, and comprehensive review-and-export functionalities (ESX/Xactimate, PDF).
+Key capabilities include: AI-powered document parsing of claim reports and policy forms, guided voice inspections using real-time AI, multi-structure inspection support, AI-enhanced photo capture and damage annotation, moisture reading logging, comprehensive review-and-export functionalities (ESX/Xactimate ZIP, PDF), AI-powered estimate review (scope gaps, pricing anomalies, compliance), and supplemental claims workflow for additional damage discovery.
 
 ## User Preferences
 - Professional insurance app styling
@@ -61,10 +61,12 @@ The application features a multi-screen workflow with authentication:
 - **Active Voice Inspection:** A three-panel interface for voice-guided inspections using OpenAI Realtime API, featuring floor plans, real-time transcription, and a photo gallery. Voice AI tools facilitate actions like setting context, creating rooms, adding damages, capturing photos, and logging moisture readings. The `add_line_item` tool supports `catalogCode` for automatic Xactimate pricing lookup.
 - **Multi-Structure Inspections:** Support for detailed exterior inspections of multiple structures, including roof slopes and elevations, aligned with Xactimate patterns.
 - **Review & Finalize:** A comprehensive review stage with tabs for estimate details (including Material/Labor/Equipment breakdown and O&P eligibility display), photos, completeness checks with AI scope gap detection, and notes.
-- **Export:** Options for ESX/Xactimate XML, PDF report generation, and a "Submit for Review" workflow.
+- **AI Estimate Review:** GPT-4o-powered analysis that scores estimates (1-100) and detects scope gaps, pricing anomalies, documentation issues, and compliance violations with actionable suggestions.
+- **Export:** Xactimate-compatible ESX ZIP files (XACTDOC.XML + GENERIC_ROUGHDRAFT.XML), PDF report generation, AI review panel, and a "Submit for Review" workflow.
+- **Supplemental Claims:** Workflow for managing additional damage discovered after initial inspection, with draft/submit/approve lifecycle and delta tracking.
 
 ### Data Model
-The system uses 14 PostgreSQL tables in Supabase, structured around core claim data, document processing, detailed inspection sessions, rooms, damages, line items, photos, moisture readings, and a pricing catalog. Key schema extensions:
+The system uses 15 PostgreSQL tables in Supabase, structured around core claim data, document processing, detailed inspection sessions, rooms, damages, line items, photos, moisture readings, a pricing catalog, and supplemental claims. Key schema extensions:
 - **users table:** Extended with `email`, `full_name`, `role` (adjuster/supervisor/admin), `supabase_auth_id`, `last_login_at`, `is_active`
 - **claims table:** Added `assigned_to` (FK to users) for claim assignment
 - **inspection_sessions table:** Added `inspector_id` (FK to users) to track who runs inspections
@@ -86,7 +88,7 @@ A dedicated pricing engine provides:
 Seed data for ~100 line items with realistic Verisk-style pricing. Seeded via `POST /api/pricing/seed`.
 
 ### API Endpoints
-Approximately 55 RESTful endpoints manage the workflow, grouped into Auth, Admin, Document Flow, Inspection, Pricing Catalog, and Review/Export phases.
+Approximately 62 RESTful endpoints manage the workflow, grouped into Auth, Admin, Document Flow, Inspection, Pricing Catalog, and Review/Export phases.
 
 **Auth & Admin endpoints:**
 - `POST /api/auth/sync` — Sync Supabase user to local DB (creates or updates)
@@ -122,9 +124,52 @@ The system includes mechanisms for voice disconnection auto-reconnect, error sta
 - **OpenAI API:** Utilized for GPT-4o capabilities (document parsing, briefing, photo analysis) and the Realtime API for voice interactions (`gpt-4o-realtime-preview`).
 - **pdf-parse:** Version 1.1.1 is used on the backend for PDF text extraction.
 - **pdfkit:** Server-side PDF generation for professional branded inspection reports.
+- **archiver:** ZIP archive generation for Xactimate-compatible ESX file exports.
 - **Drizzle ORM:** Employed for database schema management and querying.
 - **Framer Motion:** Used for UI animations and transitions.
 - **Vite PWA:** Provides Progressive Web App features, including offline caching.
+
+## PROMPT-09 — ESX Export, AI Estimate Review & Supplemental Claims Workflow
+
+### Changes Applied
+
+**New Files:**
+- `server/esxGenerator.ts` — Generates real Xactimate-compatible ESX files as ZIP archives containing XACTDOC.XML (claim/contact/summary metadata) and GENERIC_ROUGHDRAFT.XML (room-grouped line items with labor/material/tax breakdowns and room dimension calculations). Replaces the previous simple XML placeholder export.
+- `server/aiReview.ts` — AI-powered estimate review using GPT-4o that analyzes inspection data for scope gaps (rooms with damage but missing line items), pricing anomalies, documentation gaps (rooms without photos), compliance issues (moisture protocol for water claims), and actionable suggestions. Returns a structured review with an overall score (1-100) and categorized findings. Falls back gracefully when the API is unavailable.
+- `client/src/components/AIReviewPanel.tsx` — Collapsible panel displaying AI review results with color-coded score circle (green/yellow/red), expandable sections for scope gaps, pricing anomalies, documentation, compliance, and suggestions. Includes severity indicators and a re-run button.
+- `client/src/pages/SupplementalPage.tsx` — Full supplemental claims management page showing original estimate summary, list of existing supplementals with status badges (draft/submitted/approved), and a form to create new supplemental claims with reason text.
+
+**Modified Files:**
+- `shared/schema.ts` — Added `supplementalClaims` table (tracks original session, claim, reason, status, new/removed/modified line items, review notes, timestamps). Added `insertSupplementalClaimSchema`, `SupplementalClaim`, and `InsertSupplementalClaim` exports.
+- `server/storage.ts` — Added `supplementalClaims` table import and `SupplementalClaim`/`InsertSupplementalClaim` type imports. Extended `IStorage` interface with 6 supplemental methods. Implemented `createSupplementalClaim`, `getSupplementalsForSession`, `getSupplemental`, `updateSupplemental`, `submitSupplemental`, and `approveSupplemental` in `DatabaseStorage` class.
+- `server/routes.ts` — Added imports for `generateESXFile` and `reviewEstimate`. Replaced the ESX export endpoint to use the new ZIP-based generator (Content-Type changed from `application/xml` to `application/zip`). Added `POST /api/inspection/:sessionId/review/ai` endpoint for AI estimate review. Added 5 supplemental claim endpoints: create, list, update, submit, and supplemental ESX export.
+- `client/src/pages/ExportPage.tsx` — Added `AIReviewPanel` import. Inserted AI review panel before the ESX export card on the Export page, displayed when validation is complete and session is available.
+- `package.json` — Added `archiver` to dependencies and `@types/archiver` to devDependencies.
+
+### New Database Table
+- **supplemental_claims:** `id`, `original_session_id` (FK inspection_sessions), `claim_id` (FK claims), `reason`, `status` (draft/submitted/approved), `new_line_items` (JSONB), `removed_line_item_ids` (JSONB), `modified_line_items` (JSONB), `review_notes`, `created_at`, `submitted_at`, `approved_at`
+
+### New API Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/inspection/:sessionId/export/esx` | POST | Generate Xactimate-compatible ESX ZIP file (enhanced) |
+| `/api/inspection/:sessionId/review/ai` | POST | Run GPT-4o estimate review analysis |
+| `/api/inspection/:sessionId/supplemental` | POST | Create new supplemental claim |
+| `/api/inspection/:sessionId/supplementals` | GET | List supplementals for session |
+| `/api/supplemental/:id` | PATCH | Update supplemental claim fields |
+| `/api/supplemental/:id/submit` | POST | Submit supplemental for approval |
+| `/api/supplemental/:id/export/esx` | POST | Export supplemental as ESX (placeholder) |
+
+### Key Design Decisions
+- ESX files are real ZIP archives with proper XACTDOC.XML and GENERIC_ROUGHDRAFT.XML structure matching Xactimate import format
+- AI review uses GPT-4o with JSON response format and 0.3 temperature for consistent analysis
+- AI review gracefully degrades to a default review when the OpenAI API is unavailable
+- Supplemental claims are independent entities linked to the original session, enabling delta tracking
+- Labor/material/tax splits in ESX use industry-standard ratios (35% labor, 65% material, 5% tax)
+
+### Build Status
+- TypeScript compilation: No new errors introduced (pre-existing Express type issues unchanged)
+- All new modules properly typed with interfaces and exports
 
 ## PROMPT-08 — PDF Report Generation & Photo Annotation Canvas
 

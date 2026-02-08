@@ -218,6 +218,21 @@ export const voiceTranscripts = pgTable("voice_transcripts", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+export const supplementalClaims = pgTable("supplemental_claims", {
+  id: serial("id").primaryKey(),
+  originalSessionId: integer("original_session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  status: varchar("status", { length: 20 }).default("draft"),
+  newLineItems: jsonb("new_line_items"),
+  removedLineItemIds: jsonb("removed_line_item_ids"),
+  modifiedLineItems: jsonb("modified_line_items"),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  submittedAt: timestamp("submitted_at"),
+  approvedAt: timestamp("approved_at"),
+});
+
 export const scopeLineItems = pgTable("scope_line_items", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 30 }).notNull().unique(),
@@ -267,6 +282,16 @@ export type MoistureReading = typeof moistureReadings.$inferSelect;
 export type InsertMoistureReading = z.infer<typeof insertMoistureReadingSchema>;
 export type VoiceTranscript = typeof voiceTranscripts.$inferSelect;
 export type InsertVoiceTranscript = z.infer<typeof insertVoiceTranscriptSchema>;
+
+export const insertSupplementalClaimSchema = createInsertSchema(supplementalClaims).omit({
+  id: true,
+  createdAt: true,
+  submittedAt: true,
+  approvedAt: true,
+});
+
+export type SupplementalClaim = typeof supplementalClaims.$inferSelect;
+export type InsertSupplementalClaim = z.infer<typeof insertSupplementalClaimSchema>;
 
 export const insertScopeLineItemSchema = createInsertSchema(scopeLineItems).omit({ id: true });
 export const insertRegionalPriceSetSchema = createInsertSchema(regionalPriceSets).omit({ id: true });

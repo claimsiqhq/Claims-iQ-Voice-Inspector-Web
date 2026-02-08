@@ -3,6 +3,7 @@ import {
   claims, documents, extractions, briefings,
   inspectionSessions, inspectionRooms, damageObservations,
   lineItems, inspectionPhotos, moistureReadings, voiceTranscripts,
+  supplementalClaims,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
@@ -15,6 +16,7 @@ import {
   type InspectionPhoto, type InsertInspectionPhoto,
   type MoistureReading, type InsertMoistureReading,
   type VoiceTranscript, type InsertVoiceTranscript,
+  type SupplementalClaim, type InsertSupplementalClaim,
   scopeLineItems, regionalPriceSets,
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
@@ -104,6 +106,13 @@ export interface IStorage {
   getScopeLineItemsByTrade(tradeCode: string): Promise<ScopeLineItem[]>;
   getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined>;
   getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]>;
+
+  createSupplementalClaim(data: InsertSupplementalClaim): Promise<SupplementalClaim>;
+  getSupplementalsForSession(sessionId: number): Promise<SupplementalClaim[]>;
+  getSupplemental(id: number): Promise<SupplementalClaim | undefined>;
+  updateSupplemental(id: number, updates: Partial<SupplementalClaim>): Promise<SupplementalClaim | undefined>;
+  submitSupplemental(id: number): Promise<SupplementalClaim | undefined>;
+  approveSupplemental(id: number): Promise<SupplementalClaim | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -511,6 +520,35 @@ export class DatabaseStorage implements IStorage {
 
   async getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]> {
     return db.select().from(regionalPriceSets).where(eq(regionalPriceSets.regionId, regionId));
+  }
+
+  async createSupplementalClaim(data: InsertSupplementalClaim): Promise<SupplementalClaim> {
+    const [claim] = await db.insert(supplementalClaims).values(data).returning();
+    return claim;
+  }
+
+  async getSupplementalsForSession(sessionId: number): Promise<SupplementalClaim[]> {
+    return db.select().from(supplementalClaims).where(eq(supplementalClaims.originalSessionId, sessionId)).orderBy(desc(supplementalClaims.createdAt));
+  }
+
+  async getSupplemental(id: number): Promise<SupplementalClaim | undefined> {
+    const [claim] = await db.select().from(supplementalClaims).where(eq(supplementalClaims.id, id));
+    return claim;
+  }
+
+  async updateSupplemental(id: number, updates: Partial<SupplementalClaim>): Promise<SupplementalClaim | undefined> {
+    const [claim] = await db.update(supplementalClaims).set(updates).where(eq(supplementalClaims.id, id)).returning();
+    return claim;
+  }
+
+  async submitSupplemental(id: number): Promise<SupplementalClaim | undefined> {
+    const [claim] = await db.update(supplementalClaims).set({ status: "submitted", submittedAt: new Date() }).where(eq(supplementalClaims.id, id)).returning();
+    return claim;
+  }
+
+  async approveSupplemental(id: number): Promise<SupplementalClaim | undefined> {
+    const [claim] = await db.update(supplementalClaims).set({ status: "approved", approvedAt: new Date() }).where(eq(supplementalClaims.id, id)).returning();
+    return claim;
   }
 }
 
