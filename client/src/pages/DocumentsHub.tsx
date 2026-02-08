@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useLocation } from "wouter";
 import PdfViewer from "@/components/PdfViewer";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Claim {
   id: number;
@@ -326,8 +327,11 @@ function ClaimCard({ claim, docs }: { claim: Claim; docs: DocRecord[] }) {
 }
 
 export default function DocumentsHub() {
+  const { role } = useAuth();
+  const claimsEndpoint = role === "supervisor" ? "/api/claims" : "/api/claims/my-claims";
+
   const { data: claims = [], isLoading: loadingClaims } = useQuery<Claim[]>({
-    queryKey: ["/api/claims"],
+    queryKey: [claimsEndpoint],
   });
 
   const { data: allDocs = [], isLoading: loadingDocs } = useQuery<DocRecord[]>({
