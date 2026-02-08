@@ -97,19 +97,84 @@ export function makeSession(overrides: Record<string, any> = {}) {
 }
 
 /**
- * Mock inspection room
+ * Mock structure (L1 hierarchy)
+ */
+export function makeStructure(overrides: Record<string, any> = {}) {
+  return {
+    id: 1,
+    sessionId: 1,
+    name: 'Main Dwelling',
+    structureType: 'dwelling',
+    outline: null,
+    position: null,
+    sortOrder: 0,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+/**
+ * Mock inspection room (L2/L3 hierarchy)
  */
 export function makeRoom(overrides: Record<string, any> = {}) {
   return {
     id: 1,
     sessionId: 1,
     name: 'Kitchen',
-    structure: 'Main',
-    roomType: 'kitchen',
+    structure: 'Main Dwelling',
+    structureId: 1,
+    roomType: 'interior_kitchen',
+    viewType: 'interior',
+    shapeType: 'rectangle',
+    parentRoomId: null,
+    attachmentType: null,
     status: 'completed',
     dimensions: { length: 12, width: 10, height: 8 },
+    polygon: null,
+    position: null,
+    floor: 1,
+    facetLabel: null,
+    pitch: null,
     damageCount: 2,
     photoCount: 3,
+    createdAt: new Date(),
+    completedAt: null,
+    phase: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Mock room opening (L4 deduction)
+ */
+export function makeRoomOpening(overrides: Record<string, any> = {}) {
+  return {
+    id: 1,
+    roomId: 1,
+    openingType: 'door',
+    wallIndex: 0,
+    positionOnWall: 0.5,
+    width: 3.0,
+    height: 6.67,
+    label: 'Entry Door',
+    opensInto: 'exterior',
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+/**
+ * Mock sketch annotation (L5 metadata)
+ */
+export function makeSketchAnnotation(overrides: Record<string, any> = {}) {
+  return {
+    id: 1,
+    roomId: 1,
+    annotationType: 'hail_count',
+    label: 'Hail Hits',
+    value: '8',
+    location: 'Front Slope (F1)',
+    position: null,
     createdAt: new Date(),
     ...overrides,
   };

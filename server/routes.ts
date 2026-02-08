@@ -44,12 +44,46 @@ const sessionUpdateSchema = z.object({
   status: z.string().min(1).optional(),
 });
 
+const structureCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  structureType: z.string().max(30).optional().default("dwelling"),
+    // dwelling, garage, shed, fence, carport, pool, other
+});
+
 const roomCreateSchema = z.object({
   name: z.string().min(1).max(100),
   roomType: z.string().max(50).nullable().optional(),
-  structure: z.string().max(100).nullable().optional(),
+  structure: z.string().max(100).nullable().optional(),     // legacy
+  structureId: z.number().int().positive().nullable().optional(),
+  viewType: z.enum(["interior", "roof_plan", "elevation", "exterior_other"]).optional(),
+  shapeType: z.enum(["rectangle", "gable", "hip", "l_shape", "custom"]).optional(),
+  parentRoomId: z.number().int().positive().nullable().optional(),
+  attachmentType: z.string().max(30).nullable().optional(),
   dimensions: z.any().optional(),
+  polygon: z.any().optional(),
+  position: z.any().optional(),
+  floor: z.number().int().positive().optional(),
+  facetLabel: z.string().max(10).nullable().optional(),
+  pitch: z.string().max(10).nullable().optional(),
   phase: z.number().int().positive().nullable().optional(),
+});
+
+const roomOpeningCreateSchema = z.object({
+  openingType: z.enum(["door", "window", "overhead_door", "missing_wall", "archway", "sliding_door"]),
+  wallIndex: z.number().int().nonnegative(),
+  positionOnWall: z.number().min(0).max(1).optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  label: z.string().max(50).nullable().optional(),
+  opensInto: z.string().max(50).nullable().optional(),
+});
+
+const sketchAnnotationCreateSchema = z.object({
+  annotationType: z.enum(["hail_count", "wind_damage", "pitch", "storm_direction", "facet_label", "material_note", "custom"]),
+  label: z.string().min(1).max(100),
+  value: z.string().max(50).nullable().optional(),
+  location: z.string().max(100).nullable().optional(),
+  position: z.any().optional(),
 });
 
 const lineItemCreateSchema = z.object({
@@ -740,7 +774,64 @@ export async function registerRoutes(
     }
   });
 
-  // ── Rooms ─────────────────────────────────────────
+  // ── Structures (L1 Hierarchy) ─────────────────────
+
+  app.post("/api/inspection/:sessionId/structures", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const parsed = structureCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid structure data", errors: parsed.error.flatten().fieldErrors });
+      }
+      // Check for duplicate name in session
+      const existing = await storage.getStructureByName(sessionId, parsed.data.name);
+      if (existing) {
+        return res.json(existing); // idempotent — return existing
+      }
+      const structure = await storage.createStructure({
+        sessionId,
+        name: parsed.data.name,
+        structureType: parsed.data.structureType || "dwelling",
+      });
+      res.status(201).json(structure);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/structures", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const structs = await storage.getStructures(sessionId);
+      res.json(structs);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/structures/:structureId", authenticateRequest, async (req, res) => {
+    try {
+      const structureId = parseInt(param(req.params.structureId));
+      const structure = await storage.updateStructure(structureId, req.body);
+      res.json(structure);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Inspection Hierarchy (full tree for voice agent) ──
+
+  app.get("/api/inspection/:sessionId/hierarchy", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const hierarchy = await storage.getInspectionHierarchy(sessionId);
+      res.json(hierarchy);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Rooms (L2/L3 Hierarchy) ─────────────────────────
 
   app.post("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
@@ -749,9 +840,38 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid room data", errors: parsed.error.flatten().fieldErrors });
       }
-      const { name, roomType, structure, dimensions, phase } = parsed.data;
+      const { name, roomType, structure, structureId, viewType, shapeType,
+              parentRoomId, attachmentType, dimensions, polygon, position,
+              floor, facetLabel, pitch, phase } = parsed.data;
       const structureName = structure || "Main Dwelling";
 
+      // Resolve structureId: use provided ID, or auto-create from legacy structure string
+      let resolvedStructureId = structureId || null;
+      if (!resolvedStructureId && structure) {
+        let existingStruct = await storage.getStructureByName(sessionId, structure);
+        if (!existingStruct) {
+          const sType = structure.toLowerCase().includes("garage") ? "garage"
+            : structure.toLowerCase().includes("shed") ? "shed"
+            : structure.toLowerCase().includes("fence") ? "fence"
+            : "dwelling";
+          existingStruct = await storage.createStructure({
+            sessionId,
+            name: structure,
+            structureType: sType,
+          });
+        }
+        resolvedStructureId = existingStruct.id;
+      }
+
+      // Validate parentRoomId if provided (L3 subroom)
+      if (parentRoomId) {
+        const parentRoom = await storage.getRoom(parentRoomId);
+        if (!parentRoom || parentRoom.sessionId !== sessionId) {
+          return res.status(400).json({ message: "Invalid parentRoomId: parent room not found in this session" });
+        }
+      }
+
+      // Check for duplicate: elevation rooms update dimensions, others return existing
       const isElevation = roomType && roomType.startsWith("exterior_elevation_");
       if (isElevation) {
         const existingRooms = await storage.getRooms(sessionId);
@@ -769,19 +889,50 @@ export async function registerRoutes(
           await storage.updateSessionRoom(sessionId, duplicate.id);
           return res.status(200).json(duplicate);
         }
+      } else {
+        const existingRoom = await storage.getRoomByName(sessionId, name);
+        if (existingRoom) {
+          return res.json(existingRoom); // idempotent
+        }
       }
+
 
       const room = await storage.createRoom({
         sessionId,
         name,
         roomType: roomType || null,
         structure: structureName,
+        structureId: resolvedStructureId,
+        viewType: viewType || "interior",
+        shapeType: shapeType || "rectangle",
+        parentRoomId: parentRoomId || null,
+        attachmentType: attachmentType || null,
         dimensions: dimensions || null,
+        polygon: polygon || null,
+        position: position || null,
+        floor: floor || 1,
+        facetLabel: facetLabel || null,
+        pitch: pitch || null,
         status: "in_progress",
         phase: phase || null,
       });
       await storage.updateSessionRoom(sessionId, room.id);
-      res.status(201).json(room);
+
+      // Return enriched response with hierarchy context
+      const siblings = resolvedStructureId
+        ? (await storage.getRoomsForStructure(resolvedStructureId)).filter(r => r.id !== room.id && !r.parentRoomId)
+        : [];
+
+      res.status(201).json({
+        ...room,
+        _context: {
+          structureName: structure || "Main Dwelling",
+          structureId: resolvedStructureId,
+          siblingRooms: siblings.map(s => ({ id: s.id, name: s.name, status: s.status })),
+          isSubArea: !!parentRoomId,
+          parentRoomName: parentRoomId ? (await storage.getRoom(parentRoomId))?.name : null,
+        },
+      });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
@@ -812,6 +963,102 @@ export async function registerRoutes(
       const roomId = parseInt(param(req.params.roomId));
       const room = await storage.completeRoom(roomId);
       res.json(room);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Save room geometry (polygon + position from sketch canvas)
+  app.patch("/api/inspection/:sessionId/rooms/:roomId/geometry", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const { polygon, position } = req.body;
+      const room = await storage.updateRoomGeometry(roomId, polygon, position);
+      res.json(room);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Room Openings (L4: Deductions) ─────────────────
+
+  app.post("/api/inspection/:sessionId/rooms/:roomId/openings", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const parsed = roomOpeningCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid opening data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const opening = await storage.createRoomOpening({ roomId, ...parsed.data });
+      res.status(201).json(opening);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/rooms/:roomId/openings", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const openings = await storage.getRoomOpenings(roomId);
+      res.json(openings);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/rooms/:roomId/openings/:openingId", authenticateRequest, async (req, res) => {
+    try {
+      const openingId = parseInt(param(req.params.openingId));
+      await storage.deleteRoomOpening(openingId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Sketch Annotations (L5: Metadata overlays) ──────
+
+  app.post("/api/inspection/:sessionId/rooms/:roomId/annotations", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const parsed = sketchAnnotationCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid annotation data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const annotation = await storage.createSketchAnnotation({ roomId, ...parsed.data });
+      res.status(201).json(annotation);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/rooms/:roomId/annotations", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const annotations = await storage.getSketchAnnotations(roomId);
+      res.json(annotations);
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, async (req, res) => {
+    try {
+      const annotationId = parseInt(param(req.params.annotationId));
+      await storage.deleteSketchAnnotation(annotationId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Sketch Templates ────────────────────────────────
+
+  app.get("/api/sketch-templates", authenticateRequest, async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const templates = await storage.getSketchTemplates(category);
+      res.json(templates);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }

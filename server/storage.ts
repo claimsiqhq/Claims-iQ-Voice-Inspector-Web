@@ -3,14 +3,18 @@ import {
   claims, documents, extractions, briefings,
   inspectionSessions, inspectionRooms, damageObservations,
   lineItems, inspectionPhotos, moistureReadings, voiceTranscripts,
-  supplementalClaims,
+  supplementalClaims, structures, roomOpenings, sketchAnnotations, sketchTemplates,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
   type Briefing, type InsertBriefing,
   type User, type InsertUser, users,
   type InspectionSession, type InsertInspectionSession,
+  type Structure, type InsertStructure,
   type InspectionRoom, type InsertInspectionRoom,
+  type RoomOpening, type InsertRoomOpening,
+  type SketchAnnotation, type InsertSketchAnnotation,
+  type SketchTemplate, type InsertSketchTemplate,
   type DamageObservation, type InsertDamageObservation,
   type LineItem, type InsertLineItem,
   type InspectionPhoto, type InsertInspectionPhoto,
@@ -71,15 +75,52 @@ export interface IStorage {
   updateSession(sessionId: number, updates: Partial<InspectionSession>): Promise<InspectionSession | undefined>;
   completeSession(sessionId: number): Promise<InspectionSession | undefined>;
 
+  // Structures (hierarchy top-level)
+  createStructure(data: InsertStructure): Promise<Structure>;
+  getStructures(sessionId: number): Promise<Structure[]>;
+  getStructure(structureId: number): Promise<Structure | undefined>;
+  getStructureByName(sessionId: number, name: string): Promise<Structure | undefined>;
+  updateStructure(structureId: number, updates: Partial<Structure>): Promise<Structure | undefined>;
+
   createRoom(data: InsertInspectionRoom): Promise<InspectionRoom>;
   getRooms(sessionId: number): Promise<InspectionRoom[]>;
+  getRoomsForStructure(structureId: number): Promise<InspectionRoom[]>;
+  getChildRooms(parentRoomId: number): Promise<InspectionRoom[]>;
   getRoom(roomId: number): Promise<InspectionRoom | undefined>;
   getRoomByName(sessionId: number, name: string): Promise<InspectionRoom | undefined>;
   updateRoom(roomId: number, updates: Partial<InsertInspectionRoom>): Promise<InspectionRoom | undefined>;
   updateRoomStatus(roomId: number, status: string): Promise<InspectionRoom | undefined>;
+  updateRoomGeometry(roomId: number, polygon: any, position: any): Promise<InspectionRoom | undefined>;
   completeRoom(roomId: number): Promise<InspectionRoom | undefined>;
   incrementRoomDamageCount(roomId: number): Promise<InspectionRoom | undefined>;
   incrementRoomPhotoCount(roomId: number): Promise<InspectionRoom | undefined>;
+
+  // Room openings (doors, windows)
+  createRoomOpening(data: InsertRoomOpening): Promise<RoomOpening>;
+  getRoomOpenings(roomId: number): Promise<RoomOpening[]>;
+  deleteRoomOpening(id: number): Promise<void>;
+
+  // Sketch annotations (L5: damage counts, pitch, storm direction per facet)
+  createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation>;
+  getSketchAnnotations(roomId: number): Promise<SketchAnnotation[]>;
+  getSketchAnnotationsForSession(sessionId: number): Promise<SketchAnnotation[]>;
+  deleteSketchAnnotation(id: number): Promise<void>;
+
+  // Sketch templates
+  getSketchTemplates(category?: string): Promise<SketchTemplate[]>;
+  getSketchTemplate(id: number): Promise<SketchTemplate | undefined>;
+
+  // Hierarchical inspection state (for voice agent context)
+  getInspectionHierarchy(sessionId: number): Promise<{
+    structures: Array<Structure & {
+      rooms: Array<InspectionRoom & {
+        subAreas: InspectionRoom[];
+        damages: DamageObservation[];
+        lineItemCount: number;
+        photoCount: number;
+      }>;
+    }>;
+  }>;
 
   createDamage(data: InsertDamageObservation): Promise<DamageObservation>;
   getDamages(roomId: number): Promise<DamageObservation[]>;
@@ -382,6 +423,35 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
+  // ── Structures ───────────────────────────────────────
+
+  async createStructure(data: InsertStructure): Promise<Structure> {
+    const [structure] = await db.insert(structures).values(data).returning();
+    return structure;
+  }
+
+  async getStructures(sessionId: number): Promise<Structure[]> {
+    return db.select().from(structures).where(eq(structures.sessionId, sessionId)).orderBy(structures.sortOrder);
+  }
+
+  async getStructure(structureId: number): Promise<Structure | undefined> {
+    const [structure] = await db.select().from(structures).where(eq(structures.id, structureId));
+    return structure;
+  }
+
+  async getStructureByName(sessionId: number, name: string): Promise<Structure | undefined> {
+    const [structure] = await db.select().from(structures)
+      .where(and(eq(structures.sessionId, sessionId), eq(structures.name, name)));
+    return structure;
+  }
+
+  async updateStructure(structureId: number, updates: Partial<Structure>): Promise<Structure | undefined> {
+    const [structure] = await db.update(structures).set(updates).where(eq(structures.id, structureId)).returning();
+    return structure;
+  }
+
+  // ── Rooms ──────────────────────────────────────────
+
   async createRoom(data: InsertInspectionRoom): Promise<InspectionRoom> {
     const [room] = await db.insert(inspectionRooms).values(data).returning();
     return room;
@@ -389,6 +459,18 @@ export class DatabaseStorage implements IStorage {
 
   async getRooms(sessionId: number): Promise<InspectionRoom[]> {
     return db.select().from(inspectionRooms).where(eq(inspectionRooms.sessionId, sessionId)).orderBy(inspectionRooms.createdAt);
+  }
+
+  async getRoomsForStructure(structureId: number): Promise<InspectionRoom[]> {
+    return db.select().from(inspectionRooms)
+      .where(eq(inspectionRooms.structureId, structureId))
+      .orderBy(inspectionRooms.createdAt);
+  }
+
+  async getChildRooms(parentRoomId: number): Promise<InspectionRoom[]> {
+    return db.select().from(inspectionRooms)
+      .where(eq(inspectionRooms.parentRoomId, parentRoomId))
+      .orderBy(inspectionRooms.createdAt);
   }
 
   async getRoom(roomId: number): Promise<InspectionRoom | undefined> {
@@ -412,6 +494,11 @@ export class DatabaseStorage implements IStorage {
     return room;
   }
 
+  async updateRoomGeometry(roomId: number, polygon: any, position: any): Promise<InspectionRoom | undefined> {
+    const [room] = await db.update(inspectionRooms).set({ polygon, position }).where(eq(inspectionRooms.id, roomId)).returning();
+    return room;
+  }
+
   async completeRoom(roomId: number): Promise<InspectionRoom | undefined> {
     const [room] = await db.update(inspectionRooms)
       .set({ status: "complete", completedAt: new Date() })
@@ -431,6 +518,136 @@ export class DatabaseStorage implements IStorage {
       .set({ photoCount: sql`${inspectionRooms.photoCount} + 1` })
       .where(eq(inspectionRooms.id, roomId)).returning();
     return room;
+  }
+
+  // ── Room Openings (L4: Deductions) ─────────────────
+
+  async createRoomOpening(data: InsertRoomOpening): Promise<RoomOpening> {
+    const [opening] = await db.insert(roomOpenings).values(data).returning();
+    return opening;
+  }
+
+  async getRoomOpenings(roomId: number): Promise<RoomOpening[]> {
+    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId));
+  }
+
+  async deleteRoomOpening(id: number): Promise<void> {
+    await db.delete(roomOpenings).where(eq(roomOpenings.id, id));
+  }
+
+  // ── Sketch Annotations (L5: Metadata) ──────────────
+
+  async createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation> {
+    const [annotation] = await db.insert(sketchAnnotations).values(data).returning();
+    return annotation;
+  }
+
+  async getSketchAnnotations(roomId: number): Promise<SketchAnnotation[]> {
+    return db.select().from(sketchAnnotations).where(eq(sketchAnnotations.roomId, roomId));
+  }
+
+  async getSketchAnnotationsForSession(sessionId: number): Promise<SketchAnnotation[]> {
+    const rooms = await this.getRooms(sessionId);
+    const roomIds = rooms.map(r => r.id);
+    if (roomIds.length === 0) return [];
+    const allAnnotations: SketchAnnotation[] = [];
+    for (const roomId of roomIds) {
+      const annotations = await this.getSketchAnnotations(roomId);
+      allAnnotations.push(...annotations);
+    }
+    return allAnnotations;
+  }
+
+  async deleteSketchAnnotation(id: number): Promise<void> {
+    await db.delete(sketchAnnotations).where(eq(sketchAnnotations.id, id));
+  }
+
+  // ── Sketch Templates ──────────────────────────────
+
+  async getSketchTemplates(category?: string): Promise<SketchTemplate[]> {
+    if (category) {
+      return db.select().from(sketchTemplates)
+        .where(and(eq(sketchTemplates.category, category), eq(sketchTemplates.isActive, true)))
+        .orderBy(sketchTemplates.sortOrder);
+    }
+    return db.select().from(sketchTemplates)
+      .where(eq(sketchTemplates.isActive, true))
+      .orderBy(sketchTemplates.sortOrder);
+  }
+
+  async getSketchTemplate(id: number): Promise<SketchTemplate | undefined> {
+    const [template] = await db.select().from(sketchTemplates).where(eq(sketchTemplates.id, id));
+    return template;
+  }
+
+  // ── Hierarchical Inspection State ──────────────────
+  // Returns the full 5-level hierarchy for the voice agent context
+
+  async getInspectionHierarchy(sessionId: number): Promise<{
+    structures: Array<Structure & {
+      rooms: Array<InspectionRoom & {
+        subAreas: InspectionRoom[];
+        damages: DamageObservation[];
+        lineItemCount: number;
+        photoCount: number;
+        openings: RoomOpening[];
+        annotations: SketchAnnotation[];
+      }>;
+    }>;
+  }> {
+    const allStructures = await this.getStructures(sessionId);
+    const allRooms = await this.getRooms(sessionId);
+    const allDamages = await this.getDamagesForSession(sessionId);
+    const allLineItems = await this.getLineItems(sessionId);
+    const allPhotos = await this.getPhotos(sessionId);
+
+    // Build room lookup maps
+    const damagesByRoom = new Map<number, DamageObservation[]>();
+    for (const d of allDamages) {
+      const arr = damagesByRoom.get(d.roomId) || [];
+      arr.push(d);
+      damagesByRoom.set(d.roomId, arr);
+    }
+
+    const lineItemCountByRoom = new Map<number, number>();
+    for (const li of allLineItems) {
+      if (li.roomId) lineItemCountByRoom.set(li.roomId, (lineItemCountByRoom.get(li.roomId) || 0) + 1);
+    }
+
+    const photoCountByRoom = new Map<number, number>();
+    for (const p of allPhotos) {
+      if (p.roomId) photoCountByRoom.set(p.roomId, (photoCountByRoom.get(p.roomId) || 0) + 1);
+    }
+
+    // Separate top-level rooms from sub-areas
+    const topLevelRooms = allRooms.filter(r => !r.parentRoomId);
+    const childRooms = allRooms.filter(r => r.parentRoomId);
+
+    const result = [];
+    for (const struct of allStructures) {
+      const structRooms = topLevelRooms.filter(r => r.structureId === struct.id);
+      const enrichedRooms = [];
+
+      for (const room of structRooms) {
+        const openings = await this.getRoomOpenings(room.id);
+        const annotations = await this.getSketchAnnotations(room.id);
+        const subAreas = childRooms.filter(c => c.parentRoomId === room.id);
+
+        enrichedRooms.push({
+          ...room,
+          subAreas,
+          damages: damagesByRoom.get(room.id) || [],
+          lineItemCount: lineItemCountByRoom.get(room.id) || 0,
+          photoCount: photoCountByRoom.get(room.id) || 0,
+          openings,
+          annotations,
+        });
+      }
+
+      result.push({ ...struct, rooms: enrichedRooms });
+    }
+
+    return { structures: result };
   }
 
   async createDamage(data: InsertDamageObservation): Promise<DamageObservation> {

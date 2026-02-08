@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import MoistureMap from "@/components/MoistureMap";
-import FloorPlanSketch from "@/components/FloorPlanSketch";
+import PropertySketch from "@/components/PropertySketch";
 import XactimateEstimateView from "@/components/XactimateEstimateView";
 
 export default function ReviewFinalize({ params }: { params: { id: string } }) {
@@ -146,7 +146,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
           {/* SKETCH TAB */}
           <TabsContent value="sketch" className="flex-1 overflow-y-auto mt-0 p-0">
-            <SketchTab rooms={rooms} estimateByRoom={estimateByRoom} claim={claim} />
+            <SketchTab rooms={rooms} sessionId={sessionId} estimateByRoom={estimateByRoom} claim={claim} />
           </TabsContent>
         </Tabs>
       </div>
@@ -861,9 +861,32 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
 
 // ─── SKETCH TAB ─────────────────────────────────────────
 
-function SketchTab({ rooms, estimateByRoom, claim }: { rooms: any[]; estimateByRoom: any; claim: any }) {
+function SketchTab({ rooms, sessionId, estimateByRoom, claim }: { rooms: any[]; sessionId: number | null; estimateByRoom: any; claim: any }) {
   return (
-    <div data-testid="sketch-tab">
+    <div className="p-3 md:p-5 space-y-4" data-testid="sketch-tab">
+      <PropertySketch
+        sessionId={sessionId}
+        rooms={rooms.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          status: r.status,
+          damageCount: r.damageCount || 0,
+          photoCount: r.photoCount || 0,
+          roomType: r.roomType,
+          dimensions: r.dimensions,
+          structure: r.structure,
+          viewType: r.viewType,
+          shapeType: r.shapeType,
+          parentRoomId: r.parentRoomId,
+          attachmentType: r.attachmentType,
+          facetLabel: r.facetLabel,
+          pitch: r.pitch,
+          floor: r.floor,
+        }))}
+        currentRoomId={null}
+        expanded
+      />
+
       <XactimateEstimateView
         data={estimateByRoom}
         claimNumber={claim?.claimNumber}

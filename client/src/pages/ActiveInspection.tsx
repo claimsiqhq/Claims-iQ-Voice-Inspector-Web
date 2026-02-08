@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
 import InspectionProgressTracker from "@/components/InspectionProgressTracker";
-import FloorPlanSketch from "@/components/FloorPlanSketch";
+import PropertySketch from "@/components/PropertySketch";
 import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -57,6 +57,13 @@ interface RoomData {
   phase?: number;
   dimensions?: { length?: number; width?: number; height?: number };
   structure?: string;
+  viewType?: string;
+  shapeType?: string;
+  parentRoomId?: number | null;
+  attachmentType?: string | null;
+  facetLabel?: string | null;
+  pitch?: string | null;
+  floor?: number;
 }
 
 interface CameraMode {
@@ -310,6 +317,80 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "create_structure": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const structHeaders = await getAuthHeaders();
+          const structRes = await fetch(`/api/inspection/${sessionId}/structures`, {
+            method: "POST",
+            headers: structHeaders,
+            body: JSON.stringify({
+              name: args.name,
+              structureType: args.structureType || "dwelling",
+            }),
+          });
+          const structure = await structRes.json();
+          if (!structRes.ok) {
+            result = { success: false, error: structure.message || "Failed to create structure" };
+            break;
+          }
+          if (args.name) setCurrentStructure(args.name);
+          result = { success: true, structureId: structure.id, name: structure.name, message: `Structure "${structure.name}" created.` };
+          break;
+        }
+
+        case "get_inspection_state": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const hierHeaders = await getAuthHeaders();
+          const hierRes = await fetch(`/api/inspection/${sessionId}/hierarchy`, { headers: hierHeaders });
+          const hierarchy = await hierRes.json();
+          await refreshRooms();
+          result = {
+            success: true,
+            ...hierarchy,
+            summary: {
+              structureCount: hierarchy.structures?.length || 0,
+              totalRooms: hierarchy.structures?.reduce((sum: number, s: any) => sum + (s.rooms?.length || 0), 0) || 0,
+              totalSubAreas: hierarchy.structures?.reduce((sum: number, s: any) =>
+                sum + (s.rooms?.reduce((rsum: number, r: any) => rsum + (r.subAreas?.length || 0), 0) || 0), 0) || 0,
+            },
+          };
+          break;
+        }
+
+        case "get_room_details": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const targetRoom = args.roomId
+            ? rooms.find(r => r.id === args.roomId)
+            : rooms.find(r => r.name === args.roomName);
+          if (!targetRoom) {
+            result = { success: false, error: `Room "${args.roomName || args.roomId}" not found` };
+            break;
+          }
+          const detailHeaders = await getAuthHeaders();
+          const [openingsRes, annotationsRes] = await Promise.all([
+            fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings`, { headers: detailHeaders }),
+            fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/annotations`, { headers: detailHeaders }),
+          ]);
+          const openings = openingsRes.ok ? await openingsRes.json() : [];
+          const annotations = annotationsRes.ok ? await annotationsRes.json() : [];
+          result = {
+            success: true,
+            room: {
+              id: targetRoom.id,
+              name: targetRoom.name,
+              status: targetRoom.status,
+              structure: targetRoom.structure,
+              roomType: targetRoom.roomType,
+              dimensions: targetRoom.dimensions,
+              damageCount: targetRoom.damageCount,
+              photoCount: targetRoom.photoCount,
+            },
+            openings,
+            annotations,
+          };
+          break;
+        }
+
         case "create_room": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const dimensions = args.length && args.width
@@ -323,15 +404,136 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               name: args.name,
               roomType: args.roomType,
               structure: args.structure,
+              viewType: args.viewType || "interior",
+              shapeType: args.shapeType || "rectangle",
               dimensions,
+              floor: args.floor,
+              facetLabel: args.facetLabel,
+              pitch: args.pitch,
               phase: args.phase,
             }),
           });
           const room = await roomRes.json();
+          if (!roomRes.ok) {
+            result = { success: false, error: room.message || "Failed to create room" };
+            break;
+          }
           setCurrentRoomId(room.id);
           setCurrentArea(room.name);
+          if (args.structure) setCurrentStructure(args.structure);
           await refreshRooms();
-          result = { success: true, roomId: room.id, name: room.name };
+          result = {
+            success: true,
+            roomId: room.id,
+            name: room.name,
+            structure: args.structure,
+            viewType: args.viewType,
+            _context: room._context,
+            message: `Room "${room.name}" created in ${args.structure || "Main Dwelling"}.`,
+          };
+          break;
+        }
+
+        case "create_sub_area": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const parentRoom = rooms.find(r => r.name === args.parentRoomName);
+          if (!parentRoom) {
+            result = { success: false, error: `Parent room "${args.parentRoomName}" not found. Create it first.` };
+            break;
+          }
+          const subDimensions = args.length && args.width
+            ? { length: args.length, width: args.width, height: args.height }
+            : undefined;
+          const subHeaders = await getAuthHeaders();
+          const subRes = await fetch(`/api/inspection/${sessionId}/rooms`, {
+            method: "POST",
+            headers: subHeaders,
+            body: JSON.stringify({
+              name: args.name,
+              parentRoomId: parentRoom.id,
+              attachmentType: args.attachmentType,
+              structure: parentRoom.structure,
+              viewType: "interior",
+              dimensions: subDimensions,
+            }),
+          });
+          const subArea = await subRes.json();
+          if (!subRes.ok) {
+            result = { success: false, error: subArea.message || "Failed to create sub-area" };
+            break;
+          }
+          await refreshRooms();
+          result = {
+            success: true,
+            roomId: subArea.id,
+            name: subArea.name,
+            parentRoom: args.parentRoomName,
+            message: `Sub-area "${subArea.name}" created under "${args.parentRoomName}".`,
+          };
+          break;
+        }
+
+        case "add_opening": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const openingRoom = rooms.find(r => r.name === args.roomName);
+          if (!openingRoom) {
+            result = { success: false, error: `Room "${args.roomName}" not found` };
+            break;
+          }
+          const openHeaders = await getAuthHeaders();
+          const openRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, {
+            method: "POST",
+            headers: openHeaders,
+            body: JSON.stringify({
+              openingType: args.openingType,
+              wallIndex: args.wallIndex ?? 0,
+              width: args.width,
+              height: args.height,
+              label: args.label || `${args.openingType} on wall ${args.wallIndex || 0}`,
+              opensInto: args.opensInto,
+            }),
+          });
+          const opening = await openRes.json();
+          if (!openRes.ok) {
+            result = { success: false, error: opening.message || "Failed to add opening" };
+            break;
+          }
+          result = {
+            success: true,
+            openingId: opening.id,
+            message: `${args.openingType} (${args.width}'x${args.height}') added to "${args.roomName}" wall ${args.wallIndex || 0}.`,
+          };
+          break;
+        }
+
+        case "add_sketch_annotation": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const annotRoom = rooms.find(r => r.name === args.roomName);
+          if (!annotRoom) {
+            result = { success: false, error: `Room "${args.roomName}" not found` };
+            break;
+          }
+          const annotHeaders = await getAuthHeaders();
+          const annotRes = await fetch(`/api/inspection/${sessionId}/rooms/${annotRoom.id}/annotations`, {
+            method: "POST",
+            headers: annotHeaders,
+            body: JSON.stringify({
+              annotationType: args.annotationType,
+              label: args.label,
+              value: args.value,
+              location: args.location,
+            }),
+          });
+          const annotation = await annotRes.json();
+          if (!annotRes.ok) {
+            result = { success: false, error: annotation.message || "Failed to add annotation" };
+            break;
+          }
+          result = {
+            success: true,
+            annotationId: annotation.id,
+            message: `Annotation "${args.label}: ${args.value}" added to "${args.roomName}".`,
+          };
           break;
         }
 
@@ -1006,11 +1208,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         </div>
       </div>
 
-      <FloorPlanSketch
-        rooms={rooms.map(r => ({
-          ...r,
-          dimensions: (r as any).dimensions,
-        }))}
+      <PropertySketch
+        sessionId={sessionId}
+        rooms={rooms}
         currentRoomId={currentRoomId}
         onRoomClick={(roomId) => {
           setCurrentRoomId(roomId);
@@ -1258,11 +1458,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </div>
               {!sketchCollapsed && (
                 <div className="overflow-y-auto px-2 pb-2" style={{ maxHeight: "calc(100% - 36px)" }}>
-                  <FloorPlanSketch
-                    rooms={rooms.map(r => ({
-                      ...r,
-                      dimensions: (r as any).dimensions,
-                    }))}
+                  <PropertySketch
+                    sessionId={sessionId}
+                    rooms={rooms}
                     currentRoomId={currentRoomId}
                     onRoomClick={(roomId) => {
                       setCurrentRoomId(roomId);
@@ -1429,11 +1627,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             </div>
             <div className="flex-1 overflow-auto p-4 flex items-start justify-center">
               <div className="w-full max-w-4xl">
-                <FloorPlanSketch
-                  rooms={rooms.map(r => ({
-                    ...r,
-                    dimensions: (r as any).dimensions,
-                  }))}
+                <PropertySketch
+                  sessionId={sessionId}
+                  rooms={rooms}
                   currentRoomId={currentRoomId}
                   onRoomClick={(roomId) => {
                     setCurrentRoomId(roomId);

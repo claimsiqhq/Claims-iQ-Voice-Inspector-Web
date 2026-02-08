@@ -52,21 +52,50 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getInspectionSession: vi.fn().mockResolvedValue(undefined),
     getInspectionSessionsForClaim: vi.fn().mockResolvedValue([]),
     getActiveSessionForClaim: vi.fn().mockResolvedValue(undefined),
+    getLatestSessionForClaim: vi.fn().mockResolvedValue(undefined),
     updateSessionPhase: vi.fn().mockResolvedValue(undefined),
     updateSessionRoom: vi.fn().mockResolvedValue(undefined),
     updateSessionStatus: vi.fn().mockResolvedValue(undefined),
     updateSession: vi.fn().mockResolvedValue(undefined),
     completeSession: vi.fn().mockResolvedValue(undefined),
 
-    // Rooms
+    // Structures (L1 hierarchy)
+    createStructure: vi.fn().mockResolvedValue({ id: 1 }),
+    getStructures: vi.fn().mockResolvedValue([]),
+    getStructure: vi.fn().mockResolvedValue(undefined),
+    getStructureByName: vi.fn().mockResolvedValue(undefined),
+    updateStructure: vi.fn().mockResolvedValue(undefined),
+
+    // Rooms (L2/L3 hierarchy)
     createRoom: vi.fn().mockResolvedValue({ id: 1 }),
     getRooms: vi.fn().mockResolvedValue([]),
+    getRoomsForStructure: vi.fn().mockResolvedValue([]),
+    getChildRooms: vi.fn().mockResolvedValue([]),
     getRoom: vi.fn().mockResolvedValue(undefined),
     getRoomByName: vi.fn().mockResolvedValue(undefined),
     updateRoomStatus: vi.fn().mockResolvedValue(undefined),
+    updateRoomGeometry: vi.fn().mockResolvedValue(undefined),
     completeRoom: vi.fn().mockResolvedValue(undefined),
     incrementRoomDamageCount: vi.fn().mockResolvedValue(undefined),
     incrementRoomPhotoCount: vi.fn().mockResolvedValue(undefined),
+
+    // Room Openings (L4 deductions)
+    createRoomOpening: vi.fn().mockResolvedValue({ id: 1 }),
+    getRoomOpenings: vi.fn().mockResolvedValue([]),
+    deleteRoomOpening: vi.fn().mockResolvedValue(undefined),
+
+    // Sketch Annotations (L5 metadata)
+    createSketchAnnotation: vi.fn().mockResolvedValue({ id: 1 }),
+    getSketchAnnotations: vi.fn().mockResolvedValue([]),
+    getSketchAnnotationsForSession: vi.fn().mockResolvedValue([]),
+    deleteSketchAnnotation: vi.fn().mockResolvedValue(undefined),
+
+    // Sketch Templates
+    getSketchTemplates: vi.fn().mockResolvedValue([]),
+    getSketchTemplate: vi.fn().mockResolvedValue(undefined),
+
+    // Hierarchical inspection state
+    getInspectionHierarchy: vi.fn().mockResolvedValue({ structures: [] }),
 
     // Damages
     createDamage: vi.fn().mockResolvedValue({ id: 1 }),

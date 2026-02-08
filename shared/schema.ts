@@ -138,19 +138,111 @@ export const inspectionSessions = pgTable("inspection_sessions", {
   completedAt: timestamp("completed_at"),
 });
 
+// ── Structures ─────────────────────────────────────────
+// Top-level hierarchy entity: Main Dwelling, Detached Garage, Shed, Fence, etc.
+// Every room MUST belong to a structure.
+export const structures = pgTable(
+  "structures",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    structureType: varchar("structure_type", { length: 30 }).notNull().default("dwelling"),
+    outline: jsonb("outline"),       // polygon vertices for footprint on sketch
+    position: jsonb("position"),     // {x, y} placement origin on canvas
+    sortOrder: integer("sort_order").default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionNameUnique: uniqueIndex("structures_session_name_unique").on(table.sessionId, table.name),
+  }),
+);
+
+// ── L2: Parent Areas (Rooms / Elevations / Roof Facets) ─
+// The primary geometric shape within a structure view.
 export const inspectionRooms = pgTable("inspection_rooms", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   roomType: varchar("room_type", { length: 50 }),
-  structure: varchar("structure", { length: 100 }).default("Main Dwelling"),
+  structure: varchar("structure", { length: 100 }).default("Main Dwelling"), // legacy text field
+  structureId: integer("structure_id").references(() => structures.id, { onDelete: "set null" }),
+  // L1 View Type: what "canvas" this area belongs to
+  viewType: varchar("view_type", { length: 20 }).default("interior"),
+    // interior, roof_plan, elevation, exterior_other
+  // L2 Shape Type: geometric form of this area
+  shapeType: varchar("shape_type", { length: 20 }).default("rectangle"),
+    // rectangle, gable, hip, l_shape, custom
+  // L3 Parent-child relationship for subrooms/attachments
+  parentRoomId: integer("parent_room_id"),  // self-ref FK
+  attachmentType: varchar("attachment_type", { length: 30 }),
+    // null for top-level areas; for children:
+    // extension, pop_out, bay_window, dormer, closet, pantry, island, alcove, garage_extension
   dimensions: jsonb("dimensions"),
+    // {length, width, height} — for rooms: LxWxCeiling; for elevations: LxWallH; for roofs: LxW
+  polygon: jsonb("polygon"),         // array of {x,y} wall vertices for sketch
+  position: jsonb("position"),       // {x,y} placement on sketch canvas
+  floor: integer("floor").default(1),
+  // Facet label for roof slopes (F1, F2, F3 — auto-assigned)
+  facetLabel: varchar("facet_label", { length: 10 }),
+  // Roof pitch (e.g., "7/12", "10/12")
+  pitch: varchar("pitch", { length: 10 }),
   status: varchar("status", { length: 20 }).notNull().default("not_started"),
   damageCount: integer("damage_count").default(0),
   photoCount: integer("photo_count").default(0),
   phase: integer("phase"),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+});
+
+// ── L4: Deductions / Openings ──────────────────────────
+// "Holes" in walls: doors, windows, missing walls, overhead doors.
+// MUST belong to a specific wall of a specific room.
+export const roomOpenings = pgTable("room_openings", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+  openingType: varchar("opening_type", { length: 20 }).notNull().default("door"),
+    // door, window, overhead_door, missing_wall, archway, sliding_door
+  wallIndex: integer("wall_index").notNull(),       // 0-based index into polygon edges
+  positionOnWall: real("position_on_wall").default(0.5), // 0.0=start, 1.0=end
+  width: real("width"),             // width in feet
+  height: real("height"),           // height in feet
+  label: varchar("label", { length: 50 }),
+  // "Opens into" reference — affects insulation logic
+  opensInto: varchar("opens_into", { length: 50 }),
+    // "exterior", "stairway", room name, etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ── L5: Sketch Annotations ─────────────────────────────
+// Non-geometric metadata overlaid on sketch: damage counts, pitch, storm direction, facet labels
+export const sketchAnnotations = pgTable("sketch_annotations", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+  annotationType: varchar("annotation_type", { length: 30 }).notNull(),
+    // hail_count, wind_damage, pitch, storm_direction, facet_label, material_note, custom
+  label: varchar("label", { length: 100 }).notNull(),
+  value: varchar("value", { length: 50 }),         // "8", "7/12", "NW", etc.
+  location: varchar("location", { length: 100 }),  // "Front Slope (F1)", "North Wall", "Global"
+  position: jsonb("position"),                     // {x, y} placement on sketch canvas
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ── Sketch Templates ───────────────────────────────────
+// Pre-built room/shape polygons for drag-and-drop placement
+export const sketchTemplates = pgTable("sketch_templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  category: varchar("category", { length: 30 }).notNull(),
+  description: text("description"),
+  polygon: jsonb("polygon").notNull(),         // default polygon vertices
+  defaultDimensions: jsonb("default_dimensions"),
+  openings: jsonb("openings"),                 // default openings array
+  roomType: varchar("room_type", { length: 50 }),
+  thumbnailSvg: text("thumbnail_svg"),         // SVG preview for template picker
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const damageObservations = pgTable("damage_observations", {
@@ -261,7 +353,11 @@ export const regionalPriceSets = pgTable("regional_price_sets", {
 });
 
 export const insertInspectionSessionSchema = createInsertSchema(inspectionSessions).omit({ id: true, startedAt: true, completedAt: true });
+export const insertStructureSchema = createInsertSchema(structures).omit({ id: true, createdAt: true });
 export const insertInspectionRoomSchema = createInsertSchema(inspectionRooms).omit({ id: true, createdAt: true, completedAt: true });
+export const insertRoomOpeningSchema = createInsertSchema(roomOpenings).omit({ id: true, createdAt: true });
+export const insertSketchAnnotationSchema = createInsertSchema(sketchAnnotations).omit({ id: true, createdAt: true });
+export const insertSketchTemplateSchema = createInsertSchema(sketchTemplates).omit({ id: true, createdAt: true });
 export const insertDamageObservationSchema = createInsertSchema(damageObservations).omit({ id: true, createdAt: true });
 export const insertLineItemSchema = createInsertSchema(lineItems).omit({ id: true, createdAt: true });
 export const insertInspectionPhotoSchema = createInsertSchema(inspectionPhotos).omit({ id: true, createdAt: true });
@@ -270,8 +366,16 @@ export const insertVoiceTranscriptSchema = createInsertSchema(voiceTranscripts).
 
 export type InspectionSession = typeof inspectionSessions.$inferSelect;
 export type InsertInspectionSession = z.infer<typeof insertInspectionSessionSchema>;
+export type Structure = typeof structures.$inferSelect;
+export type InsertStructure = z.infer<typeof insertStructureSchema>;
 export type InspectionRoom = typeof inspectionRooms.$inferSelect;
 export type InsertInspectionRoom = z.infer<typeof insertInspectionRoomSchema>;
+export type RoomOpening = typeof roomOpenings.$inferSelect;
+export type InsertRoomOpening = z.infer<typeof insertRoomOpeningSchema>;
+export type SketchAnnotation = typeof sketchAnnotations.$inferSelect;
+export type InsertSketchAnnotation = z.infer<typeof insertSketchAnnotationSchema>;
+export type SketchTemplate = typeof sketchTemplates.$inferSelect;
+export type InsertSketchTemplate = z.infer<typeof insertSketchTemplateSchema>;
 export type DamageObservation = typeof damageObservations.$inferSelect;
 export type InsertDamageObservation = z.infer<typeof insertDamageObservationSchema>;
 export type LineItem = typeof lineItems.$inferSelect;
