@@ -128,7 +128,7 @@ Respond with a JSON object:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "gpt-4.1",
         messages: [
           {
             role: "user",
@@ -143,7 +143,7 @@ Respond with a JSON object:
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("GPT-4o review error:", err);
+      console.error("GPT-4.1 review error:", err);
       // Return a safe default
       return getDefaultReview();
     }

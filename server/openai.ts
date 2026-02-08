@@ -24,7 +24,7 @@ function parseJsonResponse(text: string): any {
 export async function extractFNOL(rawText: string): Promise<{ extractedData: any; confidence: any }> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
@@ -112,7 +112,7 @@ Return ONLY valid JSON.`,
         { role: "user", content: rawText },
       ],
       temperature: 0.1,
-      max_tokens: 50000,
+      max_tokens: 32000,
     });
 
     const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -131,7 +131,7 @@ Return ONLY valid JSON.`,
 export async function extractPolicy(rawText: string): Promise<{ extractedData: any; confidence: any }> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
@@ -176,7 +176,7 @@ Return ONLY valid JSON.`,
         { role: "user", content: rawText },
       ],
       temperature: 0.1,
-      max_tokens: 50000,
+      max_tokens: 32000,
     });
 
     const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -195,7 +195,7 @@ Return ONLY valid JSON.`,
 export async function extractEndorsements(rawText: string): Promise<{ extractedData: any; confidence: any }> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
@@ -244,7 +244,7 @@ Return ONLY valid JSON.`,
         { role: "user", content: rawText },
       ],
       temperature: 0.1,
-      max_tokens: 50000,
+      max_tokens: 32000,
     });
 
     const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -267,7 +267,7 @@ export async function generateBriefing(
 ): Promise<any> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
@@ -322,7 +322,7 @@ Endorsements: ${JSON.stringify(endorsementsData)}`,
         },
       ],
       temperature: 0.2,
-      max_tokens: 50000,
+      max_tokens: 32000,
     });
 
     return parseJsonResponse(response.choices[0].message.content || "{}");

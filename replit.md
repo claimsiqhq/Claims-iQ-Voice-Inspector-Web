@@ -22,7 +22,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Backend:** Express 5
 - **Database:** Drizzle ORM with Supabase PostgreSQL (postgres.js driver)
 - **File Storage:** Supabase Storage (buckets: `claim-documents`, `inspection-photos`)
-- **AI:** OpenAI GPT-4o (document parsing, briefing, photo analysis), OpenAI Realtime API (voice inspection via WebRTC)
+- **AI:** OpenAI GPT-4.1 (document parsing, briefing, photo analysis, max 32k tokens), OpenAI Realtime API (voice inspection via WebRTC)
 - **Voice:** Browser WebRTC → OpenAI Realtime API (`gpt-4o-realtime-preview`), with server-side ephemeral token creation
 - **PWA:** Vite PWA plugin with Workbox
 - **Document Generation:** PDFKit, docx, archiver
