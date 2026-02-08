@@ -7,7 +7,7 @@ import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 
 type UploadState = "empty" | "uploading" | "processing" | "complete" | "error";
