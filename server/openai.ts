@@ -1,5 +1,9 @@
 import OpenAI from "openai";
 
+if (!process.env.OPENAI_API_KEY) {
+  console.warn("WARNING: OPENAI_API_KEY is not set. AI features will return default values.");
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -18,12 +22,13 @@ function parseJsonResponse(text: string): any {
 }
 
 export async function extractFNOL(rawText: string): Promise<{ extractedData: any; confidence: any }> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are a claims document parser for an insurance inspection platform.
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a claims document parser for an insurance inspection platform.
 Extract ALL structured data from this First Notice of Loss (FNOL) / Claim Information Report.
 
 These reports are often comprehensive and contain claim details, insured contact info, property details, policy coverages, deductibles, endorsement lists, and more. Extract EVERYTHING available.
@@ -103,26 +108,34 @@ IMPORTANT:
 - If the wind/hail deductible is listed with both a dollar amount and percentage, capture both.
 - If a field cannot be determined, set to null with confidence "low".
 Return ONLY valid JSON.`,
-      },
-      { role: "user", content: rawText },
-    ],
-    temperature: 0.1,
-    max_tokens: 50000,
-  });
+        },
+        { role: "user", content: rawText },
+      ],
+      temperature: 0.1,
+      max_tokens: 50000,
+    });
 
-  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
-  const confidence = parsed.confidence || {};
-  delete parsed.confidence;
-  return { extractedData: parsed, confidence };
+    const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+    const confidence = parsed.confidence || {};
+    delete parsed.confidence;
+    return { extractedData: parsed, confidence };
+  } catch (error) {
+    console.error("Error extracting FNOL data:", error);
+    return {
+      extractedData: { insuredName: "", dateOfLoss: "", perilType: "", propertyAddress: "" },
+      confidence: {},
+    };
+  }
 }
 
 export async function extractPolicy(rawText: string): Promise<{ extractedData: any; confidence: any }> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are a claims document parser for an insurance inspection platform.
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a claims document parser for an insurance inspection platform.
 You will receive text from a homeowner insurance policy document. This may be:
 - A Declarations page with specific coverage amounts and property details, OR
 - A policy form (e.g. HO 80 03, HO 00 03) with terms, conditions, and coverage definitions.
@@ -159,26 +172,34 @@ Return a JSON object with these fields:
 
 IMPORTANT: Extract ALL available information. For a policy form document, the named perils, exclusions, loss settlement terms, and duties after loss are the most critical fields. Do not leave them empty.
 Return ONLY valid JSON.`,
-      },
-      { role: "user", content: rawText },
-    ],
-    temperature: 0.1,
-    max_tokens: 50000,
-  });
+        },
+        { role: "user", content: rawText },
+      ],
+      temperature: 0.1,
+      max_tokens: 50000,
+    });
 
-  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
-  const confidence = parsed.confidence || {};
-  delete parsed.confidence;
-  return { extractedData: parsed, confidence };
+    const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+    const confidence = parsed.confidence || {};
+    delete parsed.confidence;
+    return { extractedData: parsed, confidence };
+  } catch (error) {
+    console.error("Error extracting policy data:", error);
+    return {
+      extractedData: { policyNumber: "", coverageA: 0, coverageB: 0, deductible: 0 },
+      confidence: {},
+    };
+  }
 }
 
 export async function extractEndorsements(rawText: string): Promise<{ extractedData: any; confidence: any }> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are a claims document parser for an insurance inspection platform.
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a claims document parser for an insurance inspection platform.
 Extract ALL endorsements from this insurance policy endorsements document. The text may contain multiple endorsements concatenated together from separate PDFs.
 
 For each endorsement, extract as much detail as possible. Pay special attention to:
@@ -219,17 +240,24 @@ IMPORTANT:
 - For roof payment schedules, summarize the depreciation tiers rather than listing every row.
 - The claimImpact field should explain what the adjuster needs to know in plain language.
 Return ONLY valid JSON.`,
-      },
-      { role: "user", content: rawText },
-    ],
-    temperature: 0.1,
-    max_tokens: 50000,
-  });
+        },
+        { role: "user", content: rawText },
+      ],
+      temperature: 0.1,
+      max_tokens: 50000,
+    });
 
-  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
-  const confidence = parsed.confidence || "medium";
-  delete parsed.confidence;
-  return { extractedData: parsed, confidence: { overall: confidence } };
+    const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+    const confidence = parsed.confidence || "medium";
+    delete parsed.confidence;
+    return { extractedData: parsed, confidence: { overall: confidence } };
+  } catch (error) {
+    console.error("Error extracting endorsements data:", error);
+    return {
+      extractedData: { endorsements: [] },
+      confidence: { overall: "low" },
+    };
+  }
 }
 
 export async function generateBriefing(
@@ -237,12 +265,13 @@ export async function generateBriefing(
   policyData: any,
   endorsementsData: any
 ): Promise<any> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are an expert insurance claims analyst preparing an inspection briefing for a field adjuster.
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert insurance claims analyst preparing an inspection briefing for a field adjuster.
 Synthesize the FNOL, Policy, and Endorsements data into a comprehensive pre-inspection briefing.
 
 The policy data may come from a policy form (terms/conditions) rather than a declarations page, so coverage dollar amounts may be null. In that case, focus on the policy provisions, settlement terms, and exclusions rather than dollar limits.
@@ -282,19 +311,31 @@ Return a JSON object:
   "redFlags": string[]
 }
 Return ONLY valid JSON.`,
-      },
-      {
-        role: "user",
-        content: `Generate an inspection briefing from this claim data:
+        },
+        {
+          role: "user",
+          content: `Generate an inspection briefing from this claim data:
 
 FNOL: ${JSON.stringify(fnolData)}
 Policy: ${JSON.stringify(policyData)}
 Endorsements: ${JSON.stringify(endorsementsData)}`,
-      },
-    ],
-    temperature: 0.2,
-    max_tokens: 50000,
-  });
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 50000,
+    });
 
-  return parseJsonResponse(response.choices[0].message.content || "{}");
+    return parseJsonResponse(response.choices[0].message.content || "{}");
+  } catch (error) {
+    console.error("Error generating briefing:", error);
+    return {
+      propertyProfile: {},
+      coverageSnapshot: {},
+      perilAnalysis: {},
+      endorsementImpacts: [],
+      inspectionChecklist: {},
+      dutiesAfterLoss: [],
+      redFlags: [],
+    };
+  }
 }

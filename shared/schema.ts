@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, numeric, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -174,7 +174,7 @@ export const inspectionRooms = pgTable("inspection_rooms", {
   shapeType: varchar("shape_type", { length: 20 }).default("rectangle"),
     // rectangle, gable, hip, l_shape, custom
   // L3 Parent-child relationship for subrooms/attachments
-  parentRoomId: integer("parent_room_id"),  // self-ref FK
+  parentRoomId: integer("parent_room_id").references((): any => inspectionRooms.id, { onDelete: "set null" }),
   attachmentType: varchar("attachment_type", { length: 30 }),
     // null for top-level areas; for children:
     // extension, pop_out, bay_window, dormer, closet, pantry, island, alcove, garage_extension
@@ -266,10 +266,10 @@ export const lineItems = pgTable("line_items", {
   action: varchar("action", { length: 30 }),
   description: text("description").notNull(),
   xactCode: varchar("xact_code", { length: 30 }),
-  quantity: real("quantity"),
+  quantity: numeric("quantity", { precision: 12, scale: 2 }),
   unit: varchar("unit", { length: 20 }),
-  unitPrice: real("unit_price"),
-  totalPrice: real("total_price"),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
+  totalPrice: numeric("total_price", { precision: 12, scale: 2 }),
   depreciationType: varchar("depreciation_type", { length: 30 }).default("Recoverable"),
   wasteFactor: integer("waste_factor"),
   provenance: varchar("provenance", { length: 20 }).default("voice"),
@@ -364,9 +364,9 @@ export const regionalPriceSets = pgTable("regional_price_sets", {
   regionId: varchar("region_id", { length: 20 }).notNull(),
   regionName: text("region_name").notNull(),
   lineItemCode: varchar("line_item_code", { length: 30 }).notNull().references(() => scopeLineItems.code),
-  materialCost: real("material_cost").default(0),
-  laborCost: real("labor_cost").default(0),
-  equipmentCost: real("equipment_cost").default(0),
+  materialCost: numeric("material_cost", { precision: 12, scale: 2 }).default("0"),
+  laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).default("0"),
+  equipmentCost: numeric("equipment_cost", { precision: 12, scale: 2 }).default("0"),
   effectiveDate: varchar("effective_date", { length: 20 }),
   priceListVersion: varchar("price_list_version", { length: 20 }),
 });

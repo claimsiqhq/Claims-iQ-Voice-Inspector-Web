@@ -24,6 +24,7 @@ interface Claim {
 
 export default function ClaimsList() {
   const [filter, setFilter] = useState("all");
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [, setLocation] = useLocation();
 
   const { user, role } = useAuth();
@@ -47,6 +48,10 @@ export default function ClaimsList() {
   });
 
   const filteredClaims = claims.filter((claim) => {
+    if (showActiveOnly) {
+      const s = claim.status.toLowerCase().replace(/\s+/g, "_");
+      if (s === "complete" || s === "review") return false;
+    }
     if (filter === "all") return true;
     const s = claim.status.toLowerCase().replace(/\s+/g, "_");
     if (filter === "pending") return s === "draft" || s === "documents_uploaded";
@@ -90,8 +95,14 @@ export default function ClaimsList() {
             </TabsList>
           </Tabs>
 
-          <Button variant="outline" size="sm" className="hidden md:flex gap-2 shrink-0" data-testid="button-filter">
-            <Filter className="h-4 w-4" /> Filter
+          <Button
+            variant={showActiveOnly ? "default" : "outline"}
+            size="sm"
+            className="hidden md:flex gap-2 shrink-0"
+            data-testid="button-filter"
+            onClick={() => setShowActiveOnly((prev) => !prev)}
+          >
+            <Filter className="h-4 w-4" /> {showActiveOnly ? "Show All" : "Active Only"}
           </Button>
         </div>
 

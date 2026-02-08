@@ -66,6 +66,7 @@ export interface IStorage {
 
   createBriefing(data: InsertBriefing): Promise<Briefing>;
   getBriefing(claimId: number): Promise<Briefing | undefined>;
+  updateBriefing(claimId: number, data: Partial<InsertBriefing>): Promise<Briefing | undefined>;
 
   createInspectionSession(claimId: number): Promise<InspectionSession>;
   getInspectionSession(sessionId: number): Promise<InspectionSession | undefined>;
@@ -381,6 +382,15 @@ export class DatabaseStorage implements IStorage {
 
   async getBriefing(claimId: number): Promise<Briefing | undefined> {
     const [briefing] = await db.select().from(briefings).where(eq(briefings.claimId, claimId));
+    return briefing;
+  }
+
+  async updateBriefing(claimId: number, data: Partial<InsertBriefing>): Promise<Briefing | undefined> {
+    const [briefing] = await db
+      .update(briefings)
+      .set(data)
+      .where(eq(briefings.claimId, claimId))
+      .returning();
     return briefing;
   }
 

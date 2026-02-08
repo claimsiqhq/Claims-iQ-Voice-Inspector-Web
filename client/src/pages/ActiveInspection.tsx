@@ -139,6 +139,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     enabled: !!claimId,
   });
 
+  const sessionStartedRef = useRef(false);
+
   const startSessionMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
@@ -150,7 +152,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   });
 
   useEffect(() => {
-    startSessionMutation.mutate();
+    if (!sessionStartedRef.current && claimId) {
+      sessionStartedRef.current = true;
+      startSessionMutation.mutate();
+    }
   }, [claimId]);
 
   useEffect(() => {

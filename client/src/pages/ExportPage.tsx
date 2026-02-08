@@ -11,11 +11,13 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ExportPage({ params }: { params: { id: string } }) {
   const claimId = parseInt(params.id);
   const [, setLocation] = useLocation();
 
+  const { toast } = useToast();
   const [esxUrl, setEsxUrl] = useState<string | null>(null);
   const [esxFileName, setEsxFileName] = useState("");
 
@@ -26,17 +28,13 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
   const claim = claimData as any;
 
-  // Get session ID
+  // Get active session (use GET to avoid creating new sessions on refetch)
   const { data: sessionData } = useQuery({
-    queryKey: [`/api/claims/${claimId}/inspection/start`],
-    queryFn: async () => {
-      const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
-      return res.json();
-    },
+    queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
   });
 
-  const sessionId = (sessionData as any)?.sessionId;
+  const sessionId = (sessionData as any)?.id || (sessionData as any)?.sessionId;
 
   // Validation
   const { data: validation, isLoading: validationLoading } = useQuery({
@@ -81,6 +79,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
       setEsxUrl(url);
       return url;
     },
+    onError: (error: Error) => {
+      toast({ title: "ESX export failed", description: error.message, variant: "destructive" });
+    },
   });
 
   // PDF Export
@@ -108,6 +109,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
       return { success: true, message: "PDF downloaded successfully" };
     },
+    onError: (error: Error) => {
+      toast({ title: "PDF export failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const photoReportPdfMutation = useMutation({
@@ -128,6 +132,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
       URL.revokeObjectURL(url);
       return { success: true };
     },
+    onError: (error: Error) => {
+      toast({ title: "Photo report PDF failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const photoReportDocxMutation = useMutation({
@@ -147,6 +154,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
       a.click();
       URL.revokeObjectURL(url);
       return { success: true };
+    },
+    onError: (error: Error) => {
+      toast({ title: "Photo report Word export failed", description: error.message, variant: "destructive" });
     },
   });
 

@@ -185,6 +185,16 @@ export async function registerRoutes(
 ): Promise<Server> {
   const param = (v: string | string[]): string => Array.isArray(v) ? v[0] : v;
 
+  /** Parse an integer route param and return NaN-safe result, or send 400 */
+  function parseIntParam(value: string, res: any, label = "id"): number | null {
+    const n = parseInt(value, 10);
+    if (isNaN(n)) {
+      res.status(400).json({ message: `Invalid ${label}: must be a number` });
+      return null;
+    }
+    return n;
+  }
+
   app.get("/api/claims", authenticateRequest, async (req, res) => {
     try {
       const claims = await storage.getClaims();
@@ -194,14 +204,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/claims/my-claims", optionalAuth, async (req: any, res) => {
+  app.get("/api/claims/my-claims", authenticateRequest, async (req: any, res) => {
     try {
-      const claims = await storage.getClaims();
       if (req.user) {
-        const userClaims = claims.filter((c: any) => c.assignedTo === req.user.id);
-        if (userClaims.length > 0) return res.json(userClaims);
+        const userClaims = await storage.getClaimsForUser(req.user.id);
+        return res.json(userClaims);
       }
-      res.json(claims);
+      res.json([]);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
@@ -235,13 +244,31 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/claims/:id", authenticateRequest, async (req, res) => {
+  app.patch("/api/claims/:id", authenticateRequest, async (req: any, res) => {
     try {
-      const id = parseInt(param(req.params.id));
-      const { status } = req.body;
+      const id = parseIntParam(param(req.params.id), res, "claim id");
+      if (id === null) return;
+
+      // Verify ownership or supervisor role
+      const claim = await storage.getClaim(id);
+      if (!claim) return res.status(404).json({ message: "Claim not found" });
+      if (req.user?.role !== "supervisor" && req.user?.role !== "admin" && claim.assignedTo !== req.user?.id) {
+        return res.status(403).json({ message: "Not authorized to modify this claim" });
+      }
+
+      const { status, ...otherFields } = req.body;
       if (status) {
-        const claim = await storage.updateClaimStatus(id, status);
-        return res.json(claim);
+        const updated = await storage.updateClaimStatus(id, status);
+        return res.json(updated);
+      }
+      // Support updating other claim fields
+      const editableFields: any = {};
+      for (const key of ['insuredName', 'propertyAddress', 'city', 'state', 'zip', 'dateOfLoss', 'perilType']) {
+        if (otherFields[key] !== undefined) editableFields[key] = otherFields[key];
+      }
+      if (Object.keys(editableFields).length > 0) {
+        const updated = await storage.updateClaimFields(id, editableFields);
+        return res.json(updated);
       }
       res.status(400).json({ message: "No valid update fields" });
     } catch (error: any) {
@@ -278,9 +305,18 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/claims/:id", authenticateRequest, async (req, res) => {
+  app.delete("/api/claims/:id", authenticateRequest, async (req: any, res) => {
     try {
-      const id = parseInt(param(req.params.id));
+      const id = parseIntParam(param(req.params.id), res, "claim id");
+      if (id === null) return;
+
+      // Verify ownership or admin role
+      const claim = await storage.getClaim(id);
+      if (!claim) return res.status(404).json({ message: "Claim not found" });
+      if (req.user?.role !== "admin" && req.user?.role !== "supervisor" && claim.assignedTo !== req.user?.id) {
+        return res.status(403).json({ message: "Not authorized to delete this claim" });
+      }
+
       const docs = await storage.getDocuments(id);
       for (const doc of docs) {
         if (doc.storagePath) {
@@ -687,20 +723,21 @@ export async function registerRoutes(
       );
 
       const existing = await storage.getBriefing(claimId);
+      const briefingFields = {
+        claimId,
+        propertyProfile: briefingData.propertyProfile,
+        coverageSnapshot: briefingData.coverageSnapshot,
+        perilAnalysis: briefingData.perilAnalysis,
+        endorsementImpacts: briefingData.endorsementImpacts,
+        inspectionChecklist: briefingData.inspectionChecklist,
+        dutiesAfterLoss: briefingData.dutiesAfterLoss,
+        redFlags: briefingData.redFlags,
+      };
       let briefing;
       if (existing) {
-        briefing = existing;
+        briefing = await storage.updateBriefing(claimId, briefingFields);
       } else {
-        briefing = await storage.createBriefing({
-          claimId,
-          propertyProfile: briefingData.propertyProfile,
-          coverageSnapshot: briefingData.coverageSnapshot,
-          perilAnalysis: briefingData.perilAnalysis,
-          endorsementImpacts: briefingData.endorsementImpacts,
-          inspectionChecklist: briefingData.inspectionChecklist,
-          dutiesAfterLoss: briefingData.dutiesAfterLoss,
-          redFlags: briefingData.redFlags,
-        });
+        briefing = await storage.createBriefing(briefingFields);
       }
 
       await storage.updateClaimStatus(claimId, "briefing_ready");
@@ -1140,9 +1177,9 @@ export async function registerRoutes(
       const wf = wasteFactor || 0;
       const qty = quantity || 1;
       const up = unitPrice || 0;
-      let totalPrice = qty * up * (1 + wf / 100);
+      let totalPrice = Math.round(qty * up * (1 + wf / 100) * 100) / 100;
       if (applyOAndP) {
-        totalPrice = totalPrice * 1.10 * 1.10; // 10% overhead + 10% profit
+        totalPrice = Math.round(totalPrice * 1.20 * 100) / 100; // 10% overhead + 10% profit (additive)
       }
 
       const item = await storage.createLineItem({
@@ -1282,6 +1319,22 @@ export async function registerRoutes(
       const createdItems = [];
       for (const template of bundle) {
         const wf = wasteFactor ?? template.defaultWaste;
+
+        // Look up catalog price for this line item
+        let unitPrice = 0;
+        let totalPrice = 0;
+        const catalogItem = await lookupCatalogItem(template.xactCode);
+        if (catalogItem) {
+          const regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL");
+          if (regionalPrice) {
+            const materialCost = regionalPrice.materialCost || 0;
+            const laborCost = regionalPrice.laborCost || 0;
+            const equipmentCost = regionalPrice.equipmentCost || 0;
+            unitPrice = Math.round((materialCost * (1 + wf / 100) + laborCost + equipmentCost) * 100) / 100;
+            totalPrice = unitPrice; // quantity is 1
+          }
+        }
+
         const item = await storage.createLineItem({
           sessionId,
           roomId: roomId || null,
@@ -1292,8 +1345,8 @@ export async function registerRoutes(
           xactCode: template.xactCode,
           quantity: 1,
           unit: template.unit,
-          unitPrice: 0,
-          totalPrice: 0,
+          unitPrice,
+          totalPrice,
           depreciationType: template.depreciationType,
           wasteFactor: wf,
           coverageBucket: "Dwelling",
@@ -1453,18 +1506,23 @@ export async function registerRoutes(
       if (wasTruncated) {
         return res.status(413).json({ message: "Image exceeds max upload size (10MB)" });
       }
+      // Detect content type from data URI prefix
+      const mimeMatch = imageBase64.match(/^data:(image\/\w+);/);
+      const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const ext = contentType === "image/png" ? ".png" : contentType === "image/webp" ? ".webp" : ".jpg";
+
       const rawTag = autoTag || `photo_${Date.now()}`;
       const tag = rawTag
         .replace(/[^\w\s-]/g, "")
         .replace(/\s+/g, "_")
         .replace(/-+/g, "-")
         .substring(0, 60) || `photo_${Date.now()}`;
-      const storagePath = `inspections/${sessionId}/${tag}.jpg`;
+      const storagePath = `inspections/${sessionId}/${tag}${ext}`;
 
       const { error } = await supabase.storage
         .from(PHOTOS_BUCKET)
         .upload(storagePath, fileBuffer, {
-          contentType: "image/jpeg",
+          contentType,
           upsert: true,
         });
 
@@ -1477,7 +1535,7 @@ export async function registerRoutes(
         sessionId,
         roomId: roomId || null,
         damageId: damageId || null,
-        storagePath: error ? null : storagePath,
+        storagePath,
         autoTag: tag,
         caption: caption || null,
         photoType: photoType || null,

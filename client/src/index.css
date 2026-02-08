@@ -62,6 +62,40 @@
   }
 }
 
+/* Dark mode overrides */
+.dark {
+  --color-background: hsl(256 35% 12%);
+  --color-foreground: hsl(255 20% 92%);
+
+  --color-card: hsl(256 30% 16%);
+  --color-card-foreground: hsl(255 20% 92%);
+
+  --color-popover: hsl(256 30% 16%);
+  --color-popover-foreground: hsl(255 20% 92%);
+
+  --color-primary: hsl(254 42% 63%);
+  --color-primary-foreground: hsl(0 0% 100%);
+
+  --color-secondary: hsl(261 30% 50%);
+  --color-secondary-foreground: hsl(255 20% 92%);
+
+  --color-muted: hsl(256 25% 20%);
+  --color-muted-foreground: hsl(256 15% 65%);
+
+  --color-accent: hsl(44 55% 58%);
+  --color-accent-foreground: hsl(256 35% 12%);
+
+  --color-destructive: hsl(0 63% 45%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-success: hsl(161 80% 38%);
+  --color-warning: hsl(38 90% 55%);
+
+  --color-border: hsl(256 25% 25%);
+  --color-input: hsl(256 25% 25%);
+  --color-ring: hsl(254 42% 63%);
+}
+
 @layer base {
   * {
     @apply border-border;

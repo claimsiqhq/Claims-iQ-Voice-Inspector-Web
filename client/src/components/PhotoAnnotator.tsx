@@ -50,6 +50,7 @@ export default function PhotoAnnotator({
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [currentText, setCurrentText] = useState("");
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+  const shapesBeforeStroke = useRef<AnnotationShape[]>([]);
 
   // Load image on mount
   useEffect(() => {
@@ -140,20 +141,22 @@ export default function PhotoAnnotator({
     ctx.stroke();
   };
 
-  const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null => {
+  const getCanvasPoint = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
     };
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const point = getCanvasPoint(e);
+  // --- Shared drawing logic used by both mouse and touch handlers ---
+
+  const handleDrawStart = (clientX: number, clientY: number) => {
+    const point = getCanvasPoint(clientX, clientY);
     if (!point) return;
 
     if (selectedTool === "text") {
@@ -161,14 +164,15 @@ export default function PhotoAnnotator({
       return;
     }
 
+    shapesBeforeStroke.current = shapes;
     setIsDrawing(true);
     setStartPoint(point);
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleDrawMove = (clientX: number, clientY: number) => {
     if (!isDrawing || !startPoint || selectedTool === "text") return;
 
-    const point = getCanvasPoint(e);
+    const point = getCanvasPoint(clientX, clientY);
     if (!point) return;
 
     if (selectedTool === "freehand") {
@@ -187,15 +191,20 @@ export default function PhotoAnnotator({
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleDrawEnd = (clientX: number, clientY: number) => {
     if (!isDrawing || !startPoint) return;
 
-    const point = getCanvasPoint(e);
+    const point = getCanvasPoint(clientX, clientY);
     if (!point) return;
 
     setIsDrawing(false);
 
-    if (selectedTool !== "freehand") {
+    if (selectedTool === "freehand") {
+      // Push the pre-stroke shapes onto the undo stack so freehand strokes
+      // can be undone just like every other tool.
+      setUndoStack([...undoStack, shapesBeforeStroke.current]);
+      setRedoStack([]);
+    } else {
       const newShape: AnnotationShape = {
         type: selectedTool,
         color: selectedColor,
@@ -206,6 +215,41 @@ export default function PhotoAnnotator({
     }
 
     setStartPoint(null);
+  };
+
+  // --- Mouse event handlers ---
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    handleDrawStart(e.clientX, e.clientY);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    handleDrawMove(e.clientX, e.clientY);
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    handleDrawEnd(e.clientX, e.clientY);
+  };
+
+  // --- Touch event handlers ---
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    handleDrawStart(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    handleDrawMove(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    // Use changedTouches because touches list is empty on touchend
+    const touch = e.changedTouches[0];
+    handleDrawEnd(touch.clientX, touch.clientY);
   };
 
   const addShape = (shape: AnnotationShape) => {
@@ -290,7 +334,10 @@ export default function PhotoAnnotator({
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
-              className="max-w-full max-h-full cursor-crosshair border-2 border-white/20"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              className="max-w-full max-h-full cursor-crosshair border-2 border-white/20 touch-none"
             />
 
             {/* Text Input Overlay */}

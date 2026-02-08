@@ -10,6 +10,11 @@ export interface UnitPriceBreakdown {
   unitPrice: number;
 }
 
+/** Round to 2 decimal places for currency precision */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export interface PricedLineItem {
   code: string;
   description: string;
@@ -96,11 +101,11 @@ export function calculateLineItemPrice(
   const laborCost = regionalPrice?.laborCost || 0;
   const equipmentCost = regionalPrice?.equipmentCost || 0;
 
-  // Unit price = (M + L + E) × (1 + waste%)
-  const baseUnitPrice = materialCost + laborCost + equipmentCost;
-  const unitPrice = baseUnitPrice * (1 + wasteFactor / 100);
+  // Waste factor applies only to materials, not labor or equipment
+  const wastedMaterialCost = round2(materialCost * (1 + wasteFactor / 100));
+  const unitPrice = round2(wastedMaterialCost + laborCost + equipmentCost);
 
-  const totalPrice = unitPrice * quantity;
+  const totalPrice = round2(unitPrice * quantity);
 
   return {
     code: catalogItem.code,
@@ -108,9 +113,9 @@ export function calculateLineItemPrice(
     unit: catalogItem.unit,
     quantity,
     unitPriceBreakdown: {
-      materialCost: materialCost * (1 + wasteFactor / 100),
-      laborCost: laborCost * (1 + wasteFactor / 100),
-      equipmentCost: equipmentCost * (1 + wasteFactor / 100),
+      materialCost: wastedMaterialCost,
+      laborCost,
+      equipmentCost,
       wasteFactor,
       unitPrice,
     },
@@ -141,29 +146,33 @@ export function calculateEstimateTotals(
     tradesSet.add(item.tradeCode);
   }
 
-  const subtotal = subtotalMaterial + subtotalLabor + subtotalEquipment;
+  subtotalMaterial = round2(subtotalMaterial);
+  subtotalLabor = round2(subtotalLabor);
+  subtotalEquipment = round2(subtotalEquipment);
+  const subtotal = round2(subtotalMaterial + subtotalLabor + subtotalEquipment);
 
-  // Calculate waste amount (difference between base and waste-applied prices)
-  const wasteIncluded = pricedItems.reduce((sum, item) => {
+  // Calculate waste amount (difference between waste-applied material cost and base material cost)
+  const wasteIncluded = round2(pricedItems.reduce((sum, item) => {
     const wf = item.unitPriceBreakdown.wasteFactor;
     if (wf <= 0) return sum;
-    const basePrice = (item.unitPriceBreakdown.materialCost / (1 + wf / 100) +
-                       item.unitPriceBreakdown.laborCost / (1 + wf / 100) +
-                       item.unitPriceBreakdown.equipmentCost / (1 + wf / 100)) * item.quantity;
-    return sum + (item.totalPrice - basePrice);
-  }, 0);
+    const baseMaterial = item.unitPriceBreakdown.materialCost / (1 + wf / 100);
+    const wasteAmount = (item.unitPriceBreakdown.materialCost - baseMaterial) * item.quantity;
+    return sum + wasteAmount;
+  }, 0));
 
-  const taxAmount = subtotal * taxRate;
+  // Tax applies to materials only (standard in most US jurisdictions)
+  const taxAmount = round2(subtotalMaterial * taxRate);
 
   // O&P (Overhead & Profit) qualifies if 3+ trades involved
   const tradesInvolved = Array.from(tradesSet);
   const qualifiesForOP = tradesInvolved.length >= 3;
   const overheadPct = overheadPctOverride ?? 0.10;
   const profitPct = profitPctOverride ?? 0.10;
-  const overheadAmount = qualifiesForOP ? subtotal * overheadPct : 0;
-  const profitAmount = qualifiesForOP ? subtotal * profitPct : 0;
+  const overheadAmount = round2(qualifiesForOP ? subtotal * overheadPct : 0);
+  const profitAmount = round2(qualifiesForOP ? subtotal * profitPct : 0);
 
-  const totalWithOP = subtotal + taxAmount + overheadAmount + profitAmount;
+  // grandTotal always includes O&P when applicable
+  const grandTotal = round2(subtotal + taxAmount + overheadAmount + profitAmount);
 
   return {
     subtotalMaterial,
@@ -172,12 +181,12 @@ export function calculateEstimateTotals(
     subtotal,
     taxAmount,
     wasteIncluded,
-    grandTotal: subtotal + taxAmount,
+    grandTotal,
     tradesInvolved,
     qualifiesForOP,
     overheadAmount,
     profitAmount,
-    totalWithOP,
+    totalWithOP: grandTotal,
   };
 }
 

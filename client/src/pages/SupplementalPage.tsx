@@ -17,17 +17,13 @@ export default function SupplementalPage({ params }: { params: { id: string } })
     newItems: [] as any[],
   });
 
-  // Get session
+  // Get active session (use GET to avoid creating new sessions on refetch)
   const { data: sessionData } = useQuery({
-    queryKey: [`/api/claims/${claimId}/inspection/start`],
-    queryFn: async () => {
-      const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
-      return res.json();
-    },
+    queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
   });
 
-  const sessionId = (sessionData as any)?.sessionId;
+  const sessionId = (sessionData as any)?.id || (sessionData as any)?.sessionId;
 
   // Get supplementals
   const { data: supplementals, refetch } = useQuery({

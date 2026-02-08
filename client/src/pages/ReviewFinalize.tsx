@@ -361,7 +361,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                                         </span>
                                         <button
                                           onClick={() => startEdit(item)}
-                                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                                          className="opacity-70 hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                                         >
                                           <Edit3 size={14} />
                                         </button>

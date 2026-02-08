@@ -13,21 +13,36 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("signin");
 
   async function handleSignIn() {
+    setError(null);
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
+      return;
+    }
     setLoading(true);
     try {
       await signIn(email, password, rememberMe);
+    } catch (err: any) {
+      setError(err?.message || "Sign in failed. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
   async function handleSignUp() {
+    setError(null);
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
+      return;
+    }
     setLoading(true);
     try {
       await signUp(email, password, fullName);
+    } catch (err: any) {
+      setError(err?.message || "Sign up failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -47,6 +62,12 @@ export default function LoginPage() {
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Register</TabsTrigger>
             </TabsList>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
 
             <TabsContent value="signin" className="space-y-4">
               <div>

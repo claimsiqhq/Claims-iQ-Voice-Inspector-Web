@@ -44,6 +44,11 @@ export async function authenticateRequest(
       return;
     }
 
+    if (!user.isActive) {
+      res.status(403).json({ message: "Account is deactivated" });
+      return;
+    }
+
     req.user = {
       id: user.id,
       email: user.email || "",
