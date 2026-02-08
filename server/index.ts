@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
+import { seedInspectionFlows } from "./seed-flows";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -85,6 +86,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureStorageBuckets().catch((e) => console.error("Storage bucket init:", e.message));
+  await seedInspectionFlows().catch((e) => console.error("Flow seed:", e.message));
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

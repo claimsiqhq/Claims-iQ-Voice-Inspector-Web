@@ -37,6 +37,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/use-settings";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -117,6 +118,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { settings, updateSetting, resetSettings } = useSettings();
   const { user, signOut, refreshSession } = useAuth();
+  const [, setLocation] = useLocation();
 
   const profileMutation = useMutation({
     mutationFn: async (fullName: string) => {
@@ -357,6 +359,26 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </SettingRow>
+          </div>
+        </Card>
+
+        {/* ===== Inspection Workflows ===== */}
+        <Card className="p-5 border-border">
+          <SectionHeader
+            icon={ClipboardList}
+            title="Inspection Workflows"
+            description="Configure peril-specific inspection flows for the voice agent."
+          />
+          <div className="ml-13 mt-2">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={() => setLocation("/settings/workflows")}
+            >
+              <ClipboardList className="h-4 w-4" />
+              Manage Inspection Flows
+              <span className="ml-auto text-xs text-muted-foreground">Hail, Wind, Water, Fire, General</span>
+            </Button>
           </div>
         </Card>
 

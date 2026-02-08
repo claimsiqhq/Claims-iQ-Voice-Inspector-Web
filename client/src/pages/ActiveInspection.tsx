@@ -313,7 +313,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               }),
             });
           }
-          result = { success: true, context: args };
+          result = { success: true, context: { ...args, phaseName: args.phaseName || args.area } };
           break;
         }
 

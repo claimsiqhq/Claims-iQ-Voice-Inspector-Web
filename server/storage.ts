@@ -27,6 +27,7 @@ import {
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
   userSettings, type UserSettings,
+  inspectionFlows, type InspectionFlow, type InsertInspectionFlow,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -168,6 +169,14 @@ export interface IStorage {
   updateUserProfile(userId: string, updates: { fullName?: string }): Promise<User | undefined>;
   getUserSettings(userId: string): Promise<Record<string, any> | null>;
   upsertUserSettings(userId: string, settings: Record<string, any>): Promise<UserSettings>;
+
+  // Inspection Flows
+  createInspectionFlow(data: InsertInspectionFlow): Promise<InspectionFlow>;
+  getInspectionFlows(userId?: string): Promise<InspectionFlow[]>;
+  getInspectionFlow(id: number): Promise<InspectionFlow | undefined>;
+  getDefaultFlowForPeril(perilType: string, userId?: string): Promise<InspectionFlow | undefined>;
+  updateInspectionFlow(id: number, updates: Partial<InsertInspectionFlow>): Promise<InspectionFlow | undefined>;
+  deleteInspectionFlow(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -850,6 +859,83 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return row;
+  }
+
+  // ── Inspection Flows ──────────────────────────────
+
+  async createInspectionFlow(data: InsertInspectionFlow): Promise<InspectionFlow> {
+    const [flow] = await db.insert(inspectionFlows).values(data).returning();
+    return flow;
+  }
+
+  async getInspectionFlows(userId?: string): Promise<InspectionFlow[]> {
+    // Return system defaults + user's custom flows
+    if (userId) {
+      return db.select().from(inspectionFlows)
+        .where(
+          sql`${inspectionFlows.isSystemDefault} = true OR ${inspectionFlows.userId} = ${userId}`
+        )
+        .orderBy(inspectionFlows.perilType, inspectionFlows.name);
+    }
+    return db.select().from(inspectionFlows)
+      .where(eq(inspectionFlows.isSystemDefault, true))
+      .orderBy(inspectionFlows.perilType, inspectionFlows.name);
+  }
+
+  async getInspectionFlow(id: number): Promise<InspectionFlow | undefined> {
+    const [flow] = await db.select().from(inspectionFlows).where(eq(inspectionFlows.id, id));
+    return flow;
+  }
+
+  async getDefaultFlowForPeril(perilType: string, userId?: string): Promise<InspectionFlow | undefined> {
+    // First try user's default for this peril
+    if (userId) {
+      const [userFlow] = await db.select().from(inspectionFlows)
+        .where(
+          and(
+            eq(inspectionFlows.userId, userId),
+            eq(inspectionFlows.perilType, perilType),
+            eq(inspectionFlows.isDefault, true),
+          )
+        )
+        .limit(1);
+      if (userFlow) return userFlow;
+    }
+    // Fall back to system default for this peril
+    const [systemFlow] = await db.select().from(inspectionFlows)
+      .where(
+        and(
+          eq(inspectionFlows.isSystemDefault, true),
+          eq(inspectionFlows.perilType, perilType),
+          eq(inspectionFlows.isDefault, true),
+        )
+      )
+      .limit(1);
+    if (systemFlow) return systemFlow;
+    // Fall back to "General" system default
+    const [generalFlow] = await db.select().from(inspectionFlows)
+      .where(
+        and(
+          eq(inspectionFlows.isSystemDefault, true),
+          eq(inspectionFlows.perilType, "General"),
+          eq(inspectionFlows.isDefault, true),
+        )
+      )
+      .limit(1);
+    return generalFlow;
+  }
+
+  async updateInspectionFlow(id: number, updates: Partial<InsertInspectionFlow>): Promise<InspectionFlow | undefined> {
+    const [flow] = await db.update(inspectionFlows)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(inspectionFlows.id, id))
+      .returning();
+    return flow;
+  }
+
+  async deleteInspectionFlow(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(inspectionFlows).where(eq(inspectionFlows.id, id)).returning();
+    return !!deleted;
   }
 }
 
