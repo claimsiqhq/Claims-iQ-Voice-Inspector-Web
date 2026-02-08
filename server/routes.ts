@@ -1689,6 +1689,133 @@ Respond in JSON format:
     }
   });
 
+  // ── Inspection Flows (Peril-Specific Workflows) ───
+
+  const flowBodySchema = z.object({
+    name: z.string().min(1),
+    perilType: z.string().min(1),
+    description: z.string().optional(),
+    isDefault: z.boolean().optional(),
+    steps: z.array(z.object({
+      id: z.string(),
+      phaseName: z.string(),
+      agentPrompt: z.string(),
+      requiredTools: z.array(z.string()),
+      completionCriteria: z.string(),
+    })),
+  });
+
+  app.get("/api/flows", authenticateRequest, async (req, res) => {
+    try {
+      const { perilType } = req.query;
+      let flows = await storage.getInspectionFlows(req.user!.id);
+      if (perilType && typeof perilType === "string") {
+        flows = flows.filter(f => f.perilType === perilType);
+      }
+      res.json(flows);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/flows/:id", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const flow = await storage.getInspectionFlow(id);
+      if (!flow) return res.status(404).json({ message: "Flow not found" });
+      res.json(flow);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/flows", authenticateRequest, async (req, res) => {
+    try {
+      const parsed = flowBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid flow data", errors: parsed.error.issues });
+      }
+      const flow = await storage.createInspectionFlow({
+        ...parsed.data,
+        userId: req.user!.id,
+        isSystemDefault: false,
+      });
+      res.status(201).json(flow);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/flows/:id", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getInspectionFlow(id);
+      if (!existing) return res.status(404).json({ message: "Flow not found" });
+
+      // Prevent editing system defaults directly — users should clone them
+      if (existing.isSystemDefault && existing.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Cannot edit system default flows. Clone it first." });
+      }
+
+      const parsed = flowBodySchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid flow data", errors: parsed.error.issues });
+      }
+
+      const flow = await storage.updateInspectionFlow(id, parsed.data);
+      res.json(flow);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/flows/:id", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getInspectionFlow(id);
+      if (!existing) return res.status(404).json({ message: "Flow not found" });
+      if (existing.isSystemDefault) {
+        return res.status(403).json({ message: "Cannot delete system default flows" });
+      }
+      if (existing.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Cannot delete flows owned by other users" });
+      }
+      await storage.deleteInspectionFlow(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Clone a system default flow into a user's custom flow
+  app.post("/api/flows/:id/clone", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const source = await storage.getInspectionFlow(id);
+      if (!source) return res.status(404).json({ message: "Flow not found" });
+
+      const cloneName = req.body.name || `${source.name} (Custom)`;
+      const flow = await storage.createInspectionFlow({
+        name: cloneName,
+        perilType: source.perilType,
+        description: source.description,
+        isDefault: false,
+        isSystemDefault: false,
+        userId: req.user!.id,
+        steps: source.steps as any,
+      });
+      res.status(201).json(flow);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── OpenAI Realtime Session ───────────────────────
 
   app.post("/api/realtime/session", authenticateRequest, async (req, res) => {
@@ -1707,6 +1834,18 @@ Respond in JSON format:
       // Load user preferences for voice configuration
       const userSettings = await storage.getUserSettings(req.user!.id);
       const s = (userSettings?.settings as Record<string, any>) || {};
+
+      // Load the appropriate inspection flow based on the claim's peril type
+      const perilType = claim.perilType || "General";
+      const flowId = req.body.flowId ? parseInt(req.body.flowId) : undefined;
+      let inspectionFlow;
+      if (flowId) {
+        // User explicitly selected a flow
+        inspectionFlow = await storage.getInspectionFlow(flowId);
+      } else {
+        // Auto-select based on peril type
+        inspectionFlow = await storage.getDefaultFlowForPeril(perilType, req.user!.id);
+      }
 
       // Voice model — user can choose between available models
       const voiceModel = s.voiceModel || 'alloy';
@@ -1728,7 +1867,7 @@ Respond in JSON format:
         verbosityHint = '\n\nThe adjuster prefers detailed explanations. Narrate what you observe, explain your reasoning for suggested items, and provide thorough guidance at each step.';
       }
 
-      const instructions = buildSystemInstructions(briefing, claim) + verbosityHint;
+      const instructions = buildSystemInstructions(briefing, claim, inspectionFlow || undefined) + verbosityHint;
 
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -1773,6 +1912,12 @@ Respond in JSON format:
       res.json({
         clientSecret: data.client_secret.value,
         sessionId,
+        activeFlow: inspectionFlow ? {
+          id: inspectionFlow.id,
+          name: inspectionFlow.name,
+          perilType: inspectionFlow.perilType,
+          stepCount: (inspectionFlow.steps as any[])?.length || 0,
+        } : null,
       });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
@@ -2468,6 +2613,17 @@ Respond in JSON format:
       if (error.message.includes("unique constraint") || error.message.includes("duplicate key")) {
         return res.json({ message: "Catalog already seeded" });
       }
+      console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Inspection Flows Seed
+  app.post("/api/flows/seed", authenticateRequest, async (req, res) => {
+    try {
+      const { seedInspectionFlows } = require("./seed-flows");
+      const count = await seedInspectionFlows();
+      res.json({ message: `Inspection flows seeded/updated. ${count} new flows created.` });
+    } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
   });

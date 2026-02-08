@@ -419,6 +419,38 @@ export const insertSupplementalClaimSchema = createInsertSchema(supplementalClai
 export type SupplementalClaim = typeof supplementalClaims.$inferSelect;
 export type InsertSupplementalClaim = z.infer<typeof insertSupplementalClaimSchema>;
 
+// ── Inspection Flows (Peril-Specific Workflow Engine) ──────────────
+// Dynamic, database-driven inspection workflows that replace the hardcoded 8-phase system.
+// Each flow contains ordered steps with agent prompts, required tools, and completion criteria.
+export type InspectionStep = {
+  id: string;
+  phaseName: string;
+  agentPrompt: string;
+  requiredTools: string[];
+  completionCriteria: string;
+};
+
+export const inspectionFlows = pgTable("inspection_flows", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  perilType: varchar("peril_type", { length: 30 }).notNull(),
+  description: text("description"),
+  isDefault: boolean("is_default").default(false),
+  isSystemDefault: boolean("is_system_default").default(false),
+  steps: jsonb("steps").$type<InspectionStep[]>().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertInspectionFlowSchema = createInsertSchema(inspectionFlows).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertInspectionFlow = z.infer<typeof insertInspectionFlowSchema>;
+export type InspectionFlow = typeof inspectionFlows.$inferSelect;
+
 export const userSettings = pgTable("user_settings", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),

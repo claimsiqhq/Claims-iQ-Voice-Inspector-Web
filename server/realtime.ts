@@ -1,6 +1,34 @@
-import type { Briefing, Claim } from "@shared/schema";
+import type { Briefing, Claim, InspectionFlow, InspectionStep } from "@shared/schema";
 
-export function buildSystemInstructions(briefing: any, claim: Claim): string {
+/**
+ * Builds dynamic flow instructions from an InspectionFlow's steps array.
+ * Each step becomes a numbered phase with its name, agent prompt, required tools, and completion criteria.
+ */
+function buildFlowInstructions(flow: InspectionFlow): string {
+  const steps = flow.steps as InspectionStep[];
+  if (!steps || steps.length === 0) {
+    return "No inspection steps defined. Use the standard 8-phase approach.";
+  }
+
+  return steps.map((step, index) =>
+    `Phase ${index + 1}: ${step.phaseName}\n` +
+    `Goal: ${step.agentPrompt}\n` +
+    `Required Tools: ${step.requiredTools.length > 0 ? step.requiredTools.join(", ") : "None specified"}\n` +
+    `Completion Criteria: ${step.completionCriteria}`
+  ).join("\n\n");
+}
+
+/**
+ * Builds the full system instructions for the voice agent.
+ * Now accepts an optional InspectionFlow to dynamically generate phase instructions.
+ * Falls back to the hardcoded 8-phase system if no flow is provided.
+ */
+export function buildSystemInstructions(briefing: any, claim: Claim, flow?: InspectionFlow): string {
+  // Build the flow-specific phase section
+  const flowSection = flow
+    ? `## CURRENT INSPECTION FLOW: "${flow.name}" (${flow.perilType})\n${flow.description ? flow.description + "\n\n" : ""}${buildFlowInstructions(flow)}`
+    : buildDefaultFlowSection(claim);
+
   return `You are an expert insurance inspection assistant for Claims IQ. You guide a field adjuster through a property inspection via voice conversation on an iPad.
 
 ## Your Identity
@@ -74,33 +102,9 @@ RULE: Use for test square results, pitch notations, directional damage markers, 
    c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
    d. Call trigger_photo_capture with label "Front of Property — ${claim.propertyAddress}" and photoType "overview".
    e. When the photo result comes back, compare against the claim data and confirm.
-   f. Only after verification, proceed to Phase 1.
+   f. Only after verification, proceed to the first phase of the flow.
 
-   Phase 1: Pre-Inspection (review briefing highlights)
-   Phase 2: Session Setup (confirm peril, price list, identify structures on site)
-     - Ask: "What structures are on the property? Main dwelling, any detached garage, shed, fence?"
-     - Create a structure for each one using create_structure.
-   Phase 3: Exterior — work through EACH structure separately:
-     For each structure:
-       a. Roof — create rooms with viewType "roof_plan" for each slope/facet
-          - Use facetLabel ("F1", "F2", etc.) and pitch ("6/12")
-          - Record test square hit counts using add_sketch_annotation with type "hail_count"
-          - Note ridge/hip/valley details as annotations
-          - Capture overview and damage photos per slope
-       b. Elevations — create rooms with viewType "elevation"
-          - Add openings (doors, windows) using add_opening on each wall
-          - Inspect siding, trim, fascia, soffit per elevation
-       c. Gutters & Downspouts — create with viewType "exterior_other"
-       d. Other — garage doors, porches, decks, fencing as separate areas
-   Phase 4: Interior (room by room with viewType "interior")
-     - For each room, ask for dimensions, then create the room
-     - Add sub-areas (closets, pantries) using create_sub_area
-     - Add openings (doors, windows) using add_opening
-     - Document damage and add line items
-   Phase 5: Water/Moisture (if water peril — moisture readings, drying calc)
-   Phase 6: Evidence Review (photo completeness check)
-   Phase 7: Estimate Assembly (review line items, labor minimums)
-   Phase 8: Finalize (summary, completeness check)
+   ${flowSection}
 
 2. **Proactive Prompting & Waterfall Logic:** After documenting damage or adding R&R items, ALWAYS call check_related_items silently to detect missing companion items. Examples:
    - After roof shingles → drip edge, ice barrier, felt, ridge cap, flashing
@@ -144,17 +148,49 @@ ${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/m
 10. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
 }
 
+/**
+ * Fallback: builds the original hardcoded 8-phase flow section when no dynamic flow is available.
+ */
+function buildDefaultFlowSection(claim: Claim): string {
+  return `Phase 1: Pre-Inspection (review briefing highlights)
+   Phase 2: Session Setup (confirm peril, price list, identify structures on site)
+     - Ask: "What structures are on the property? Main dwelling, any detached garage, shed, fence?"
+     - Create a structure for each one using create_structure.
+   Phase 3: Exterior — work through EACH structure separately:
+     For each structure:
+       a. Roof — create rooms with viewType "roof_plan" for each slope/facet
+          - Use facetLabel ("F1", "F2", etc.) and pitch ("6/12")
+          - Record test square hit counts using add_sketch_annotation with type "hail_count"
+          - Note ridge/hip/valley details as annotations
+          - Capture overview and damage photos per slope
+       b. Elevations — create rooms with viewType "elevation"
+          - Add openings (doors, windows) using add_opening on each wall
+          - Inspect siding, trim, fascia, soffit per elevation
+       c. Gutters & Downspouts — create with viewType "exterior_other"
+       d. Other — garage doors, porches, decks, fencing as separate areas
+   Phase 4: Interior (room by room with viewType "interior")
+     - For each room, ask for dimensions, then create the room
+     - Add sub-areas (closets, pantries) using create_sub_area
+     - Add openings (doors, windows) using add_opening
+     - Document damage and add line items
+   Phase 5: Water/Moisture (if water peril — moisture readings, drying calc)
+   Phase 6: Evidence Review (photo completeness check)
+   Phase 7: Estimate Assembly (review line items, labor minimums)
+   Phase 8: Finalize (summary, completeness check)`;
+}
+
 export const realtimeTools = [
   {
     type: "function",
     name: "set_inspection_context",
-    description: "Sets the current location context: which structure, area, and phase the adjuster is working in. Call this whenever the adjuster moves to a new area.",
+    description: "Sets the current location context: which structure, area, and phase the adjuster is working in. Call this whenever the adjuster moves to a new area or advances to a new phase in the inspection flow.",
     parameters: {
       type: "object",
       properties: {
         structure: { type: "string", description: "e.g., 'Main Dwelling', 'Detached Garage', 'Fence'" },
         area: { type: "string", description: "e.g., 'Roof', 'Front Elevation', 'Master Bedroom'" },
-        phase: { type: "integer", description: "Inspection phase 1-8" }
+        phase: { type: "integer", description: "Current phase number in the inspection flow" },
+        phaseName: { type: "string", description: "Name of the current phase from the flow, e.g., 'Collateral Check', 'Roof Overview', 'Source ID'" }
       },
       required: ["area"]
     }
