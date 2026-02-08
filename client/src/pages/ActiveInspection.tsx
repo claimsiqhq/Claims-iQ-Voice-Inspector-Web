@@ -1020,7 +1020,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         <div className="h-14 bg-card/80 backdrop-blur-md border-b border-border z-10 px-3 md:px-5 flex justify-between items-center">
           <div className="flex items-center gap-2 md:gap-3">
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
+              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
                 <Menu size={18} />
               </Button>
             )}
@@ -1039,19 +1039,19 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           <div className="flex gap-1 md:gap-2">
             {isConnected && (
               <>
-                <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 px-2" onClick={togglePause} data-testid="button-pause">
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 px-2" onClick={togglePause} data-testid="button-pause">
                   {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 </Button>
-                <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 px-2 hidden sm:flex" data-testid="button-flag">
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 px-2 hidden sm:flex" data-testid="button-flag">
                   <Flag size={14} />
                 </Button>
               </>
             )}
-            <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setShowProgressTracker(true)} data-testid="button-progress-tracker-topbar">
+            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 w-8 p-0" onClick={() => setShowProgressTracker(true)} data-testid="button-progress-tracker-topbar">
               <Activity size={isMobile ? 18 : 14} />
             </Button>
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
+              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
                 <BarChart3 size={18} />
               </Button>
             )}
@@ -1060,8 +1060,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         {/* Mobile current area indicator */}
         {isMobile && currentArea && (
-          <div className="bg-primary/5 px-3 py-1.5 border-b border-primary/25 sm:hidden">
-            <span className="text-[11px] text-secondary/70">{currentStructure} &rsaquo; {currentArea}</span>
+          <div className="bg-primary/5 px-3 py-1.5 border-b border-border sm:hidden">
+            <span className="text-[11px] text-muted-foreground">{currentStructure} &rsaquo; {currentArea}</span>
           </div>
         )}
 
