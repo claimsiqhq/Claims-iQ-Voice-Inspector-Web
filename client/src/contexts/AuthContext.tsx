@@ -46,6 +46,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  // Safety timeout: if auth hasn't resolved in 5 seconds, stop loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) {
+          console.warn("Auth loading timed out — forcing login screen");
+          return false;
+        }
+        return prev;
+      });
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, []);
+
   async function checkSession() {
     try {
       const { data } = await supabase.auth.getSession();
