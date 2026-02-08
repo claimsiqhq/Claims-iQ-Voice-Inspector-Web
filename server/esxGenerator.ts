@@ -25,6 +25,7 @@ export interface ESXOptions {
   rooms: any[];
   lineItems: any[];
   briefing?: any;
+  openings?: any[];
   isSupplemental?: boolean;
   supplementalReason?: string;
   removedItemIds?: number[];
@@ -44,15 +45,16 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
   const items = await storage.getLineItems(sessionId);
   const rooms = await storage.getRooms(sessionId);
   const briefing = await storage.getBriefing(session.claimId);
+  const openings = await storage.getOpeningsForSession(sessionId);
 
-  return generateESXFromData({ claim, session, rooms, lineItems: items, briefing });
+  return generateESXFromData({ claim, session, rooms, lineItems: items, briefing, openings });
 }
 
 /**
  * Generates ESX from pre-built data — used by both full export and supplemental delta export
  */
 export async function generateESXFromData(options: ESXOptions): Promise<Buffer> {
-  const { claim, session, rooms, lineItems, briefing, isSupplemental, supplementalReason, removedItemIds } = options;
+  const { claim, session, rooms, lineItems, briefing, openings, isSupplemental, supplementalReason, removedItemIds } = options;
 
   // Map line items to XML format with calculated values
   const lineItemsXML: LineItemXML[] = lineItems.map((item) => {
@@ -92,7 +94,7 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
   const xactdocXml = generateXactdoc(claim, summary, lineItemsXML, isSupplemental, supplementalReason, briefing);
 
   // Generate GENERIC_ROUGHDRAFT.XML
-  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems);
+  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems, openings || []);
 
   // Create ZIP archive
   return new Promise((resolve, reject) => {
@@ -171,7 +173,7 @@ function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[], isS
 </XACTDOC>`;
 }
 
-function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[]): string {
+function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = []): string {
   // Group line items by room
   const roomGroups: { [key: string]: LineItemXML[] } = {};
   lineItems.forEach((item) => {
@@ -187,7 +189,13 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
     const room = rooms.find((r) => r.name === roomName);
     const dims = room?.dimensions || { length: 0, width: 0, height: 8 };
 
-    const wallSF = ((dims.length || 0) + (dims.width || 0)) * 2 * (dims.height || 8);
+    // Calculate net wall SF after opening deductions
+    const grossWallSF = ((dims.length || 0) + (dims.width || 0)) * 2 * (dims.height || 8);
+    const roomOpeningsList = room ? openings.filter((o) => o.roomId === room.id) : [];
+    const deductionSF = roomOpeningsList.reduce(
+      (sum: number, o: any) => sum + ((o.widthFt || o.width || 0) * (o.heightFt || o.height || 0) * (o.quantity || 1)), 0
+    );
+    const wallSF = Math.max(0, grossWallSF - deductionSF);
     const floorSF = (dims.length || 0) * (dims.width || 0);
     const ceilSF = floorSF;
     const perimLF = ((dims.length || 0) + (dims.width || 0)) * 2;
@@ -200,7 +208,24 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
             <CEIL_SF>${ceilSF}</CEIL_SF>
             <PERIM_LF>${perimLF}</PERIM_LF>
           </ROOM_DIM_VARS>
-          <ITEMS>
+`;
+
+    // Emit MISS_WALL entries for this room's openings
+    roomOpeningsList.forEach((opening: any) => {
+      const opensIntoAttr = opening.opensInto || "E";
+      const typeAttr = opening.goesToFloor ? "Goes to Floor"
+        : opening.goesToCeiling ? "Goes to Ceiling"
+        : opening.openingType;
+      const w = opening.widthFt || opening.width || 0;
+      const h = opening.heightFt || opening.height || 0;
+      const dimStr = `${w}'0" x ${h}'0"`;
+      const qty = opening.quantity || 1;
+      for (let i = 0; i < qty; i++) {
+        itemsXml += `          <MISS_WALL opensInto="${escapeXml(opensIntoAttr)}" type="${escapeXml(typeAttr)}" dimensions="${escapeXml(dimStr)}"/>\n`;
+      }
+    });
+
+    itemsXml += `          <ITEMS>
 `;
 
     roomItems.forEach((item, idx) => {

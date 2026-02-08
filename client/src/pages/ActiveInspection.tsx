@@ -53,6 +53,7 @@ interface RoomData {
   status: string;
   damageCount: number;
   photoCount: number;
+  openingCount: number;
   roomType?: string;
   phase?: number;
   dimensions?: { length?: number; width?: number; height?: number };
@@ -205,9 +206,22 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
-      const data = await res.json();
-      setRooms(data);
+      const [roomsRes, openingsRes] = await Promise.all([
+        fetch(`/api/inspection/${sessionId}/rooms`, { headers }),
+        fetch(`/api/inspection/${sessionId}/openings`, { headers }),
+      ]);
+      const roomsData = await roomsRes.json();
+      const openingsData = openingsRes.ok ? await openingsRes.json() : [];
+      // Count openings per room
+      const openingCountByRoom = new Map<number, number>();
+      for (const o of openingsData) {
+        openingCountByRoom.set(o.roomId, (openingCountByRoom.get(o.roomId) || 0) + (o.quantity || 1));
+      }
+      const enrichedRooms = roomsData.map((r: any) => ({
+        ...r,
+        openingCount: openingCountByRoom.get(r.id) || 0,
+      }));
+      setRooms(enrichedRooms);
     } catch {}
   }, [sessionId, getAuthHeaders]);
 
@@ -482,20 +496,29 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const openingRoom = rooms.find(r => r.name === args.roomName);
           if (!openingRoom) {
-            result = { success: false, error: `Room "${args.roomName}" not found` };
+            result = { success: false, error: `Room "${args.roomName}" not found. Create a room first before adding openings.` };
             break;
           }
+          // Resolve width/height from new or legacy params
+          const openWidthFt = args.widthFt || args.width || 0;
+          const openHeightFt = args.heightFt || args.height || 0;
+          const openQuantity = args.quantity || 1;
           const openHeaders = await getAuthHeaders();
           const openRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, {
             method: "POST",
             headers: openHeaders,
             body: JSON.stringify({
               openingType: args.openingType,
-              wallIndex: args.wallIndex ?? 0,
-              width: args.width,
-              height: args.height,
-              label: args.label || `${args.openingType} on wall ${args.wallIndex || 0}`,
-              opensInto: args.opensInto,
+              wallIndex: args.wallIndex ?? null,
+              wallDirection: args.wallDirection || null,
+              widthFt: openWidthFt,
+              heightFt: openHeightFt,
+              quantity: openQuantity,
+              label: args.label || `${args.openingType}${args.wallDirection ? ` on ${args.wallDirection} wall` : ''}`,
+              opensInto: args.opensInto || null,
+              goesToFloor: args.openingType === "overhead_door",
+              goesToCeiling: false,
+              notes: args.notes || null,
             }),
           });
           const opening = await openRes.json();
@@ -503,10 +526,20 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             result = { success: false, error: opening.message || "Failed to add opening" };
             break;
           }
+          // Calculate running deductions for confirmation
+          const allOpeningsRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, { headers: openHeaders });
+          const allOpenings = allOpeningsRes.ok ? await allOpeningsRes.json() : [];
+          const totalDeductionSF = allOpenings.reduce(
+            (sum: number, o: any) => sum + ((o.widthFt || o.width || 0) * (o.heightFt || o.height || 0) * (o.quantity || 1)), 0
+          );
+          const typeLabel = args.openingType.replace(/_/g, " ");
+          const opensLabel = args.opensInto === "E" ? "exterior" : args.opensInto ? `into ${args.opensInto}` : "";
+          const qtyLabel = openQuantity > 1 ? ` ×${openQuantity}` : "";
+          await refreshRooms();
           result = {
             success: true,
             openingId: opening.id,
-            message: `${args.openingType} (${args.width}'x${args.height}') added to "${args.roomName}" wall ${args.wallIndex || 0}.`,
+            message: `Added ${typeLabel}${qtyLabel} (${openWidthFt}' × ${openHeightFt}')${opensLabel ? ` opening ${opensLabel}` : ""} to "${args.roomName}". Total wall deductions for this room: ${totalDeductionSF.toFixed(0)} SF.`,
           };
           break;
         }
@@ -1283,6 +1316,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             <div className="flex gap-3 mt-1">
               <span className="text-[10px] text-muted-foreground">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
               <span className="text-[10px] text-muted-foreground">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
+              {room.openingCount > 0 && (
+                <span className="text-[10px] text-muted-foreground">{room.openingCount} opening{room.openingCount !== 1 ? "s" : ""}</span>
+              )}
             </div>
           </div>
         ))}

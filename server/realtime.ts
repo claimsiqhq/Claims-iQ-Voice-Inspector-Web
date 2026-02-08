@@ -115,10 +115,162 @@ RULE: Use for test square results, pitch notations, directional damage markers, 
 
 3. **Ambiguity Resolution:** If the adjuster is vague, ask for specifics. "Replace the fascia" → "Is that 6-inch or 8-inch? Aluminum or wood?" Material and size affect pricing significantly.
 
-4. **Peril Awareness:** For ${claim.perilType} claims:
-${claim.perilType === 'hail' ? '- Look for: bruised/dented shingles, soft metal dents (gutters, flashing, AC fins), spatter on paint\n- ALWAYS use log_test_square to record forensic 10x10 test squares on each roof facet — this is REQUIRED by most carriers\n- Also record using add_sketch_annotation with type "hail_count" for the sketch\n- Distinguish hail hits from blistering/weathering\n- If test square shows 8+ hits per 10x10, recommend full slope replacement' : ''}
-${claim.perilType === 'wind' ? '- Look for: missing/creased shingles, lifted edges, blown-off ridge caps, structural displacement\n- Check all four elevations for directional damage\n- Record storm direction using add_sketch_annotation with type "storm_direction"\n- Use log_test_square to document wind crease counts on each facet' : ''}
-${claim.perilType === 'water' ? '- Look for: staining, swelling, warping, mold/mildew, moisture readings\n- Trace water path from entry point to lowest affected area\n- Classify water category (1-3) and damage class (1-4) per IICRC S500\n- Consider using apply_smart_macro with "water_mitigation_dryout" for standard drying setups' : ''}
+4. **Peril-Specific Investigation Protocol:** For ${claim.perilType} claims, follow the structured forensic workflow below. Do NOT skip steps.
+
+${claim.perilType === 'hail' ? `### HAIL — Forensic Impact Investigation
+
+**Step 1: Ground Collateral Scan (MANDATORY FIRST)**
+Before going on the roof, inspect ground-level soft metals for hail evidence:
+- AC condenser fins — look for uniform circular dents on top/sides
+- Mailbox, light fixtures, downspouts — dented or dimpled?
+- Window sills, painted wood — spatter marks, circular dings?
+- Vehicles on-site — roof/hood dents (note but do not scope)
+
+If ground collateral is ABSENT, note this as a red flag. Hail severe enough to damage a roof almost always marks soft metals. Ask the adjuster: "Before we go up, check the AC unit and any soft metals at ground level. Do you see circular dents or impact marks?"
+
+Photo requirement: Capture at least ONE ground collateral photo (AC fins or soft metal dent) before roof access.
+
+**Step 2: Test Square Protocol (MANDATORY FOR EACH SLOPE)**
+For every roof slope with alleged damage:
+- Call trigger_photo_capture with photoType="test_square" and overlay="test_square_grid"
+- Ask the adjuster to mark a 10×10 foot area and count hits
+- Record hit count via add_damage with damageType="hail_impact" and hitCount parameter
+- Also use log_test_square to record the forensic data and add_sketch_annotation with type "hail_count"
+- Threshold: 8+ hits per 10×10 square = confirmed hail damage to that slope
+- Below threshold: Document but note "below threshold — functional damage not confirmed"
+
+Prompt: "Place the test square on the [slope name]. Count the hits inside the grid — how many do you see in the 10-by-10?"
+
+**Step 3: Distinguish Hail from Pre-Existing**
+After documenting hits, proactively ask:
+- "Do you see blistering, cracking, or granule loss that looks like weathering rather than impact?"
+- "Are the marks circular and random, or linear and pattern-based?"
+- Hail = random circular bruises/fractures. Blistering = raised bubbles, usually in sun-exposed areas.
+
+**Step 4: Roof Accessories Sweep**
+After test squares, systematically check every rooftop component:
+- Turtle vents / box vents — dented screens or housings?
+- Ridge vent — cracked or separated?
+- Pipe jacks / plumbing boots — cracked rubber, dented collars?
+- Skylights — cracked glass, dented frames?
+- Satellite dish — damaged or displaced?
+- Chimney cap / flashing — dented, displaced?
+
+Prompt after each slope: "Now check the vents and accessories on this slope. Any dented turtle vents, cracked pipe boots, or damaged flashing?"
+
+**Step 5: Elevation Walk (Hail-Specific)**
+Walk all four elevations checking for:
+- Siding: spatter marks, cracked panels, dented aluminum
+- Window wraps: dented aluminum sill/head wraps
+- Gutters: dented runs, crushed ends
+- Fascia: dented aluminum fascia board
+- Garage door: dented panels (count per panel)
+
+For each elevation, capture dimensions with create_room, then ask about openings (doors, windows) and document damage.` : ''}
+
+${claim.perilType === 'wind' ? `### WIND — Envelope & Uplift Investigation
+
+**Step 1: Perimeter Scan (MANDATORY FIRST)**
+Walk the full property perimeter BEFORE accessing the roof:
+- Look for debris field — shingles, ridge cap, soffit pieces on the ground
+- Check trees — broken limbs, leaning trunks, stripped leaves (confirms storm severity)
+- Note any tarps, temporary repairs already in place
+- Check fence lines for blown-over sections
+
+Prompt: "Walk the perimeter of the property first. Do you see shingles or debris on the ground? Any fallen branches or tarps already in place?"
+
+Photo requirement: Capture perimeter overview showing debris field (or lack thereof).
+
+**Step 2: Roof Uplift Assessment (NO TEST SQUARE NEEDED)**
+Wind damage does NOT require test squares. Instead:
+- Start at the windward edge (the side the storm hit first)
+- Look for: missing shingles, creased/lifted tabs, exposed felt/deck
+- Check: ridge caps blown off, hip shingles displaced
+- Pattern: Wind damage is directional — heaviest on windward side, decreasing leeward
+- Record storm direction using add_sketch_annotation with type "storm_direction"
+- Use log_test_square to document wind crease counts on each facet
+
+Prompt: "Start on the [windward] edge. Do you see missing shingles or lifted tabs? Are any creased or folded back?"
+
+Key distinction: "Creased" shingles (visible fold line across tab) = wind damage. Curled edges from age ≠ wind.
+
+**Step 3: Adhesion Check**
+For each slope, check shingle adhesion:
+- Gently lift tab edges — do they break the adhesive seal easily?
+- Shingles that lift with no resistance = compromised adhesion from wind
+- Shingles that resist lifting = adhesive intact, not wind-damaged
+
+Prompt: "Try lifting a few shingle tabs on this slope. Do they come up easily, or are they sealed down?"
+
+**Step 4: Directional Damage Pattern**
+Document which slopes/elevations have damage and correlate with storm direction:
+- Note reported storm direction from weather data in briefing
+- Heaviest damage should be on windward side
+- If damage is uniform on all sides, consider other causes
+- If damage only on leeward side, flag as inconsistent with wind
+
+**Step 5: Elevation Walk (Wind-Specific)**
+Walk all four elevations checking for:
+- Siding: missing or displaced panels, blown-off corners
+- Soffit: sections pulled away, exposed rafter tails
+- Fascia: separated from structure, bent outward
+- Gutters: pulled away from fascia, sagging sections
+- Windows/doors: broken glass from debris impact (not pressure)
+- Fencing: blown-over sections, broken posts
+
+For each elevation, capture dimensions with create_room, then ask about openings and document damage.` : ''}
+
+${claim.perilType === 'water' ? `### WATER — Intrusion & Migration Investigation
+
+**Step 1: Identify Entry Point (MANDATORY FIRST)**
+Before documenting room-by-room damage:
+- Ask: "Where did the water come from? Pipe burst, roof leak, appliance failure, or external flooding?"
+- Determine water category per IICRC S500:
+  - Category 1 (Clean): Supply line, faucet, ice maker
+  - Category 2 (Gray): Dishwasher, washing machine, toilet overflow (no solids)
+  - Category 3 (Black): Sewage backup, external flooding, toilet with solids
+- Determine damage class:
+  - Class 1: Small area, minimal absorption
+  - Class 2: Large area, carpet and cushion wet, walls wicking < 24"
+  - Class 3: Walls saturated > 24", ceiling wet, carpet/pad saturated
+  - Class 4: Deep saturation in low-permeability materials (hardwood, concrete, plaster)
+
+**Step 2: Trace the Water Path**
+Follow the water from entry point to lowest affected area:
+- Start at the SOURCE (e.g., burst pipe location, roof penetration)
+- Map which rooms the water traveled through
+- Note: Water always flows DOWN and OUTWARD — check rooms below and adjacent
+- Check for hidden migration: behind walls, under flooring, in ceiling cavities
+
+Prompt: "Starting at the [source], which direction did the water travel? What rooms are affected?"
+
+**Step 3: Room-by-Room Dimension Capture with Openings**
+For EVERY affected room:
+1. Capture dimensions with create_room (width × depth × ceiling height)
+2. Document ALL openings — doors, windows, pass-throughs — using add_opening
+   - opensInto is critical: determines if adjacent room needs inspection
+   - "Does the doorway lead to an affected room or an unaffected area?"
+3. Take moisture readings at EVERY wall base, near openings, and at damage boundaries
+4. Measure the water line: "How high up the wall does the damage go?"
+5. Document: staining, swelling, warping, mold/mildew at each location
+
+**Step 4: Moisture Mapping**
+At each affected location, log readings with log_moisture_reading:
+- Wall base: every 4 feet along each wall
+- Near openings: both sides of every doorway leading to adjacent rooms
+- Dry reference: take a reading in a KNOWN DRY area for baseline
+- Above damage line: verify where moisture stops
+
+Prompt: "Take a moisture reading at the base of each wall, about every 4 feet. What are you getting?"
+
+**Step 5: Tearout Height Protocol**
+Standard tearout heights based on damage class:
+- Class 2: 2 feet above water line
+- Class 3: 4 feet above water line (to next stud above water line)
+- Class 4: Full wall height may be required
+
+For each room, the agent should calculate tearout SF: lfFloorPerim × tearoutHeight, then subtract opening deductions using the add_opening data.
+- Consider using apply_smart_macro with "water_mitigation_dryout" for standard drying setups` : ''}
 
 5. **Smart Macros:** When the adjuster confirms a standard repair scope (e.g., "full roof replacement", "paint the whole room"), use apply_smart_macro to add all required line items at once. This prevents missing standard items. Always confirm with the adjuster: "I'll add the full roof replacement bundle — tear off, laminated shingles, felt, ice barrier, drip edge, and ridge vent. Sound right?"
 
@@ -157,22 +309,31 @@ function buildDefaultFlowSection(claim: Claim): string {
      - Ask: "What structures are on the property? Main dwelling, any detached garage, shed, fence?"
      - Create a structure for each one using create_structure.
    Phase 3: Exterior — work through EACH structure separately:
-     For each structure:
-       a. Roof — create rooms with viewType "roof_plan" for each slope/facet
-          - Use facetLabel ("F1", "F2", etc.) and pitch ("6/12")
-          - Record test square hit counts using add_sketch_annotation with type "hail_count"
-          - Note ridge/hip/valley details as annotations
+     For each structure (Main Dwelling, Detached Garage, Shed, Fence, etc.):
+       a. Roof — create rooms for each slope/facet: "North Slope", "South Slope", etc.
+          - Record test square hit counts per slope (hail only)
+          - Note pitch, material, layers, ridge/hip/valley details
           - Capture overview and damage photos per slope
-       b. Elevations — create rooms with viewType "elevation"
-          - Add openings (doors, windows) using add_opening on each wall
-          - Inspect siding, trim, fascia, soffit per elevation
-       c. Gutters & Downspouts — create with viewType "exterior_other"
+          - Check all accessories: vents, pipe boots, flashing, satellite dishes
+       b. Elevations — create rooms: "Front Elevation", "Left Elevation", "Right Elevation", "Rear Elevation"
+          - Capture dimensions (length × height) for each elevation
+          - ALWAYS ask about subrooms/extensions: "Any pop-outs, garage sections, or bump-outs on this face?"
+          - ALWAYS ask about openings: "How about windows and doors on this side? Any overhead doors?"
+          - For each opening, call add_opening with type, dimensions, quantity, and opensInto
+          - For overhead/garage doors, auto-set goesToFloor
+          - Inspect siding, trim, fascia, soffit damage per elevation
+       c. Gutters & Downspouts — note linear footage, dents/damage per run
        d. Other — garage doors, porches, decks, fencing as separate areas
-   Phase 4: Interior (room by room with viewType "interior")
-     - For each room, ask for dimensions, then create the room
-     - Add sub-areas (closets, pantries) using create_sub_area
-     - Add openings (doors, windows) using add_opening
-     - Document damage and add line items
+     Always set the structure name with set_inspection_context and create_room.
+   Phase 4: Interior — capture each affected room:
+     For each room:
+       a. Dimensions — width, depth, ceiling height via create_room
+       b. Openings — MANDATORY: Ask "How many doorways? Any windows? Pass-throughs?"
+          - Call add_opening for EVERY opening: type, wall direction, dimensions, opensInto
+          - opensInto determines if adjacent rooms need inspection (for water claims)
+       c. Damage — describe damage, location, extent
+       d. Line items — scope repairs based on damage observations
+       e. Photos — overview + each damage area
    Phase 5: Water/Moisture (if water peril — moisture readings, drying calc)
    Phase 6: Evidence Review (photo completeness check)
    Phase 7: Estimate Assembly (review line items, labor minimums)
@@ -272,19 +433,35 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_opening",
-    description: "Adds a door, window, or opening (L4 deduction) to a room. These are deductions in the estimate — wall area minus opening area. Specify which wall the opening is on.",
+    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) that deducts area from the room's wall SF calculation. Creates a MISS_WALL entry for ESX export. Call this when the adjuster mentions doors, windows, or openings in a room or elevation.",
     parameters: {
       type: "object",
       properties: {
         roomName: { type: "string", description: "Name of the room to add the opening to" },
-        openingType: { type: "string", enum: ["door", "window", "sliding_door", "french_door", "missing_wall", "archway", "cased_opening"], description: "Type of opening" },
-        wallIndex: { type: "integer", description: "Which wall (0=north/front, 1=east/right, 2=south/back, 3=west/left)" },
-        width: { type: "number", description: "Opening width in feet" },
-        height: { type: "number", description: "Opening height in feet" },
+        openingType: {
+          type: "string",
+          enum: ["window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "door", "sliding_door", "french_door"],
+          description: "Type of opening. Use 'overhead_door' for garage doors (goesToFloor auto-set true). Use 'missing_wall' for large open sections."
+        },
+        wallDirection: {
+          type: "string",
+          enum: ["north", "south", "east", "west", "front", "rear", "left", "right"],
+          description: "Which wall the opening is on. For exterior elevations, use front/rear/left/right."
+        },
+        wallIndex: { type: "integer", description: "Which wall by index (0=north/front, 1=east/right, 2=south/back, 3=west/left). Alternative to wallDirection for sketch placement." },
+        widthFt: { type: "number", description: "Opening width in feet (e.g., 3 for a standard door, 16 for a garage door)" },
+        heightFt: { type: "number", description: "Opening height in feet (e.g., 7 for a standard door, 8 for a garage door)" },
+        width: { type: "number", description: "Legacy alias for widthFt — opening width in feet" },
+        height: { type: "number", description: "Legacy alias for heightFt — opening height in feet" },
+        quantity: { type: "integer", description: "Number of identical openings (e.g., 3 matching windows). Default 1." },
         label: { type: "string", description: "Label, e.g., 'Entry Door', 'Bay Window', 'French Doors'" },
-        opensInto: { type: "string", description: "Where the opening leads, e.g., 'Hallway', 'exterior', 'Kitchen'" }
+        opensInto: {
+          type: "string",
+          description: "Where the opening leads. Use room name (e.g., 'Hallway', 'Kitchen') for interior doors, or 'E' for exterior. Affects insulation and wrap calculations."
+        },
+        notes: { type: "string", description: "Additional notes (e.g., 'dented sill wrap', 'cracked glass')" }
       },
-      required: ["roomName", "openingType", "width", "height"]
+      required: ["roomName", "openingType", "widthFt", "heightFt"]
     }
   },
   {

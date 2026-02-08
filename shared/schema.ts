@@ -213,19 +213,30 @@ export const inspectionRooms = pgTable(
 // ── L4: Deductions / Openings ──────────────────────────
 // "Holes" in walls: doors, windows, missing walls, overhead doors.
 // MUST belong to a specific wall of a specific room.
+// Creates MISS_WALL entries in ESX export and deducts from wall SF calculations.
 export const roomOpenings = pgTable("room_openings", {
   id: serial("id").primaryKey(),
+  sessionId: integer("session_id").references(() => inspectionSessions.id, { onDelete: "cascade" }),
   roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  openingType: varchar("opening_type", { length: 20 }).notNull().default("door"),
-    // door, window, overhead_door, missing_wall, archway, sliding_door
-  wallIndex: integer("wall_index").notNull(),       // 0-based index into polygon edges
+  openingType: varchar("opening_type", { length: 30 }).notNull().default("door"),
+    // openingType enum: "window" | "standard_door" | "overhead_door" | "missing_wall" | "pass_through" | "archway" | "cased_opening" | "door" | "sliding_door"
+  wallIndex: integer("wall_index"),       // 0-based index into polygon edges (for sketch placement)
+  wallDirection: varchar("wall_direction", { length: 20 }),
+    // wallDirection enum: "north" | "south" | "east" | "west" | "front" | "rear" | "left" | "right"
   positionOnWall: real("position_on_wall").default(0.5), // 0.0=start, 1.0=end
-  width: real("width"),             // width in feet
-  height: real("height"),           // height in feet
+  widthFt: real("width_ft"),              // opening width in feet
+  heightFt: real("height_ft"),            // opening height in feet
+  width: real("width"),                   // legacy alias for widthFt
+  height: real("height"),                 // legacy alias for heightFt
+  quantity: integer("quantity").notNull().default(1),
   label: varchar("label", { length: 50 }),
-  // "Opens into" reference — affects insulation logic
-  opensInto: varchar("opens_into", { length: 50 }),
-    // "exterior", "stairway", room name, etc.
+  opensInto: varchar("opens_into", { length: 100 }),
+    // Room name (e.g., "Hallway", "Kitchen") or "E" for exterior
+  goesToFloor: boolean("goes_to_floor").default(false),
+    // true for garage doors / overhead doors that extend to floor level
+  goesToCeiling: boolean("goes_to_ceiling").default(false),
+    // true for pass-throughs that go to ceiling
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

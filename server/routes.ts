@@ -69,13 +69,33 @@ const roomCreateSchema = z.object({
 });
 
 const roomOpeningCreateSchema = z.object({
-  openingType: z.enum(["door", "window", "overhead_door", "missing_wall", "archway", "sliding_door"]),
-  wallIndex: z.number().int().nonnegative(),
+  openingType: z.enum(["door", "window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "sliding_door", "french_door"]),
+  wallIndex: z.number().int().nonnegative().optional(),
+  wallDirection: z.enum(["north", "south", "east", "west", "front", "rear", "left", "right"]).nullable().optional(),
   positionOnWall: z.number().min(0).max(1).optional(),
+  widthFt: z.number().positive().optional(),
+  heightFt: z.number().positive().optional(),
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
+  quantity: z.number().int().positive().default(1),
   label: z.string().max(50).nullable().optional(),
-  opensInto: z.string().max(50).nullable().optional(),
+  opensInto: z.string().max(100).nullable().optional(),
+  goesToFloor: z.boolean().optional(),
+  goesToCeiling: z.boolean().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+const openingCreateSchema = z.object({
+  roomId: z.number().int().positive(),
+  openingType: z.enum(["window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "door", "sliding_door", "french_door"]),
+  wallDirection: z.enum(["north", "south", "east", "west", "front", "rear", "left", "right"]).nullable().optional(),
+  widthFt: z.number().positive(),
+  heightFt: z.number().positive(),
+  quantity: z.number().int().positive().default(1),
+  opensInto: z.string().max(100).nullable().optional(),
+  goesToFloor: z.boolean().optional(),
+  goesToCeiling: z.boolean().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const sketchAnnotationCreateSchema = z.object({
@@ -1047,12 +1067,36 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/rooms/:roomId/openings", authenticateRequest, async (req, res) => {
     try {
+      const sessionId = parseInt(param(req.params.sessionId));
       const roomId = parseInt(param(req.params.roomId));
       const parsed = roomOpeningCreateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid opening data", errors: parsed.error.flatten().fieldErrors });
       }
-      const opening = await storage.createRoomOpening({ roomId, ...parsed.data });
+      const data = parsed.data;
+      // Resolve widthFt/heightFt from legacy width/height if needed
+      const widthFt = data.widthFt || data.width || null;
+      const heightFt = data.heightFt || data.height || null;
+      // Auto-set goesToFloor for overhead doors
+      const goesToFloor = data.openingType === "overhead_door" ? true : (data.goesToFloor || false);
+      const opening = await storage.createOpening({
+        sessionId,
+        roomId,
+        openingType: data.openingType,
+        wallIndex: data.wallIndex ?? null,
+        wallDirection: data.wallDirection || null,
+        positionOnWall: data.positionOnWall,
+        widthFt,
+        heightFt,
+        width: widthFt,
+        height: heightFt,
+        quantity: data.quantity || 1,
+        label: data.label || null,
+        opensInto: data.opensInto || null,
+        goesToFloor,
+        goesToCeiling: data.goesToCeiling || false,
+        notes: data.notes || null,
+      });
       res.status(201).json(opening);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
@@ -1072,10 +1116,66 @@ export async function registerRoutes(
   app.delete("/api/inspection/:sessionId/rooms/:roomId/openings/:openingId", authenticateRequest, async (req, res) => {
     try {
       const openingId = parseInt(param(req.params.openingId));
-      await storage.deleteRoomOpening(openingId);
+      await storage.deleteOpening(openingId);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Wall Openings (session-level endpoints) ──────────────────
+
+  app.post("/api/inspection/:sessionId/openings", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const parsed = openingCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid opening data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const data = parsed.data;
+      // Auto-set goesToFloor for overhead doors
+      const goesToFloor = data.openingType === "overhead_door" ? true : (data.goesToFloor || false);
+      const opening = await storage.createOpening({
+        sessionId,
+        roomId: data.roomId,
+        openingType: data.openingType,
+        wallDirection: data.wallDirection || null,
+        widthFt: data.widthFt,
+        heightFt: data.heightFt,
+        width: data.widthFt,
+        height: data.heightFt,
+        quantity: data.quantity || 1,
+        opensInto: data.opensInto || null,
+        goesToFloor,
+        goesToCeiling: data.goesToCeiling || false,
+        notes: data.notes || null,
+      });
+      res.status(201).json(opening);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/openings", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const openings = await storage.getOpeningsForSession(sessionId);
+      res.json(openings);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/openings/:openingId", authenticateRequest, async (req, res) => {
+    try {
+      const openingId = parseInt(param(req.params.openingId));
+      await storage.deleteOpening(openingId);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

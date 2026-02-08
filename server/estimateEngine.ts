@@ -328,3 +328,54 @@ export function getCompanionSuggestions(
 
   return suggestions;
 }
+
+/**
+ * Calculates adjusted wall SF after subtracting all opening deductions.
+ *
+ * Formula: Adjusted sfWalls = Gross sfWalls - Σ(opening_width × opening_height × quantity)
+ *
+ * Used by ESX generator to produce accurate ROOM_DIM_VARS and by the voice agent
+ * to give the adjuster a running net wall area during inspection.
+ */
+export function calculateNetWallArea(
+  dimensions: { length?: number; width?: number; height?: number },
+  openings: Array<{ widthFt: number; heightFt: number; quantity: number }>
+): {
+  grossSfWalls: number;
+  totalDeductions: number;
+  netSfWalls: number;
+  sfCeiling: number;
+  sfFloor: number;
+  lfFloorPerim: number;
+  sfLongWall: number;
+  sfShortWall: number;
+} {
+  const L = dimensions.length || 0;
+  const W = dimensions.width || 0;
+  const H = dimensions.height || 8;
+
+  const grossSfWalls = (L + W) * 2 * H;
+  const sfCeiling = L * W;
+  const sfFloor = L * W;
+  const lfFloorPerim = (L + W) * 2;
+  const sfLongWall = Math.max(L, W) * H;
+  const sfShortWall = Math.min(L, W) * H;
+
+  const totalDeductions = openings.reduce(
+    (sum, o) => sum + o.widthFt * o.heightFt * (o.quantity || 1),
+    0
+  );
+
+  const netSfWalls = Math.max(0, grossSfWalls - totalDeductions);
+
+  return {
+    grossSfWalls,
+    totalDeductions,
+    netSfWalls,
+    sfCeiling,
+    sfFloor,
+    lfFloorPerim,
+    sfLongWall,
+    sfShortWall,
+  };
+}

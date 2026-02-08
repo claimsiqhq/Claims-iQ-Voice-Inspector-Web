@@ -104,6 +104,12 @@ export interface IStorage {
   getRoomOpenings(roomId: number): Promise<RoomOpening[]>;
   deleteRoomOpening(id: number): Promise<void>;
 
+  // ── Wall Openings (enhanced CRUD with session-level queries) ──
+  createOpening(data: InsertRoomOpening): Promise<RoomOpening>;
+  getOpeningsForRoom(roomId: number): Promise<RoomOpening[]>;
+  getOpeningsForSession(sessionId: number): Promise<RoomOpening[]>;
+  deleteOpening(id: number): Promise<void>;
+
   // Sketch annotations (L5: damage counts, pitch, storm direction per facet)
   createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation>;
   getSketchAnnotations(roomId: number): Promise<SketchAnnotation[]>;
@@ -558,6 +564,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRoomOpening(id: number): Promise<void> {
+    await db.delete(roomOpenings).where(eq(roomOpenings.id, id));
+  }
+
+  // ── Wall Openings (enhanced CRUD with session-level queries) ──
+
+  async createOpening(data: InsertRoomOpening): Promise<RoomOpening> {
+    const [opening] = await db.insert(roomOpenings).values(data).returning();
+    return opening;
+  }
+
+  async getOpeningsForRoom(roomId: number): Promise<RoomOpening[]> {
+    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId));
+  }
+
+  async getOpeningsForSession(sessionId: number): Promise<RoomOpening[]> {
+    return db.select().from(roomOpenings).where(eq(roomOpenings.sessionId, sessionId));
+  }
+
+  async deleteOpening(id: number): Promise<void> {
     await db.delete(roomOpenings).where(eq(roomOpenings.id, id));
   }
 

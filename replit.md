@@ -33,6 +33,8 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Inspection Briefing:** AI-generated briefings for property details, coverage, and checklists.
 - **Active Voice Inspection:** Real-time voice-guided inspections using OpenAI Realtime API with WebRTC, supporting 18 AI tools including `add_damage`, `trigger_photo_capture`, `add_line_item`, `create_structure`, `create_room`, `create_sub_area`, `add_opening`, `add_sketch_annotation`, and more.
 - **5-Level Hierarchy System:** L1 Structures → L2 Rooms/Areas → L3 Sub-Areas/Attachments → L4 Openings/Deductions → L5 Annotations. This hierarchy drives both the sketch rendering and Xactimate-compatible estimates.
+- **Wall Openings & Deductions:** Full CRUD for doors, windows, pass-throughs, missing walls, overhead doors, archways, and cased openings. Each opening deducts area from wall SF calculations and generates MISS_WALL entries in ESX export. The `add_opening` voice tool supports `openingType`, `wallDirection`, `widthFt`, `heightFt`, `quantity`, `opensInto`, `goesToFloor`, `goesToCeiling`, and `notes`. Session-level and room-level REST endpoints available. `calculateNetWallArea()` provides gross/net wall SF, ceiling SF, floor SF, perimeter LF, and long/short wall SF.
+- **Peril-Specific Investigation Protocols:** Structured forensic workflows replace basic peril awareness. Hail claims follow a 5-step protocol (ground collateral scan → test square → distinguish pre-existing → roof accessories sweep → elevation walk). Wind claims follow a 5-step protocol (perimeter scan → uplift assessment → adhesion check → directional pattern → elevation walk). Water claims follow a 5-step protocol (entry point ID → trace water path → room-by-room with openings → moisture mapping → tearout height). Each protocol includes mandatory steps, prompts, photo requirements, and tool integration.
 - **Property Sketch (PropertySketch):** SVG architectural sketches with four rendering modes:
   - **Interior:** Floor plan with connected rooms, outer walls, dimension labels, opening markers, sub-area attachments
   - **Roof Plan:** Plan view with ridge line, hip/valley dashes, facet labels, pitch annotations, hail count markers
@@ -55,7 +57,7 @@ The system uses 16 PostgreSQL tables in Supabase:
 | `inspection_sessions` | Active inspection sessions linking to claims |
 | `structures` | L1 hierarchy — physical structures (Main Dwelling, Garage, etc.) |
 | `inspection_rooms` | L2 hierarchy — rooms/areas within structures, with viewType/shapeType |
-| `room_openings` | L4 hierarchy — doors, windows, openings on room walls |
+| `room_openings` | L4 hierarchy — doors, windows, overhead doors, pass-throughs, missing walls, archways, cased openings. Includes sessionId, wallDirection, quantity, goesToFloor/Ceiling, notes. Generates MISS_WALL in ESX export and deducts from wall SF. |
 | `sketch_annotations` | L5 hierarchy — metadata overlays (hail counts, pitch, notes) |
 | `sketch_templates` | Reusable sketch templates |
 | `damage_observations` | Damage records per room |
@@ -73,6 +75,7 @@ The system uses 16 PostgreSQL tables in Supabase:
 - `inspection_rooms.structureId` → `structures.id` (L1→L2 relationship)
 - `inspection_rooms.parentRoomId` → `inspection_rooms.id` (L2→L3 sub-area relationship)
 - `room_openings.roomId` → `inspection_rooms.id` (L2→L4 openings)
+- `room_openings.sessionId` → `inspection_sessions.id` (enables session-level opening queries)
 - `sketch_annotations.roomId` → `inspection_rooms.id` (L2→L5 annotations)
 - Elevation rooms are deduplicated: server returns existing room if duplicate viewType+structure detected
 
@@ -94,14 +97,16 @@ The system uses 16 PostgreSQL tables in Supabase:
 Professional insurance app aesthetic with a primary purple and gold color scheme, Work Sans and Source Sans 3 fonts. Responsive design with mobile-specific UI elements. Features error boundaries, React Query configuration for data fetching, and an onboarding wizard.
 
 ### Key Files
-- `server/realtime.ts` — System instructions, 18 voice tool definitions
-- `client/src/pages/ActiveInspection.tsx` — Voice connection, tool execution, camera capture
+- `server/realtime.ts` — System instructions (with peril-specific investigation protocols), 18 voice tool definitions
+- `client/src/pages/ActiveInspection.tsx` — Voice connection, tool execution (including add_opening handler with deduction feedback), camera capture
 - `client/src/components/PropertySketch.tsx` — SVG architectural sketch rendering
 - `client/src/components/XactimateEstimateView.tsx` — Xactimate-format estimate display
 - `client/src/components/ProgressMap.tsx` — Inspection progress visualization
 - `client/src/pages/ReviewFinalize.tsx` — Post-inspection review and export
-- `server/routes.ts` — All API endpoints including realtime session creation
-- `server/storage.ts` — Database operations, IStorage interface, hierarchy queries
+- `server/routes.ts` — All API endpoints including realtime session creation, session-level opening endpoints
+- `server/storage.ts` — Database operations, IStorage interface, hierarchy queries, opening CRUD
+- `server/estimateEngine.ts` — Pricing engine, calculateNetWallArea(), companion item suggestions
+- `server/esxGenerator.ts` — ESX/Xactimate export with MISS_WALL elements and deduction-adjusted WALL_SF
 - `shared/schema.ts` — Drizzle ORM table definitions and types
 
 ## External Dependencies
