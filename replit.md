@@ -165,3 +165,14 @@ The system includes mechanisms for voice disconnection auto-reconnect (with prop
 - Original generateESXFile() refactored as wrapper calling generateESXFromData()
 - Supplemental exports use SUPPLEMENT control point, NOTES section with reason, and provenance-based action codes (ADD/MOD)
 - POST /api/supplemental/:id/export/esx replaced placeholder with real delta export (new + modified items only)
+
+### Photo Report Export Feature
+- **server/photoReportGenerator.ts:** New module generating Xactimate-style Photo Sheet reports in both PDF and Word (.docx) formats
+  - Downloads actual photos from Supabase Storage and embeds them in documents
+  - 2 photos per page layout with dark header on every page (insured name, claim #, policy #, date of loss, report date)
+  - Sequential numbering, room name, date taken, photographer metadata per photo
+  - AI analysis descriptions included as captions when available
+  - Page numbers on every page footer
+- **API Endpoints:** POST /api/inspection/:sessionId/export/photo-report/pdf and /docx (authenticated)
+- **ExportPage.tsx:** New "Photo Report" card with separate PDF and Word download buttons
+- **Dependencies:** `docx` npm package added for Word document generation

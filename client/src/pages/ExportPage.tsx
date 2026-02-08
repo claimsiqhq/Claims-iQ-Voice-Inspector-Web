@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import AIReviewPanel from "@/components/AIReviewPanel";
 import {
   FileSpreadsheet, FileText, Send, CheckCircle2,
   AlertTriangle, Download, Loader2, ChevronLeft, ShieldCheck,
-  XCircle,
+  XCircle, Camera, FileImage,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -104,6 +105,56 @@ export default function ExportPage({ params }: { params: { id: string } }) {
       URL.revokeObjectURL(url);
 
       return { success: true, message: "PDF downloaded successfully" };
+    },
+  });
+
+  const photoReportPdfMutation = useMutation({
+    mutationFn: async () => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch(`/api/inspection/${sessionId}/export/photo-report/pdf`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to generate photo report PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${claim?.claimNumber || "inspection"}_photo_report.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return { success: true };
+    },
+  });
+
+  const photoReportDocxMutation = useMutation({
+    mutationFn: async () => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch(`/api/inspection/${sessionId}/export/photo-report/docx`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to generate photo report Word doc");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${claim?.claimNumber || "inspection"}_photo_report.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return { success: true };
     },
   });
 
@@ -311,7 +362,71 @@ export default function ExportPage({ params }: { params: { id: string } }) {
           </motion.div>
         )}
 
-        {/* Card 3: Submit for Review */}
+        {/* Card 3: Photo Report */}
+        {!validationLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className={cn(
+              "border border-border rounded-xl p-4 md:p-6 bg-card",
+              !canExport && "opacity-50 pointer-events-none"
+            )}
+          >
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-[#22C55E]/10 flex items-center justify-center shrink-0">
+                <Camera size={20} className="text-[#22C55E] md:hidden" />
+                <Camera size={24} className="text-[#22C55E] hidden md:block" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg" data-testid="text-photo-report-title">Photo Report</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Xactimate-style photo sheet with 2 photos per page, headers, sequential numbering, and captions
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {summary.photoCount || 0} photos &bull; Includes insured name, claim #, and policy #
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-[#22C55E] text-[#22C55E] hover:bg-[#22C55E]/10"
+                    onClick={() => photoReportPdfMutation.mutate()}
+                    disabled={photoReportPdfMutation.isPending || photoReportDocxMutation.isPending}
+                    data-testid="button-photo-report-pdf"
+                  >
+                    {photoReportPdfMutation.isPending ? (
+                      <><Loader2 size={14} className="mr-1 animate-spin" /> Generating PDF...</>
+                    ) : (
+                      <><FileText size={14} className="mr-1" /> Download PDF</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-primary text-primary hover:bg-primary/10"
+                    onClick={() => photoReportDocxMutation.mutate()}
+                    disabled={photoReportPdfMutation.isPending || photoReportDocxMutation.isPending}
+                    data-testid="button-photo-report-docx"
+                  >
+                    {photoReportDocxMutation.isPending ? (
+                      <><Loader2 size={14} className="mr-1 animate-spin" /> Generating Word...</>
+                    ) : (
+                      <><FileImage size={14} className="mr-1" /> Download Word</>
+                    )}
+                  </Button>
+                  {(photoReportPdfMutation.isSuccess || photoReportDocxMutation.isSuccess) && (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-[#22C55E]" />
+                      <span className="text-sm text-[#22C55E] font-medium">Downloaded</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Card 4: Submit for Review */}
         {!validationLoading && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}

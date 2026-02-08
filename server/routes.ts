@@ -1639,6 +1639,84 @@ Respond in JSON format:
     }
   });
 
+  // ── Photo Report Export (PDF) ────────────────────────
+
+  app.post("/api/inspection/:sessionId/export/photo-report/pdf", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      const rooms = await storage.getRooms(sessionId);
+      const photos = await storage.getPhotos(sessionId);
+
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+      const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
+
+      const { generatePhotoReportPDF } = await import("./photoReportGenerator");
+
+      const pdfBuffer = await generatePhotoReportPDF({
+        claim: claim || null,
+        session,
+        rooms,
+        photos,
+        inspectorName,
+        companyName: exportPrefs.companyName || "Claims IQ",
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${claim?.claimNumber || "inspection"}_photo_report.pdf"`
+      );
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Photo report PDF error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Photo Report Export (DOCX) ───────────────────────
+
+  app.post("/api/inspection/:sessionId/export/photo-report/docx", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      const rooms = await storage.getRooms(sessionId);
+      const photos = await storage.getPhotos(sessionId);
+
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+      const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
+
+      const { generatePhotoReportDOCX } = await import("./photoReportGenerator");
+
+      const docxBuffer = await generatePhotoReportDOCX({
+        claim: claim || null,
+        session,
+        rooms,
+        photos,
+        inspectorName,
+        companyName: exportPrefs.companyName || "Claims IQ",
+      });
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${claim?.claimNumber || "inspection"}_photo_report.docx"`
+      );
+      res.send(docxBuffer);
+    } catch (error: any) {
+      console.error("Photo report DOCX error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Photo Annotations Endpoint ──────────────────────
 
   app.put("/api/inspection/:sessionId/photos/:photoId/annotations", authenticateRequest, async (req, res) => {
