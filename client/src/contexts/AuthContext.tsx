@@ -90,7 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function syncUserToBackend(supabaseId: string, email: string, fullName: string) {
+  async function syncUserToBackend(
+    supabaseId: string,
+    email: string,
+    fullName: string
+  ): Promise<AuthUser | null> {
     try {
       const { data: session } = await supabase.auth.getSession();
       const response = await fetch("/api/auth/sync", {
@@ -101,10 +105,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         body: JSON.stringify({ supabaseId, email, fullName }),
       });
-      const profile = await response.json();
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.message || "Failed to sync user");
+      }
+      const profile = (await response.json()) as AuthUser;
       setUser(profile);
+      return profile;
     } catch (error) {
       console.error("Sync failed:", error);
+      return null;
     }
   }
 
@@ -116,12 +126,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
       if (data.user) {
-        const profile = await fetchUserProfile();
-        if (profile) {
-          setUser(profile);
-          setLocation("/");
-          toast({ title: "Signed in successfully" });
+        const profile =
+          (await syncUserToBackend(data.user.id, data.user.email || "", "")) ||
+          (await fetchUserProfile());
+        if (!profile) {
+          throw new Error("Unable to load your profile. Please try again.");
         }
+        setUser(profile);
+        setLocation("/");
+        toast({ title: "Signed in successfully" });
       }
     } catch (error: any) {
       toast({ title: "Sign in failed", description: error.message, variant: "destructive" });
@@ -136,7 +149,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
       if (data.user) {
-        await syncUserToBackend(data.user.id, email, fullName);
+        const profile = await syncUserToBackend(data.user.id, email, fullName);
+        if (!profile) {
+          throw new Error("Unable to complete registration. Please try again.");
+        }
         setLocation("/");
         toast({ title: "Account created successfully" });
       }
