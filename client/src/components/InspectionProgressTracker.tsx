@@ -112,7 +112,6 @@ export default function InspectionProgressTracker({
   };
 
   const completedRooms = rooms.filter((r) => r.status === "complete").length;
-  const inProgressRooms = rooms.filter((r) => r.status === "in_progress").length;
   const totalRooms = rooms.length;
   const roomProgress = totalRooms > 0 ? Math.round((completedRooms / totalRooms) * 100) : 0;
 
@@ -174,13 +173,13 @@ export default function InspectionProgressTracker({
                     <path
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       fill="none"
-                      stroke="hsl(267 15% 93%)"
+                      className="stroke-muted"
                       strokeWidth="3"
                     />
                     <motion.path
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       fill="none"
-                      stroke={overallScore >= 80 ? "hsl(161 94% 30%)" : overallScore >= 50 ? "hsl(44 53% 54%)" : "hsl(254 37% 55%)"}
+                      className={overallScore >= 80 ? "stroke-success" : overallScore >= 50 ? "stroke-accent" : "stroke-primary"}
                       strokeWidth="3"
                       strokeLinecap="round"
                       initial={{ strokeDasharray: "0, 100" }}
