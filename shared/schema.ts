@@ -413,6 +413,12 @@ export const scopeLineItems = pgTable("scope_line_items", {
   scopeConditions: jsonb("scope_conditions"),
   companionRules: jsonb("companion_rules"),
   sortOrder: integer("sort_order").default(0),
+  // ── Financial behavior flags ──
+  opEligibleDefault: boolean("op_eligible_default").default(true),
+  // Whether items in this trade typically receive O&P. Carriers may override per-claim.
+  isCodeUpgrade: boolean("is_code_upgrade").default(false),
+  // Whether this item represents a building code upgrade (Ice & Water Barrier, GFCI, etc.)
+  // Code upgrades are typically "Paid When Incurred" — not paid until work is completed.
   isActive: boolean("is_active").default(true),
 });
 
@@ -533,6 +539,10 @@ export const policyRules = pgTable("policy_rules", {
   profitPct: real("profit_pct").default(10),
   taxRate: real("tax_rate").default(8),
   // Tax rate as percentage (e.g., 8 for 8%)
+  opExcludedTrades: jsonb("op_excluded_trades").default([]),
+  // Array of trade codes excluded from O&P for this coverage.
+  // Example: ["RFG", "EXT"] means Roofing and Exterior/Siding don't get O&P.
+  // Empty array = all eligible trades get O&P (default behavior).
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -543,6 +553,35 @@ export const insertPolicyRuleSchema = createInsertSchema(policyRules).omit({
 
 export type PolicyRule = typeof policyRules.$inferSelect;
 export type InsertPolicyRule = z.infer<typeof insertPolicyRuleSchema>;
+
+// ── Tax Rate Rules per Category ───────────────────
+export const taxRules = pgTable("tax_rules", {
+  id: serial("id").primaryKey(),
+  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+  taxLabel: varchar("tax_label", { length: 50 }).notNull(),
+  // e.g., "Material Sales Tax", "Cleaning Mtl Tax", "Cleaning Sales Tax"
+  taxRate: real("tax_rate").notNull(),
+  // Tax rate as percentage (e.g., 7.25 for 7.25%)
+  appliesToCategories: jsonb("applies_to_categories").default([]),
+  // Array of category strings this tax applies to.
+  // Empty array = applies to all categories (default/fallback tax).
+  // Example: ["Cleaning", "Mitigation"] or ["Roofing", "Siding", "Drywall"]
+  appliesToCostType: varchar("applies_to_cost_type", { length: 20 }).default("material"),
+  // "material" = tax on material costs only
+  // "labor" = tax on labor costs only
+  // "all" = tax on total price (material + labor + equipment)
+  isDefault: boolean("is_default").default(false),
+  // If true, this is the fallback tax for categories not matched by other rules
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaxRuleSchema = createInsertSchema(taxRules).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type TaxRule = typeof taxRules.$inferSelect;
+export type InsertTaxRule = z.infer<typeof insertTaxRuleSchema>;
 
 export const insertScopeLineItemSchema = createInsertSchema(scopeLineItems).omit({ id: true });
 export const insertRegionalPriceSetSchema = createInsertSchema(regionalPriceSets).omit({ id: true });

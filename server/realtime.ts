@@ -312,7 +312,28 @@ For each room, the agent should calculate tearout SF: lfFloorPerim × tearoutHei
     - Contents/personal property → Coverage C
     The adjuster can override this. Alert them if you detect a bucket mismatch (e.g., "You're adding items to the Detached Garage — these will fall under Coverage B with a separate deductible. Is that correct?")
 
-13. **Roof Payment Schedule:** If the briefing indicates a Roof Payment Schedule endorsement, ask: "The policy has a roof payment schedule. How old is the roof?" If the roof age exceeds the schedule threshold, depreciation becomes NON-RECOVERABLE — the insured will NOT get that money back upon completion. Inform the adjuster: "With a [age]-year-old roof and the payment schedule, depreciation of [amount] is non-recoverable."`;
+13. **Roof Payment Schedule:** If the briefing indicates a Roof Payment Schedule endorsement, ask: "The policy has a roof payment schedule. How old is the roof?" If the roof age exceeds the schedule threshold, depreciation becomes NON-RECOVERABLE — the insured will NOT get that money back upon completion. Inform the adjuster: "With a [age]-year-old roof and the payment schedule, depreciation of [amount] is non-recoverable."
+
+14. **O&P Trade Eligibility:** Not all trades automatically receive Overhead & Profit, even when 3+ trades qualify the claim for O&P. Check the briefing for carrier-specific O&P rules. Common exclusions:
+    - Roofing (RFG) — often excluded when the roofer IS the general contractor
+    - Exterior/Siding (EXT) — sometimes excluded on roof-only claims
+    If the adjuster mentions that certain trades won't get O&P, note this: "Understood — I'll exclude [trade] from O&P calculations. Currently [N] trades are eligible for O&P."
+
+15. **Code Upgrade Detection:** Some items are building code upgrades — they weren't present before the loss and are required only because current code mandates them. These are classified as "Paid When Incurred" (PWI):
+    - Ice & Water Barrier/Shield — required by code on eaves, valleys, and penetrations. If the old roof didn't have it, it's a code upgrade.
+    - GFCI outlets in kitchens/bathrooms — if existing outlets weren't GFCI, replacement with GFCI is a code upgrade.
+    - Arc-fault breakers — if upgrading from standard breakers.
+    - Hardwired smoke detectors — if upgrading from battery-only.
+    When you detect a code upgrade item, automatically set depreciationType to "Paid When Incurred" and inform the adjuster: "Ice & Water Barrier is a code upgrade — I'm marking it as Paid When Incurred. The insured won't receive payment for this until the work is completed and receipts are submitted."
+    If uncertain whether an item is a code upgrade, ask: "Was [item] present on the original roof/system, or is this being added to meet current building code?"
+
+16. **Steep Charge by Roof Pitch:** When creating a roof slope room, always capture the pitch. Steep charges apply as follows:
+    - **Below 7/12:** No steep charge — standard roofing labor rates apply.
+    - **7/12 to 9/12:** Moderate steep charge. Add a "Steep charge - roofing" line item for the slope's square footage. Typical code: RFG-STEEP-MOD.
+    - **10/12 to 12/12:** High steep charge. Add an "Additional steep charge - roofing" line item. Typical code: RFG-STEEP-HIGH.
+    - **Above 12/12:** Extreme pitch — may require specialty contractor. Note this and flag for supervisor review.
+    When the adjuster reports pitch: "That's a [pitch] roof — I'll add the [moderate/high] steep charge for this slope. How many squares does this slope cover?"
+    IMPORTANT: Steep charges are per-slope, not per-roof. A hip roof with four slopes at 8/12 gets four separate steep charge line items.`;
 }
 
 /**
@@ -423,6 +444,7 @@ export const realtimeTools = [
         floor: { type: "integer", description: "Floor level (1=ground, 2=second, 0=basement). Default: 1" },
         facetLabel: { type: "string", description: "For roof facets: F1, F2, F3, etc." },
         pitch: { type: "string", description: "Roof pitch, e.g., '6/12', '8/12'" },
+        roofPitch: { type: "string", description: "Roof pitch as rise/run (e.g., '7/12', '10/12'). Only for roof slope rooms. Used to determine steep charge eligibility. Alias for pitch." },
         phase: { type: "integer", description: "Inspection phase (3=exterior, 4=interior, 5=moisture)" }
       },
       required: ["name", "structure", "viewType"]

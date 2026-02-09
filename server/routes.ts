@@ -81,6 +81,7 @@ const roomCreateSchema = z.object({
   floor: z.number().int().positive().optional(),
   facetLabel: z.string().max(10).nullable().optional(),
   pitch: z.string().max(10).nullable().optional(),
+  roofPitch: z.string().max(10).nullable().optional(),
   phase: z.number().int().positive().nullable().optional(),
 });
 
@@ -175,6 +176,15 @@ const policyRuleSchema = z.object({
   overheadPct: z.number().nonnegative().default(10),
   profitPct: z.number().nonnegative().default(10),
   taxRate: z.number().nonnegative().default(8),
+  opExcludedTrades: z.array(z.string()).default([]),
+});
+
+const taxRuleSchema = z.object({
+  taxLabel: z.string().min(1).max(50),
+  taxRate: z.number().nonnegative(),
+  appliesToCategories: z.array(z.string()).default([]),
+  appliesToCostType: z.enum(["material", "labor", "all"]).default("all"),
+  isDefault: z.boolean().default(false),
 });
 
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
@@ -303,6 +313,20 @@ async function ensurePolicyRules(claimId: number, userId?: number) {
   for (const rule of rules) {
     created.push(await storage.createPolicyRule(rule));
   }
+
+  // Also seed a default tax rule if none exist
+  const existingTax = await storage.getTaxRulesForClaim(claimId);
+  if (existingTax.length === 0) {
+    await storage.createTaxRule({
+      claimId,
+      taxLabel: "Sales Tax",
+      taxRate: coverage?.taxRate || defaultTax,
+      appliesToCategories: [],
+      appliesToCostType: "all",
+      isDefault: true,
+    });
+  }
+
   return created;
 }
 
@@ -519,6 +543,45 @@ export async function registerRoutes(
       }
       const rule = await storage.updatePolicyRule(ruleId, parsed.data);
       res.json(rule);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Tax Rules ──────────────────────────────────
+
+  app.post("/api/claims/:claimId/tax-rules", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.claimId);
+      const parsed = taxRuleSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid tax rule data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const rule = await storage.createTaxRule({ claimId, ...parsed.data });
+      res.status(201).json(rule);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/claims/:claimId/tax-rules", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.claimId);
+      const rules = await storage.getTaxRulesForClaim(claimId);
+      res.json(rules);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/claims/:claimId/tax-rules/:ruleId", authenticateRequest, async (req, res) => {
+    try {
+      const ruleId = parseInt(req.params.ruleId);
+      await storage.deleteTaxRule(ruleId);
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });

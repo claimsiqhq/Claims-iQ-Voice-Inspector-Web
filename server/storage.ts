@@ -6,6 +6,7 @@ import {
   supplementalClaims, structures, roomOpenings, sketchAnnotations, sketchTemplates,
   testSquares,
   policyRules,
+  taxRules,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
@@ -25,6 +26,7 @@ import {
   type VoiceTranscript, type InsertVoiceTranscript,
   type SupplementalClaim, type InsertSupplementalClaim,
   type PolicyRule, type InsertPolicyRule,
+  type TaxRule, type InsertTaxRule,
   scopeLineItems, regionalPriceSets,
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
@@ -193,6 +195,11 @@ export interface IStorage {
   getPolicyRulesForClaim(claimId: number): Promise<PolicyRule[]>;
   getPolicyRule(claimId: number, coverageType: string): Promise<PolicyRule | undefined>;
   updatePolicyRule(id: number, updates: Partial<PolicyRule>): Promise<PolicyRule | undefined>;
+
+  // ── Tax Rules ────────────────────────────────
+  createTaxRule(data: InsertTaxRule): Promise<TaxRule>;
+  getTaxRulesForClaim(claimId: number): Promise<TaxRule[]>;
+  deleteTaxRule(id: number): Promise<void>;
 
   // ── Settlement Summary ──────────────────────────
   getSettlementSummary(sessionId: number, claimId: number): Promise<any>;
@@ -1015,12 +1022,28 @@ export class DatabaseStorage implements IStorage {
     return rule;
   }
 
+  // ── Tax Rules ──────────────────────────
+
+  async createTaxRule(data: InsertTaxRule): Promise<TaxRule> {
+    const [rule] = await db.insert(taxRules).values(data).returning();
+    return rule;
+  }
+
+  async getTaxRulesForClaim(claimId: number): Promise<TaxRule[]> {
+    return db.select().from(taxRules).where(eq(taxRules.claimId, claimId));
+  }
+
+  async deleteTaxRule(id: number): Promise<void> {
+    await db.delete(taxRules).where(eq(taxRules.id, id));
+  }
+
   // ── Settlement Summary ──────────────────────────
 
   async getSettlementSummary(sessionId: number, claimId: number): Promise<any> {
     const items = await this.getLineItems(sessionId);
     const rooms = await this.getRooms(sessionId);
     const rules = await this.getPolicyRulesForClaim(claimId);
+    const claimTaxRules = await this.getTaxRulesForClaim(claimId);
 
     // Build a room lookup for structure resolution
     const roomLookup = new Map(rooms.map(r => [r.id, r]));
@@ -1053,10 +1076,20 @@ export class DatabaseStorage implements IStorage {
       overheadPct: r.overheadPct || 10,
       profitPct: r.profitPct || 10,
       taxRate: r.taxRate || 8,
+      opExcludedTrades: (r as any).opExcludedTrades || [],
+    }));
+
+    // Map tax rules for the engine
+    const taxInput = claimTaxRules.map(t => ({
+      taxLabel: t.taxLabel,
+      taxRate: t.taxRate,
+      appliesToCategories: (t.appliesToCategories || []) as string[],
+      appliesToCostType: t.appliesToCostType || "all",
+      isDefault: t.isDefault || false,
     }));
 
     const { calculateSettlement } = await import("./estimateEngine");
-    return calculateSettlement(mapped, policyInput);
+    return calculateSettlement(mapped, policyInput, taxInput);
   }
 }
 

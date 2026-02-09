@@ -464,7 +464,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               dimensions,
               floor: args.floor,
               facetLabel: args.facetLabel,
-              pitch: args.pitch,
+              pitch: args.pitch || args.roofPitch,
               phase: args.phase,
             }),
           });
@@ -658,6 +658,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           let finalUnitPrice = unitPrice || 0;
           let finalUnit = unit || "EA";
           let finalWasteFactor = wasteFactor || 0;
+          let isCodeUpgradeItem = false;
 
           // If catalogCode provided, look it up and use catalog pricing
           if (catalogCode) {
@@ -668,6 +669,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 const catalogItems = await catalogRes.json();
                 const matched = catalogItems.find((item: any) => item.code === catalogCode);
                 if (matched) {
+                  // Auto-detect code upgrade items from catalog
+                  if (matched.isCodeUpgrade) {
+                    isCodeUpgradeItem = true;
+                  }
                   const priceRes = await fetch(`/api/pricing/scope`, {
                     method: "POST",
                     headers: catalogHeaders,
@@ -693,6 +698,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             }
           }
 
+          // Code upgrade items default to "Paid When Incurred"
+          const effectiveDepType = isCodeUpgradeItem
+            ? "Paid When Incurred"
+            : (depreciationType || "Recoverable");
+
           const qty = quantity || 1;
           const totalPrice = qty * finalUnitPrice * (1 + (finalWasteFactor || 0) / 100);
 
@@ -710,7 +720,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               unit: finalUnit,
               unitPrice: finalUnitPrice,
               totalPrice,
-              depreciationType: depreciationType || "Recoverable",
+              depreciationType: effectiveDepType,
               wasteFactor: finalWasteFactor,
             }),
           });

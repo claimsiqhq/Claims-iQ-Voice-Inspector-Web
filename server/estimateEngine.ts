@@ -67,6 +67,7 @@ export interface TradeSubtotal {
   overheadAmount: number;
   profitAmount: number;
   tradeRCV: number;                   // subtotal + overhead + profit + tax
+  opEligible: boolean;               // Whether this trade received O&P
 }
 
 export interface CoverageSummary {
@@ -170,6 +171,62 @@ export function deriveCoverageBucket(
 }
 
 /**
+ * Resolves the applicable tax rate for a line item based on its category
+ * and the claim's tax rules. Falls back to the policy rule's flat taxRate
+ * if no specific tax rules exist.
+ *
+ * @param category - The line item's category (e.g., "Roofing", "Cleaning")
+ * @param taxRules - The claim's tax rules (from taxRules table)
+ * @param fallbackRate - The flat rate from policyRules.taxRate (default 8%)
+ * @returns The resolved tax rate as a percentage (e.g., 7.25)
+ */
+export function resolveTaxRate(
+  category: string,
+  taxRules: Array<{
+    taxLabel: string;
+    taxRate: number;
+    appliesToCategories: string[];
+    appliesToCostType: string;
+    isDefault: boolean;
+  }>,
+  fallbackRate: number = 8
+): { taxRate: number; taxLabel: string; costType: string } {
+  if (!taxRules || taxRules.length === 0) {
+    return { taxRate: fallbackRate, taxLabel: "Sales Tax", costType: "all" };
+  }
+
+  const catLower = (category || "").toLowerCase();
+
+  // First: look for a category-specific match
+  for (const rule of taxRules) {
+    const categories = (rule.appliesToCategories || []) as string[];
+    if (categories.length > 0) {
+      const matches = categories.some(c => catLower.includes(c.toLowerCase()));
+      if (matches) {
+        return {
+          taxRate: rule.taxRate,
+          taxLabel: rule.taxLabel,
+          costType: rule.appliesToCostType || "all",
+        };
+      }
+    }
+  }
+
+  // Fallback: use the default tax rule if one exists
+  const defaultRule = taxRules.find(r => r.isDefault);
+  if (defaultRule) {
+    return {
+      taxRate: defaultRule.taxRate,
+      taxLabel: defaultRule.taxLabel,
+      costType: defaultRule.appliesToCostType || "all",
+    };
+  }
+
+  // Ultimate fallback: flat rate from policy rule
+  return { taxRate: fallbackRate, taxLabel: "Sales Tax", costType: "all" };
+}
+
+/**
  * Calculates depreciation for a single line item.
  *
  * Logic:
@@ -262,7 +319,15 @@ export function calculateSettlement(
     overheadPct: number;
     profitPct: number;
     taxRate: number;
-  }>
+    opExcludedTrades?: string[];
+  }>,
+  taxRules: Array<{
+    taxLabel: string;
+    taxRate: number;
+    appliesToCategories: string[];
+    appliesToCostType: string;
+    isDefault: boolean;
+  }> = []
 ): SettlementSummary {
   // Default policy rule if none provided
   const defaultRule = {
@@ -273,6 +338,7 @@ export function calculateSettlement(
     overheadPct: 10,
     profitPct: 10,
     taxRate: 8,
+    opExcludedTrades: [] as string[],
   };
 
   const ruleMap = new Map(policyRules.map(r => [r.coverageType, r]));
@@ -291,8 +357,15 @@ export function calculateSettlement(
   const tradesInvolved = Array.from(tradesSet);
   const qualifiesForOP = tradesInvolved.length >= 3;
 
-  // ── Step 2: Calculate per-trade O&P ──
+  // ── Step 2: Calculate per-trade O&P (selective by trade) ──
   const tradeSubtotals: TradeSubtotal[] = [];
+
+  // Build a merged set of excluded trades across all coverage rules
+  const allExcludedTrades = new Set<string>();
+  for (const rule of policyRules) {
+    const excluded = (rule.opExcludedTrades || []) as string[];
+    excluded.forEach(t => allExcludedTrades.add(t.toUpperCase()));
+  }
 
   for (const [tradeCode, tradeItems] of tradeGroups) {
     const subtotal = tradeItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
@@ -301,8 +374,13 @@ export function calculateSettlement(
     const firstCoverage = tradeItems[0]?.coverageBucket || "Coverage A";
     const rule = ruleMap.get(firstCoverage) || defaultRule;
 
-    const overheadAmount = qualifiesForOP ? subtotal * (rule.overheadPct / 100) : 0;
-    const profitAmount = qualifiesForOP ? subtotal * (rule.profitPct / 100) : 0;
+    // Trade-level O&P eligibility check:
+    // 1. Must have 3+ trades overall (qualifiesForOP)
+    // 2. This specific trade must NOT be in the exclusion list
+    const tradeIsEligible = qualifiesForOP && !allExcludedTrades.has(tradeCode.toUpperCase());
+
+    const overheadAmount = tradeIsEligible ? subtotal * (rule.overheadPct / 100) : 0;
+    const profitAmount = tradeIsEligible ? subtotal * (rule.profitPct / 100) : 0;
 
     tradeSubtotals.push({
       tradeCode,
@@ -310,6 +388,7 @@ export function calculateSettlement(
       overheadAmount: Math.round(overheadAmount * 100) / 100,
       profitAmount: Math.round(profitAmount * 100) / 100,
       tradeRCV: Math.round((subtotal + overheadAmount + profitAmount) * 100) / 100,
+      opEligible: tradeIsEligible,
     });
   }
 
@@ -332,9 +411,10 @@ export function calculateSettlement(
     const bucket = deriveCoverageBucket(item.structure, item.coverageBucket);
     const rule = ruleMap.get(bucket) || defaultRule;
 
-    // Tax on materials portion (applied to totalPrice + O&P share)
+    // Tax — resolve per-category if tax rules exist, otherwise use flat policy rate
+    const resolvedTax = resolveTaxRate(item.category, taxRules, rule.taxRate);
     const taxableBase = (item.totalPrice || 0) + itemOP;
-    const taxAmount = Math.round(taxableBase * (rule.taxRate / 100) * 100) / 100;
+    const taxAmount = Math.round(taxableBase * (resolvedTax.taxRate / 100) * 100) / 100;
 
     // RCV = totalPrice + O&P share + tax
     const rcv = Math.round(((item.totalPrice || 0) + itemOP + taxAmount) * 100) / 100;
