@@ -249,7 +249,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       ]);
       const roomsData = await roomsRes.json();
       const openingsData = openingsRes.ok ? await openingsRes.json() : [];
-      // Count openings per room
       const openingCountByRoom = new Map<number, number>();
       for (const o of openingsData) {
         openingCountByRoom.set(o.roomId, (openingCountByRoom.get(o.roomId) || 0) + (o.quantity || 1));
@@ -259,8 +258,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         openingCount: openingCountByRoom.get(r.id) || 0,
       }));
       setRooms(enrichedRooms);
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
     } catch (e) { console.error("[Voice] Refresh rooms error:", e); }
-  }, [sessionId, getAuthHeaders]);
+  }, [sessionId, getAuthHeaders, queryClient]);
 
   const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
     if (!text.trim()) return;

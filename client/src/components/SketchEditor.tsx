@@ -2,6 +2,17 @@ import React, { useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils";
 import { Move, ZoomIn, ZoomOut, Grid3X3, Plus, RotateCcw, Maximize2, MousePointer2 } from "lucide-react";
 
+interface OpeningData {
+  id: number;
+  openingType: string;
+  wallIndex?: number | null;
+  wallDirection?: string | null;
+  widthFt?: number | null;
+  heightFt?: number | null;
+  quantity?: number;
+  label?: string | null;
+}
+
 interface RoomData {
   id: number;
   name: string;
@@ -16,6 +27,7 @@ interface RoomData {
   shapeType?: string;
   parentRoomId?: number | null;
   attachmentType?: string | null;
+  openingCount?: number;
 }
 
 interface SketchEditorProps {
@@ -100,6 +112,37 @@ export default function SketchEditor({
   const [localPositions, setLocalPositions] = useState<Record<number, { x: number; y: number; w: number; h: number }>>({});
 
   const [pendingSaves, setPendingSaves] = useState<Set<number>>(new Set());
+  const [roomOpenings, setRoomOpenings] = useState<Record<number, OpeningData[]>>({});
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/inspection/${sessionId}/openings`, { headers });
+        if (!res.ok || cancelled) return;
+        const allOpenings: any[] = await res.json();
+        const byRoom: Record<number, OpeningData[]> = {};
+        for (const o of allOpenings) {
+          const rid = o.roomId;
+          if (!byRoom[rid]) byRoom[rid] = [];
+          byRoom[rid].push({
+            id: o.id,
+            openingType: o.openingType || o.opening_type || "door",
+            wallIndex: o.wallIndex ?? o.wall_index ?? null,
+            wallDirection: o.wallDirection ?? o.wall_direction ?? null,
+            widthFt: o.widthFt ?? o.width_ft ?? o.width ?? 3,
+            heightFt: o.heightFt ?? o.height_ft ?? o.height ?? 7,
+            quantity: o.quantity || 1,
+            label: o.label || null,
+          });
+        }
+        if (!cancelled) setRoomOpenings(byRoom);
+      } catch (e) { console.error("Failed to fetch openings:", e); }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId, getAuthHeaders, rooms]);
 
   const editableRooms = useMemo(() =>
     rooms.filter(r => !r.parentRoomId),
@@ -526,6 +569,73 @@ export default function SketchEditor({
                   style={{ pointerEvents: "none" }}>
                   Wall {wallSF} SF
                 </text>
+
+                {/* Opening markers (doors/windows) */}
+                {(roomOpenings[room.id] || []).map((op, opIdx) => {
+                  const dirMap: Record<string, number> = { north: 0, front: 0, east: 1, right: 1, south: 2, rear: 2, back: 2, west: 3, left: 3 };
+                  const wallIdx = op.wallIndex ?? (op.wallDirection ? dirMap[op.wallDirection] ?? 0 : opIdx % 4);
+                  const isHoriz = wallIdx === 0 || wallIdx === 2;
+                  const opWidthPx = Math.min((op.widthFt || 3) * SCALE * 0.5, isHoriz ? w * 0.35 : h * 0.35);
+                  const isDoor = op.openingType.includes("door") || op.openingType === "archway" || op.openingType === "cased_opening" || op.openingType === "pass_through";
+                  const isWindow = op.openingType === "window";
+                  const spacing = opIdx * (opWidthPx + 4);
+                  const wallPos = 0.2 + (spacing / (isHoriz ? w : h)) * 0.6;
+
+                  let ox: number, oy: number;
+                  if (wallIdx === 0) { ox = x + w * wallPos; oy = y; }
+                  else if (wallIdx === 1) { ox = x + w; oy = y + h * wallPos; }
+                  else if (wallIdx === 2) { ox = x + w * wallPos; oy = y + h; }
+                  else { ox = x; oy = y + h * wallPos; }
+
+                  return (
+                    <g key={`op-${op.id}`} style={{ pointerEvents: "none" }}>
+                      {isHoriz ? (
+                        <>
+                          <rect x={ox - opWidthPx / 2} y={oy - 2} width={opWidthPx} height={4} fill="white" />
+                          {isDoor ? (
+                            <path d={`M${ox - opWidthPx / 2},${oy} A${opWidthPx / 2},${opWidthPx / 2} 0 0 ${wallIdx === 0 ? 1 : 0} ${ox + opWidthPx / 2},${oy}`}
+                              fill="none" stroke="#7763B7" strokeWidth={0.6} strokeDasharray="2,1" />
+                          ) : isWindow ? (
+                            <>
+                              <line x1={ox - opWidthPx / 2} y1={oy} x2={ox + opWidthPx / 2} y2={oy} stroke="#0EA5E9" strokeWidth={1.5} />
+                              <line x1={ox - opWidthPx / 2 + 1} y1={oy - 1.5} x2={ox - opWidthPx / 2 + 1} y2={oy + 1.5} stroke="#0EA5E9" strokeWidth={0.6} />
+                              <line x1={ox + opWidthPx / 2 - 1} y1={oy - 1.5} x2={ox + opWidthPx / 2 - 1} y2={oy + 1.5} stroke="#0EA5E9" strokeWidth={0.6} />
+                            </>
+                          ) : (
+                            <line x1={ox - opWidthPx / 2} y1={oy} x2={ox + opWidthPx / 2} y2={oy} stroke="#F59E0B" strokeWidth={1} strokeDasharray="3,2" />
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <rect x={ox - 2} y={oy - opWidthPx / 2} width={4} height={opWidthPx} fill="white" />
+                          {isDoor ? (
+                            <path d={`M${ox},${oy - opWidthPx / 2} A${opWidthPx / 2},${opWidthPx / 2} 0 0 ${wallIdx === 3 ? 1 : 0} ${ox},${oy + opWidthPx / 2}`}
+                              fill="none" stroke="#7763B7" strokeWidth={0.6} strokeDasharray="2,1" />
+                          ) : isWindow ? (
+                            <>
+                              <line x1={ox} y1={oy - opWidthPx / 2} x2={ox} y2={oy + opWidthPx / 2} stroke="#0EA5E9" strokeWidth={1.5} />
+                              <line x1={ox - 1.5} y1={oy - opWidthPx / 2 + 1} x2={ox + 1.5} y2={oy - opWidthPx / 2 + 1} stroke="#0EA5E9" strokeWidth={0.6} />
+                              <line x1={ox - 1.5} y1={oy + opWidthPx / 2 - 1} x2={ox + 1.5} y2={oy + opWidthPx / 2 - 1} stroke="#0EA5E9" strokeWidth={0.6} />
+                            </>
+                          ) : (
+                            <line x1={ox} y1={oy - opWidthPx / 2} x2={ox} y2={oy + opWidthPx / 2} stroke="#F59E0B" strokeWidth={1} strokeDasharray="3,2" />
+                          )}
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Opening count badge */}
+                {(roomOpenings[room.id]?.length || 0) > 0 && (
+                  <>
+                    <circle cx={x + 8} cy={y + 8} r={5.5} fill="#0EA5E9" opacity={0.9} />
+                    <text x={x + 8} y={y + 8.5} textAnchor="middle" dominantBaseline="middle"
+                      fontSize="5" fill="white" fontWeight="bold" style={{ pointerEvents: "none" }}>
+                      {roomOpenings[room.id].reduce((sum, o) => sum + (o.quantity || 1), 0)}
+                    </text>
+                  </>
+                )}
 
                 {room.viewType && room.viewType !== "interior" && (
                   <text x={x + 4} y={y + h - 4} fontSize="4.5" fontFamily={FONT} fill="#94A3B8"
