@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import BottomNav from "@/components/BottomNav";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { SettingsProvider } from "@/components/SettingsProvider";
 import LoginPage from "@/pages/LoginPage";
 import SupervisorDashboard from "@/pages/SupervisorDashboard";
 import OnboardingWizard, { isOnboardingCompleted } from "@/components/OnboardingWizard";
@@ -138,10 +139,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Toaster />
-          <ErrorBoundary>
-            <ProtectedRouter />
-          </ErrorBoundary>
+          <SettingsProvider>
+            <Toaster />
+            <ErrorBoundary>
+              <ProtectedRouter />
+            </ErrorBoundary>
+          </SettingsProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

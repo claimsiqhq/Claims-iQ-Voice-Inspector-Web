@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/hooks/use-settings";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -61,6 +62,7 @@ interface LayoutProps {
 export default function Layout({ children, title = "Claims IQ", showBack = false }: LayoutProps) {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
@@ -84,7 +86,13 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
     enabled: !!user,
   });
 
-  const visibleNotifications = notifications.filter(n => !dismissedIds.has(n.id));
+  const visibleNotifications = notifications.filter(n => {
+    if (dismissedIds.has(n.id)) return false;
+    if (n.type === "inspection" && !settings.inspectionReminders) return false;
+    if (n.type === "review" && !settings.claimStatusAlerts) return false;
+    if (n.type === "new_claim" && !settings.claimStatusAlerts) return false;
+    return true;
+  });
   const unreadCount = visibleNotifications.length;
 
   useEffect(() => {

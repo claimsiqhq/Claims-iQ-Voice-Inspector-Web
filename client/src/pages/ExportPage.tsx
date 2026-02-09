@@ -12,12 +12,14 @@ import {
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/use-settings";
 
 export default function ExportPage({ params }: { params: { id: string } }) {
   const claimId = parseInt(params.id);
   const [, setLocation] = useLocation();
 
   const { toast } = useToast();
+  const { settings } = useSettings();
   const [esxUrl, setEsxUrl] = useState<string | null>(null);
   const [esxFileName, setEsxFileName] = useState("");
 
@@ -279,7 +281,12 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                 <FileSpreadsheet size={24} className="text-primary hidden md:block" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-foreground text-base md:text-lg">ESX for Xactimate</h3>
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg">
+                  ESX for Xactimate
+                  {(settings.exportFormat === "esx" || settings.exportFormat === "both") && (
+                    <span className="ml-2 text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">Preferred</span>
+                  )}
+                </h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Export estimate as Xactimate-compatible ESX file
                 </p>
@@ -332,7 +339,12 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                 <FileText size={24} className="text-primary hidden md:block" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-foreground text-base md:text-lg">PDF Inspection Report</h3>
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg">
+                  PDF Inspection Report
+                  {(settings.exportFormat === "pdf" || settings.exportFormat === "both") && (
+                    <span className="ml-2 text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">Preferred</span>
+                  )}
+                </h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Professional inspection report with photos, damage documentation, and estimate
                 </p>

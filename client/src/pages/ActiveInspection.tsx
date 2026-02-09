@@ -38,6 +38,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabaseClient";
+import { useSettings } from "@/hooks/use-settings";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -115,6 +116,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const { settings } = useSettings();
   const [isPaused, setIsPaused] = useState(false);
   const [showProgressMap, setShowProgressMap] = useState(false);
   const [showProgressTracker, setShowProgressTracker] = useState(false);
@@ -1154,7 +1156,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    const jpegQuality = settings.photoQuality === "high" ? 0.92 : settings.photoQuality === "low" ? 0.6 : 0.8;
+    const dataUrl = canvas.toDataURL("image/jpeg", jpegQuality);
 
     // Stop the camera stream
     const videoStream = videoRef.current.srcObject as MediaStream | null;
@@ -1192,25 +1195,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           throw new Error(savedPhoto.message || "Photo upload failed");
         }
 
-        // Step 2: Send to GPT-4o Vision for analysis
         let analysis: any = null;
-        try {
-          const analyzeHeaders = await getAuthHeaders();
-          const analyzeRes = await fetch(
-            `/api/inspection/${sessionId}/photos/${savedPhoto.photoId}/analyze`,
-            {
-              method: "POST",
-              headers: analyzeHeaders,
-              body: JSON.stringify({
-                imageBase64: dataUrl,
-                expectedLabel: cameraMode.label,
-                expectedPhotoType: cameraMode.photoType,
-              }),
-            }
-          );
-          analysis = await analyzeRes.json();
-        } catch (e) {
-          console.error("Photo analysis failed:", e);
+        if (settings.autoAnalyzePhotos) {
+          try {
+            const analyzeHeaders = await getAuthHeaders();
+            const analyzeRes = await fetch(
+              `/api/inspection/${sessionId}/photos/${savedPhoto.photoId}/analyze`,
+              {
+                method: "POST",
+                headers: analyzeHeaders,
+                body: JSON.stringify({
+                  imageBase64: dataUrl,
+                  expectedLabel: cameraMode.label,
+                  expectedPhotoType: cameraMode.photoType,
+                }),
+              }
+            );
+            analysis = await analyzeRes.json();
+          } catch (e) {
+            console.error("Photo analysis failed:", e);
+          }
         }
 
         // Step 3: Store in local state WITH thumbnail + analysis for gallery display
@@ -1274,7 +1278,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   useEffect(() => {
     if (cameraMode.active && videoRef.current) {
       navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "environment" } })
+        .getUserMedia({ video: {
+          facingMode: "environment",
+          ...(settings.photoQuality === "high" ? { width: { ideal: 3840 }, height: { ideal: 2160 } }
+            : settings.photoQuality === "low" ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
+        } })
         .then((stream) => {
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
@@ -1330,7 +1339,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     : "border-border"
                 )}
               >
-                {currentPhase > phase.id ? <CheckCircle2 size={10} /> : phase.id}
+                {currentPhase > phase.id ? <CheckCircle2 size={10} /> : settings.showPhaseNumbers ? phase.id : "·"}
               </div>
               <span className="truncate">{phase.name}</span>
             </div>

@@ -234,9 +234,23 @@ async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
 /**
  * Auto-create default policy rules from briefing coverage data when none exist.
  */
-async function ensurePolicyRules(claimId: number) {
+async function ensurePolicyRules(claimId: number, userId?: number) {
   const existing = await storage.getPolicyRulesForClaim(claimId);
   if (existing.length > 0) return existing;
+
+  // Load user settings for default O&P and tax rates
+  let defaultOverhead = 10;
+  let defaultProfit = 10;
+  let defaultTax = 8;
+  if (userId) {
+    try {
+      const userSettings = await storage.getUserSettings(userId);
+      const s = (userSettings?.settings as Record<string, any>) || {};
+      if (typeof s.defaultOverheadPercent === "number") defaultOverhead = s.defaultOverheadPercent;
+      if (typeof s.defaultProfitPercent === "number") defaultProfit = s.defaultProfitPercent;
+      if (typeof s.defaultTaxRate === "number") defaultTax = s.defaultTaxRate;
+    } catch {}
+  }
 
   // Seed from briefing
   const briefing = await storage.getBriefing(claimId);
@@ -252,9 +266,9 @@ async function ensurePolicyRules(claimId: number) {
     deductible: coverage?.deductible || 1000,
     applyRoofSchedule: coverage?.roofSchedule?.applies || false,
     roofScheduleAge: coverage?.roofSchedule?.ageThreshold || null,
-    overheadPct: 10,
-    profitPct: 10,
-    taxRate: 8,
+    overheadPct: defaultOverhead,
+    profitPct: defaultProfit,
+    taxRate: defaultTax,
   });
 
   // Coverage B — Other Structures (if present)
@@ -265,9 +279,9 @@ async function ensurePolicyRules(claimId: number) {
       policyLimit: coverage.coverageB.limit || null,
       deductible: coverage.coverageB.deductible || coverage?.deductible || 0,
       applyRoofSchedule: false,
-      overheadPct: 10,
-      profitPct: 10,
-      taxRate: 8,
+      overheadPct: defaultOverhead,
+      profitPct: defaultProfit,
+      taxRate: defaultTax,
     });
   }
 
@@ -279,9 +293,9 @@ async function ensurePolicyRules(claimId: number) {
       policyLimit: coverage.coverageC.limit || null,
       deductible: 0,
       applyRoofSchedule: false,
-      overheadPct: 10,
-      profitPct: 10,
-      taxRate: 8,
+      overheadPct: defaultOverhead,
+      profitPct: defaultProfit,
+      taxRate: defaultTax,
     });
   }
 
@@ -950,7 +964,7 @@ export async function registerRoutes(
       const existing = await storage.getActiveSessionForClaim(claimId);
       if (existing) {
         // Ensure policy rules exist even for existing sessions
-        await ensurePolicyRules(claimId);
+        await ensurePolicyRules(claimId, req.user?.id);
         return res.json({ sessionId: existing.id, session: existing });
       }
       const session = await storage.createInspectionSession(claimId);
@@ -959,7 +973,7 @@ export async function registerRoutes(
       }
       await storage.updateClaimStatus(claimId, "inspecting");
       // Seed default policy rules from briefing coverage data
-      await ensurePolicyRules(claimId);
+      await ensurePolicyRules(claimId, req.user?.id);
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
