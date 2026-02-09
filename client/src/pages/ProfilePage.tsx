@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,13 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState(user?.fullName || "");
   const [title, setTitle] = useState(user?.title || "");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      setFullName(user.fullName || "");
+      setTitle(user.title || "");
+    }
+  }, [user?.fullName, user?.title]);
 
   const profileMutation = useMutation({
     mutationFn: async (data: { fullName?: string; title?: string }) => {
