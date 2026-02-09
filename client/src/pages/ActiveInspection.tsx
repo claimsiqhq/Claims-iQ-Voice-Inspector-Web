@@ -1912,6 +1912,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   }}
                   onRoomUpdate={() => refreshRooms()}
                   onAddRoom={() => setShowAddRoom(true)}
+                  onEditRoom={(roomId) => setEditingRoomId(roomId)}
                   getAuthHeaders={getAuthHeaders}
                   className="flex-1 rounded-none border-0"
                 />

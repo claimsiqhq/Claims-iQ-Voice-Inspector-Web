@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Move, ZoomIn, ZoomOut, Grid3X3, Plus, RotateCcw, Maximize2, MousePointer2 } from "lucide-react";
+import { Move, ZoomIn, ZoomOut, Grid3X3, Plus, RotateCcw, Maximize2, MousePointer2, Pencil, DoorOpen, Trash2, X, ChevronDown } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface OpeningData {
   id: number;
@@ -37,10 +38,28 @@ interface SketchEditorProps {
   onRoomSelect?: (roomId: number) => void;
   onRoomUpdate?: (roomId: number, updates: { position?: { x: number; y: number }; dimensions?: { length?: number; width?: number; height?: number } }) => void;
   onAddRoom?: () => void;
+  onEditRoom?: (roomId: number) => void;
   onClose?: () => void;
   className?: string;
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
+
+const OPENING_TYPES = [
+  { value: "door", label: "Door", defaultW: 3, defaultH: 6.8 },
+  { value: "window", label: "Window", defaultW: 3, defaultH: 4 },
+  { value: "overhead_door", label: "Overhead Door", defaultW: 8, defaultH: 7 },
+  { value: "pass_through", label: "Pass-Through", defaultW: 4, defaultH: 7 },
+  { value: "archway", label: "Archway", defaultW: 4, defaultH: 7 },
+  { value: "cased_opening", label: "Cased Opening", defaultW: 4, defaultH: 7 },
+  { value: "missing_wall", label: "Missing Wall", defaultW: 8, defaultH: 8 },
+];
+
+const WALL_DIRECTIONS = [
+  { value: "north", label: "North" },
+  { value: "east", label: "East" },
+  { value: "south", label: "South" },
+  { value: "west", label: "West" },
+];
 
 const GRID_SIZE = 12;
 const SCALE = 6;
@@ -91,10 +110,12 @@ export default function SketchEditor({
   onRoomSelect,
   onRoomUpdate,
   onAddRoom,
+  onEditRoom,
   onClose,
   className,
   getAuthHeaders,
 }: SketchEditorProps) {
+  const queryClient = useQueryClient();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +134,18 @@ export default function SketchEditor({
 
   const [pendingSaves, setPendingSaves] = useState<Set<number>>(new Set());
   const [roomOpenings, setRoomOpenings] = useState<Record<number, OpeningData[]>>({});
+  const [showAddOpening, setShowAddOpening] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [addOpeningForm, setAddOpeningForm] = useState({
+    openingType: "door",
+    wallDirection: "north",
+    widthFt: "3",
+    heightFt: "6.8",
+    quantity: "1",
+  });
+  const [savingOpening, setSavingOpening] = useState(false);
+  const [deletingRoom, setDeletingRoom] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -420,6 +453,93 @@ export default function SketchEditor({
     }
   }, []);
 
+  const handleCreateOpening = useCallback(async () => {
+    if (!selectedRoomId || !sessionId) return;
+    setSavingOpening(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms/${selectedRoomId}/openings`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          openingType: addOpeningForm.openingType,
+          wallDirection: addOpeningForm.wallDirection,
+          widthFt: parseFloat(addOpeningForm.widthFt) || 3,
+          heightFt: parseFloat(addOpeningForm.heightFt) || 7,
+          quantity: parseInt(addOpeningForm.quantity) || 1,
+        }),
+      });
+      if (res.ok) {
+        const newOpening = await res.json();
+        setRoomOpenings(prev => ({
+          ...prev,
+          [selectedRoomId]: [...(prev[selectedRoomId] || []), {
+            id: newOpening.id,
+            openingType: newOpening.openingType || addOpeningForm.openingType,
+            wallDirection: newOpening.wallDirection || addOpeningForm.wallDirection,
+            widthFt: newOpening.widthFt || parseFloat(addOpeningForm.widthFt),
+            heightFt: newOpening.heightFt || parseFloat(addOpeningForm.heightFt),
+            quantity: newOpening.quantity || parseInt(addOpeningForm.quantity),
+          }],
+        }));
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+        setShowAddOpening(false);
+        setActionError(null);
+        setAddOpeningForm({ openingType: "door", wallDirection: "north", widthFt: "3", heightFt: "6.8", quantity: "1" });
+      } else {
+        const errText = await res.text().catch(() => "Unknown error");
+        setActionError(`Failed to add opening: ${errText}`);
+      }
+    } catch (e) {
+      console.error("Create opening error:", e);
+      setActionError("Failed to add opening. Please try again.");
+    } finally {
+      setSavingOpening(false);
+    }
+  }, [selectedRoomId, sessionId, addOpeningForm, getAuthHeaders, queryClient]);
+
+  const handleDeleteRoom = useCallback(async (roomId: number) => {
+    if (!sessionId) return;
+    setDeletingRoom(true);
+    setActionError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms/${roomId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/rooms`] });
+        setSelectedRoomId(null);
+        setConfirmDeleteId(null);
+        setLocalPositions(prev => {
+          const next = { ...prev };
+          delete next[roomId];
+          return next;
+        });
+      } else {
+        const errText = await res.text().catch(() => "Unknown error");
+        setActionError(`Failed to delete room: ${errText}`);
+        setConfirmDeleteId(null);
+      }
+    } catch (e) {
+      console.error("Delete room error:", e);
+      setActionError("Failed to delete room. Please try again.");
+      setConfirmDeleteId(null);
+    } finally {
+      setDeletingRoom(false);
+    }
+  }, [sessionId, getAuthHeaders, queryClient]);
+
+  useEffect(() => {
+    setConfirmDeleteId(null);
+    setShowAddOpening(false);
+    setActionError(null);
+  }, [selectedRoomId]);
+
+  const selectedRoom = selectedRoomId ? editableRooms.find(r => r.id === selectedRoomId) : null;
+
   const gridSpacing = GRID_SIZE;
 
   return (
@@ -711,8 +831,175 @@ export default function SketchEditor({
           </defs>
         </svg>
 
+        {/* Error banner */}
+        {actionError && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg shadow-sm max-w-xs">
+            <span className="text-[10px] text-red-600">{actionError}</span>
+            <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Contextual actions bar when room selected */}
+        {selectedRoom && !showAddOpening && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2 py-1.5 bg-white rounded-xl shadow-lg border border-slate-200 z-10" data-testid="room-actions-bar">
+            <span className="text-[10px] font-semibold text-slate-600 px-1.5 max-w-[100px] truncate">{selectedRoom.name}</span>
+            <div className="w-px h-5 bg-slate-200" />
+            {onEditRoom && (
+              <button
+                onClick={() => onEditRoom(selectedRoom.id)}
+                className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                title="Edit Room"
+                data-testid="button-edit-room"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowAddOpening(true);
+                const t = OPENING_TYPES.find(o => o.value === "door") || OPENING_TYPES[0];
+                setAddOpeningForm({ openingType: t.value, wallDirection: "north", widthFt: String(t.defaultW), heightFt: String(t.defaultH), quantity: "1" });
+              }}
+              className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Add Opening"
+              data-testid="button-add-opening"
+            >
+              <DoorOpen className="w-3 h-3" />
+              Opening
+            </button>
+            {confirmDeleteId === selectedRoom.id ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleDeleteRoom(selectedRoom.id)}
+                  disabled={deletingRoom}
+                  className="px-2 py-1.5 text-[10px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors disabled:opacity-50"
+                  data-testid="button-confirm-delete-room"
+                >
+                  {deletingRoom ? "..." : "Delete"}
+                </button>
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-1.5 py-1.5 text-[10px] text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+                  data-testid="button-cancel-delete"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDeleteId(selectedRoom.id)}
+                className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                title="Delete Room"
+                data-testid="button-delete-room"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Add Opening panel */}
+        {showAddOpening && selectedRoom && (
+          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-20 animate-in slide-in-from-bottom duration-200" data-testid="add-opening-panel">
+            <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <DoorOpen className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[11px] font-semibold text-slate-600">Add Opening to {selectedRoom.name}</span>
+              </div>
+              <button onClick={() => setShowAddOpening(false)} className="p-1 rounded hover:bg-slate-100" data-testid="close-add-opening">
+                <X className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            </div>
+            <div className="px-3 py-2.5 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 block">Type</label>
+                  <select
+                    value={addOpeningForm.openingType}
+                    onChange={(e) => {
+                      const t = OPENING_TYPES.find(o => o.value === e.target.value);
+                      setAddOpeningForm(prev => ({
+                        ...prev,
+                        openingType: e.target.value,
+                        widthFt: String(t?.defaultW || 3),
+                        heightFt: String(t?.defaultH || 7),
+                      }));
+                    }}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    data-testid="select-opening-type"
+                  >
+                    {OPENING_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 block">Wall</label>
+                  <select
+                    value={addOpeningForm.wallDirection}
+                    onChange={(e) => setAddOpeningForm(prev => ({ ...prev, wallDirection: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    data-testid="select-wall-direction"
+                  >
+                    {WALL_DIRECTIONS.map(d => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 block">Width (ft)</label>
+                  <input
+                    type="number" step="0.5" min="0.5"
+                    value={addOpeningForm.widthFt}
+                    onChange={(e) => setAddOpeningForm(prev => ({ ...prev, widthFt: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    data-testid="input-opening-width"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 block">Height (ft)</label>
+                  <input
+                    type="number" step="0.5" min="0.5"
+                    value={addOpeningForm.heightFt}
+                    onChange={(e) => setAddOpeningForm(prev => ({ ...prev, heightFt: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    data-testid="input-opening-height"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 block">Qty</label>
+                  <input
+                    type="number" step="1" min="1" max="20"
+                    value={addOpeningForm.quantity}
+                    onChange={(e) => setAddOpeningForm(prev => ({ ...prev, quantity: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    data-testid="input-opening-quantity"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleCreateOpening}
+                disabled={savingOpening}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                data-testid="button-create-opening"
+              >
+                <Plus className="w-3 h-3" />
+                {savingOpening ? "Adding..." : "Add Opening"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Status bar */}
-        <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 bg-white/80 backdrop-blur-sm border-t border-slate-100 flex items-center justify-between">
+        <div className={cn(
+          "absolute left-0 right-0 px-3 py-1.5 bg-white/80 backdrop-blur-sm border-t border-slate-100 flex items-center justify-between",
+          showAddOpening ? "bottom-[180px]" : "bottom-0"
+        )}>
           <span className="text-[10px] font-mono text-slate-400">
             {editableRooms.length} room{editableRooms.length !== 1 ? "s" : ""}
             {selectedRoomId && (() => {
