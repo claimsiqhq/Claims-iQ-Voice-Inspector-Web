@@ -125,11 +125,16 @@ export default function RoomEditorPanel({ room, sessionId, onClose, onSave, onDe
       if (w) dimensions.width = w;
       if (h) dimensions.height = h;
 
-      await fetch(`/api/inspection/${sessionId}/rooms/${room.id}`, {
+      const res = await fetch(`/api/inspection/${sessionId}/rooms/${room.id}`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ name, dimensions }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Save room failed:", res.status, text);
+        return;
+      }
 
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/rooms`] });

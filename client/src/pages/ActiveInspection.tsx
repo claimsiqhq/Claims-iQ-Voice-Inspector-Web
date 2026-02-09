@@ -2000,7 +2000,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           })()}
           sessionId={sessionId}
           onClose={() => setEditingRoomId(null)}
-          onSave={() => setEditingRoomId(null)}
+          onSave={() => { refreshRooms(); setEditingRoomId(null); }}
           onDelete={() => {
             setRooms(prev => prev.filter(r => r.id !== editingRoomId));
           }}
