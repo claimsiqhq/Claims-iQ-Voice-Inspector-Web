@@ -1484,7 +1484,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           analysis: p.analysis,
         }))}
         sessionId={sessionId || undefined}
-        onDeletePhoto={async (photoId) => {
+        onDeletePhoto={sessionId ? async (photoId) => {
           try {
             const headers = await getAuthHeaders();
             const res = await fetch(`/api/inspection/${sessionId}/photos/${photoId}`, {
@@ -1497,7 +1497,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           } catch (e) {
             console.error("Delete photo error:", e);
           }
-        }}
+        } : undefined}
       />
     </div>
   );
