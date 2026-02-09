@@ -1831,7 +1831,44 @@ export async function registerRoutes(
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const photos = await storage.getPhotos(sessionId);
-      res.json(photos);
+      const photosWithUrls = await Promise.all(photos.map(async (photo) => {
+        let signedUrl = null;
+        if (photo.storagePath) {
+          const { data } = await supabase.storage
+            .from(PHOTOS_BUCKET)
+            .createSignedUrl(photo.storagePath, 3600);
+          if (data?.signedUrl) signedUrl = data.signedUrl;
+        }
+        return { ...photo, signedUrl };
+      }));
+      res.json(photosWithUrls);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/inspection/:sessionId/photos/:photoId
+  app.delete("/api/inspection/:sessionId/photos/:photoId", authenticateRequest, async (req, res) => {
+    try {
+      const photoId = parseInt(param(req.params.photoId));
+      if (isNaN(photoId)) {
+        return res.status(400).json({ message: "Invalid photoId" });
+      }
+      const deleted = await storage.deletePhoto(photoId);
+      if (!deleted) return res.status(404).json({ message: "Photo not found" });
+
+      if (deleted.storagePath) {
+        await supabase.storage.from(PHOTOS_BUCKET).remove([deleted.storagePath]);
+      }
+
+      if (deleted.roomId) {
+        const room = await storage.getRoom(deleted.roomId);
+        if (room && (room.photoCount || 0) > 0) {
+          await storage.updateRoom(deleted.roomId, { photoCount: (room.photoCount || 1) - 1 });
+        }
+      }
+
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }

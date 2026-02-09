@@ -149,6 +149,7 @@ export interface IStorage {
   getPhotos(sessionId: number): Promise<InspectionPhoto[]>;
   getPhotosForRoom(roomId: number): Promise<InspectionPhoto[]>;
   updatePhoto(id: number, updates: Partial<InspectionPhoto>): Promise<InspectionPhoto | undefined>;
+  deletePhoto(id: number): Promise<InspectionPhoto | undefined>;
 
   createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
   getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
@@ -795,6 +796,11 @@ export class DatabaseStorage implements IStorage {
 
   async updatePhoto(id: number, updates: Partial<InspectionPhoto>): Promise<InspectionPhoto | undefined> {
     const [photo] = await db.update(inspectionPhotos).set(updates).where(eq(inspectionPhotos.id, id)).returning();
+    return photo;
+  }
+
+  async deletePhoto(id: number): Promise<InspectionPhoto | undefined> {
+    const [photo] = await db.delete(inspectionPhotos).where(eq(inspectionPhotos.id, id)).returning();
     return photo;
   }
 

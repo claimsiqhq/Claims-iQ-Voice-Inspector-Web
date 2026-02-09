@@ -286,6 +286,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const photos = await res.json();
           setRecentPhotos(photos.slice(-50).reverse().map((p: any) => ({
             id: p.id,
+            thumbnail: p.signedUrl || p.thumbnail || null,
             storagePath: p.storagePath,
             caption: p.caption,
             photoType: p.photoType,
@@ -1483,6 +1484,20 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           analysis: p.analysis,
         }))}
         sessionId={sessionId || undefined}
+        onDeletePhoto={async (photoId) => {
+          try {
+            const headers = await getAuthHeaders();
+            const res = await fetch(`/api/inspection/${sessionId}/photos/${photoId}`, {
+              method: "DELETE",
+              headers,
+            });
+            if (res.ok) {
+              setRecentPhotos((prev) => prev.filter((p) => p.id !== photoId));
+            }
+          } catch (e) {
+            console.error("Delete photo error:", e);
+          }
+        }}
       />
     </div>
   );
