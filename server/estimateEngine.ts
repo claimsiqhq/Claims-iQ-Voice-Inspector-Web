@@ -40,6 +40,76 @@ export interface EstimateTotals {
   totalWithOP: number;
 }
 
+// ── Settlement Engine Types ──────────────────────────
+
+export interface DepreciatedLineItem {
+  id: number;
+  description: string;
+  category: string;
+  tradeCode: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  taxAmount: number;
+  rcv: number;                        // totalPrice + taxAmount
+  age: number | null;
+  lifeExpectancy: number | null;
+  depreciationPercentage: number;     // age/life × 100, capped at 100
+  depreciationAmount: number;         // rcv × depPct / 100
+  acv: number;                        // rcv - depreciationAmount
+  depreciationType: string;           // "Recoverable" | "Non-Recoverable" | "Paid When Incurred"
+  coverageBucket: string;             // "Coverage A" | "Coverage B" | "Coverage C"
+}
+
+export interface TradeSubtotal {
+  tradeCode: string;
+  subtotal: number;                   // Sum of totalPrice for this trade (before tax)
+  overheadAmount: number;
+  profitAmount: number;
+  tradeRCV: number;                   // subtotal + overhead + profit + tax
+}
+
+export interface CoverageSummary {
+  coverageType: string;
+  totalRCV: number;
+  totalRecoverableDepreciation: number;
+  totalNonRecoverableDepreciation: number;
+  totalDepreciation: number;
+  totalACV: number;
+  deductible: number;
+  policyLimit: number | null;
+  netClaim: number;
+  overLimitDeduction: number;
+  itemCount: number;
+}
+
+export interface SettlementSummary {
+  // Per-coverage breakdown
+  coverages: CoverageSummary[];
+
+  // Grand totals across all coverages
+  grandTotalRCV: number;
+  grandTotalDepreciation: number;
+  grandTotalRecoverableDep: number;
+  grandTotalNonRecoverableDep: number;
+  grandTotalACV: number;
+  grandTotalDeductible: number;
+  grandTotalOverLimit: number;
+  grandNetClaim: number;              // The check amount
+
+  // O&P detail
+  totalOverhead: number;
+  totalProfit: number;
+  qualifiesForOP: boolean;
+  tradesInvolved: string[];
+
+  // Per-trade subtotals
+  tradeSubtotals: TradeSubtotal[];
+
+  // Itemized depreciation detail
+  depreciatedItems: DepreciatedLineItem[];
+}
+
 // Trade codes used throughout (16 trades)
 export const TRADE_CODES = [
   "MIT",   // Mitigation
@@ -59,6 +129,400 @@ export const TRADE_CODES = [
   "HVAC",  // HVAC
   "GEN",   // General
 ];
+
+/**
+ * Auto-derives coverage bucket from a room's structure name.
+ * "Main Dwelling" → Coverage A, "Detached Garage" → Coverage B, etc.
+ * Returns the override if explicitly set on the line item.
+ */
+export function deriveCoverageBucket(
+  structure: string | null | undefined,
+  explicitBucket: string | null | undefined
+): string {
+  // Explicit override takes priority
+  if (explicitBucket && explicitBucket !== "Coverage A") {
+    return explicitBucket;
+  }
+
+  const s = (structure || "").toLowerCase().trim();
+
+  // Coverage B — Other Structures
+  if (
+    s.includes("detached") ||
+    s.includes("shed") ||
+    s.includes("fence") ||
+    s.includes("gazebo") ||
+    s.includes("pool") ||
+    s.includes("barn") ||
+    s.includes("carport") ||
+    s.includes("pergola")
+  ) {
+    return "Coverage B";
+  }
+
+  // Coverage C — Contents / Personal Property
+  if (s.includes("contents") || s.includes("personal property")) {
+    return "Coverage C";
+  }
+
+  // Default: Coverage A — Dwelling
+  return "Coverage A";
+}
+
+/**
+ * Calculates depreciation for a single line item.
+ *
+ * Logic:
+ * 1. If age and lifeExpectancy are provided: depPct = min(age/life × 100, 100)
+ * 2. If depreciationPercentage is provided (manual override): use that directly
+ * 3. If neither: depPct = 0 (no depreciation)
+ * 4. If depreciationType is "Paid When Incurred": ACV = 0 (deferred until work done)
+ * 5. If applyRoofSchedule is true AND item is roofing: force Non-Recoverable
+ */
+export function calculateItemDepreciation(
+  rcv: number,
+  age: number | null,
+  lifeExpectancy: number | null,
+  depreciationPercentageOverride: number | null,
+  depreciationType: string,
+  applyRoofSchedule: boolean = false,
+  isRoofingItem: boolean = false
+): {
+  depreciationPercentage: number;
+  depreciationAmount: number;
+  acv: number;
+  effectiveDepType: string;
+} {
+  // Determine depreciation percentage
+  let depPct: number;
+  if (depreciationPercentageOverride != null && depreciationPercentageOverride > 0) {
+    depPct = Math.min(depreciationPercentageOverride, 100);
+  } else if (age != null && lifeExpectancy != null && lifeExpectancy > 0) {
+    depPct = Math.min((age / lifeExpectancy) * 100, 100);
+  } else {
+    depPct = 0;
+  }
+
+  // Determine effective depreciation type
+  let effectiveDepType = depreciationType || "Recoverable";
+  if (applyRoofSchedule && isRoofingItem) {
+    effectiveDepType = "Non-Recoverable";
+  }
+
+  // Calculate amounts
+  const depreciationAmount = rcv * (depPct / 100);
+
+  // Paid When Incurred: RCV is counted, but ACV is $0 until work is performed
+  const acv = effectiveDepType === "Paid When Incurred"
+    ? 0
+    : rcv - depreciationAmount;
+
+  return {
+    depreciationPercentage: Math.round(depPct * 100) / 100,
+    depreciationAmount: Math.round(depreciationAmount * 100) / 100,
+    acv: Math.round(Math.max(0, acv) * 100) / 100,
+    effectiveDepType,
+  };
+}
+
+/**
+ * Calculates the full settlement summary from line items and policy rules.
+ *
+ * ORDER OF OPERATIONS (matches Xactimate):
+ * 1. Group items by trade code
+ * 2. For each trade: subtotal, then apply O&P (overhead + profit)
+ * 3. Per-item: add tax → gives RCV
+ * 4. Per-item: calculate depreciation from age/life → gives ACV
+ * 5. Group by coverage bucket
+ * 6. Per-coverage: sum ACV, subtract deductible → Net Claim
+ * 7. Check policy limits → Over Limit Deduction
+ * 8. Grand totals across all coverages → The Check Amount
+ */
+export function calculateSettlement(
+  items: Array<{
+    id: number;
+    description: string;
+    category: string;
+    tradeCode: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    age: number | null;
+    lifeExpectancy: number | null;
+    depreciationPercentage: number | null;
+    depreciationType: string;
+    coverageBucket: string;
+    structure: string | null;
+  }>,
+  policyRules: Array<{
+    coverageType: string;
+    policyLimit: number | null;
+    deductible: number | null;
+    applyRoofSchedule: boolean;
+    overheadPct: number;
+    profitPct: number;
+    taxRate: number;
+  }>
+): SettlementSummary {
+  // Default policy rule if none provided
+  const defaultRule = {
+    coverageType: "Coverage A",
+    policyLimit: null as number | null,
+    deductible: 0 as number | null,
+    applyRoofSchedule: false,
+    overheadPct: 10,
+    profitPct: 10,
+    taxRate: 8,
+  };
+
+  const ruleMap = new Map(policyRules.map(r => [r.coverageType, r]));
+
+  // ── Step 1: Group items by trade code for O&P calculation ──
+  const tradeGroups = new Map<string, typeof items>();
+  const tradesSet = new Set<string>();
+
+  for (const item of items) {
+    tradesSet.add(item.tradeCode);
+    const existing = tradeGroups.get(item.tradeCode) || [];
+    existing.push(item);
+    tradeGroups.set(item.tradeCode, existing);
+  }
+
+  const tradesInvolved = Array.from(tradesSet);
+  const qualifiesForOP = tradesInvolved.length >= 3;
+
+  // ── Step 2: Calculate per-trade O&P ──
+  const tradeSubtotals: TradeSubtotal[] = [];
+
+  for (const [tradeCode, tradeItems] of tradeGroups) {
+    const subtotal = tradeItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
+
+    // Use Coverage A rule for O&P rates (or first available rule)
+    const firstCoverage = tradeItems[0]?.coverageBucket || "Coverage A";
+    const rule = ruleMap.get(firstCoverage) || defaultRule;
+
+    const overheadAmount = qualifiesForOP ? subtotal * (rule.overheadPct / 100) : 0;
+    const profitAmount = qualifiesForOP ? subtotal * (rule.profitPct / 100) : 0;
+
+    tradeSubtotals.push({
+      tradeCode,
+      subtotal: Math.round(subtotal * 100) / 100,
+      overheadAmount: Math.round(overheadAmount * 100) / 100,
+      profitAmount: Math.round(profitAmount * 100) / 100,
+      tradeRCV: Math.round((subtotal + overheadAmount + profitAmount) * 100) / 100,
+    });
+  }
+
+  const totalOverhead = tradeSubtotals.reduce((s, t) => s + t.overheadAmount, 0);
+  const totalProfit = tradeSubtotals.reduce((s, t) => s + t.profitAmount, 0);
+
+  // ── Step 3 & 4: Per-item RCV, tax, depreciation ──
+  // Distribute O&P proportionally across items within each trade
+  const depreciatedItems: DepreciatedLineItem[] = items.map(item => {
+    const tradeTotal = tradeSubtotals.find(t => t.tradeCode === item.tradeCode);
+    const tradeSubtotal = tradeTotal?.subtotal || 1;
+
+    // Item's share of O&P (proportional to its share of trade subtotal)
+    const itemShare = (item.totalPrice || 0) / (tradeSubtotal || 1);
+    const itemOP = qualifiesForOP
+      ? (tradeTotal?.overheadAmount || 0) * itemShare + (tradeTotal?.profitAmount || 0) * itemShare
+      : 0;
+
+    // Get policy rule for this item's coverage bucket
+    const bucket = deriveCoverageBucket(item.structure, item.coverageBucket);
+    const rule = ruleMap.get(bucket) || defaultRule;
+
+    // Tax on materials portion (applied to totalPrice + O&P share)
+    const taxableBase = (item.totalPrice || 0) + itemOP;
+    const taxAmount = Math.round(taxableBase * (rule.taxRate / 100) * 100) / 100;
+
+    // RCV = totalPrice + O&P share + tax
+    const rcv = Math.round(((item.totalPrice || 0) + itemOP + taxAmount) * 100) / 100;
+
+    // Depreciation
+    const isRoofing = (item.category || "").toLowerCase().includes("roof") ||
+                      (item.tradeCode || "").toUpperCase() === "RFG";
+
+    const dep = calculateItemDepreciation(
+      rcv,
+      item.age,
+      item.lifeExpectancy,
+      item.depreciationPercentage,
+      item.depreciationType,
+      rule.applyRoofSchedule,
+      isRoofing
+    );
+
+    return {
+      id: item.id,
+      description: item.description,
+      category: item.category,
+      tradeCode: item.tradeCode,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice || 0,
+      taxAmount,
+      rcv,
+      age: item.age,
+      lifeExpectancy: item.lifeExpectancy,
+      depreciationPercentage: dep.depreciationPercentage,
+      depreciationAmount: dep.depreciationAmount,
+      acv: dep.acv,
+      depreciationType: dep.effectiveDepType,
+      coverageBucket: bucket,
+    };
+  });
+
+  // ── Step 5 & 6: Group by coverage, apply deductible ──
+  const coverageMap = new Map<string, DepreciatedLineItem[]>();
+  for (const item of depreciatedItems) {
+    const existing = coverageMap.get(item.coverageBucket) || [];
+    existing.push(item);
+    coverageMap.set(item.coverageBucket, existing);
+  }
+
+  const coverages: CoverageSummary[] = [];
+
+  for (const [coverageType, covItems] of coverageMap) {
+    const rule = ruleMap.get(coverageType) || defaultRule;
+
+    const totalRCV = covItems.reduce((s, i) => s + i.rcv, 0);
+    const totalRecDep = covItems
+      .filter(i => i.depreciationType === "Recoverable")
+      .reduce((s, i) => s + i.depreciationAmount, 0);
+    const totalNonRecDep = covItems
+      .filter(i => i.depreciationType === "Non-Recoverable")
+      .reduce((s, i) => s + i.depreciationAmount, 0);
+    const totalPWIDep = covItems
+      .filter(i => i.depreciationType === "Paid When Incurred")
+      .reduce((s, i) => s + i.rcv, 0);  // Full RCV is "held" for PWI items
+
+    const totalDepreciation = totalRecDep + totalNonRecDep;
+    const totalACV = totalRCV - totalDepreciation - totalPWIDep;
+    const deductible = rule.deductible || 0;
+
+    // Net Claim before limit check
+    let netClaim = Math.max(totalACV - deductible, 0);
+
+    // Policy limit check
+    let overLimitDeduction = 0;
+    if (rule.policyLimit != null && netClaim > rule.policyLimit) {
+      overLimitDeduction = netClaim - rule.policyLimit;
+      netClaim = rule.policyLimit;
+    }
+
+    coverages.push({
+      coverageType,
+      totalRCV: Math.round(totalRCV * 100) / 100,
+      totalRecoverableDepreciation: Math.round(totalRecDep * 100) / 100,
+      totalNonRecoverableDepreciation: Math.round(totalNonRecDep * 100) / 100,
+      totalDepreciation: Math.round(totalDepreciation * 100) / 100,
+      totalACV: Math.round(Math.max(totalACV, 0) * 100) / 100,
+      deductible,
+      policyLimit: rule.policyLimit,
+      netClaim: Math.round(netClaim * 100) / 100,
+      overLimitDeduction: Math.round(overLimitDeduction * 100) / 100,
+      itemCount: covItems.length,
+    });
+  }
+
+  // ── Step 7: Grand totals ──
+  const grandTotalRCV = coverages.reduce((s, c) => s + c.totalRCV, 0);
+  const grandTotalRecDep = coverages.reduce((s, c) => s + c.totalRecoverableDepreciation, 0);
+  const grandTotalNonRecDep = coverages.reduce((s, c) => s + c.totalNonRecoverableDepreciation, 0);
+  const grandTotalDep = coverages.reduce((s, c) => s + c.totalDepreciation, 0);
+  const grandTotalACV = coverages.reduce((s, c) => s + c.totalACV, 0);
+  const grandTotalDeductible = coverages.reduce((s, c) => s + c.deductible, 0);
+  const grandTotalOverLimit = coverages.reduce((s, c) => s + c.overLimitDeduction, 0);
+  const grandNetClaim = coverages.reduce((s, c) => s + c.netClaim, 0);
+
+  return {
+    coverages,
+    grandTotalRCV: Math.round(grandTotalRCV * 100) / 100,
+    grandTotalDepreciation: Math.round(grandTotalDep * 100) / 100,
+    grandTotalRecoverableDep: Math.round(grandTotalRecDep * 100) / 100,
+    grandTotalNonRecoverableDep: Math.round(grandTotalNonRecDep * 100) / 100,
+    grandTotalACV: Math.round(grandTotalACV * 100) / 100,
+    grandTotalDeductible: Math.round(grandTotalDeductible * 100) / 100,
+    grandTotalOverLimit: Math.round(grandTotalOverLimit * 100) / 100,
+    grandNetClaim: Math.round(grandNetClaim * 100) / 100,
+    totalOverhead: Math.round(totalOverhead * 100) / 100,
+    totalProfit: Math.round(totalProfit * 100) / 100,
+    qualifiesForOP,
+    tradesInvolved,
+    tradeSubtotals,
+    depreciatedItems,
+  };
+}
+
+/**
+ * Backward-compatible wrapper: runs calculateSettlement and maps to old EstimateTotals shape.
+ * Use this as a drop-in replacement where calculateEstimateTotals was called.
+ */
+export function calculateEstimateTotalsV2(
+  pricedItems: PricedLineItem[],
+  policyRulesInput: Array<{
+    coverageType: string;
+    policyLimit: number | null;
+    deductible: number | null;
+    applyRoofSchedule: boolean;
+    overheadPct: number;
+    profitPct: number;
+    taxRate: number;
+  }> = []
+): EstimateTotals & { settlement: SettlementSummary } {
+  // Map PricedLineItem to the shape calculateSettlement expects
+  const mapped = pricedItems.map((item, idx) => ({
+    id: idx,
+    description: item.description,
+    category: item.tradeCode,
+    tradeCode: item.tradeCode,
+    quantity: item.quantity,
+    unitPrice: item.unitPriceBreakdown.unitPrice,
+    totalPrice: item.totalPrice,
+    age: null as number | null,
+    lifeExpectancy: null as number | null,
+    depreciationPercentage: null as number | null,
+    depreciationType: "Recoverable",
+    coverageBucket: "Coverage A",
+    structure: null as string | null,
+  }));
+
+  const settlement = calculateSettlement(mapped, policyRulesInput);
+
+  // Reconstruct old shape
+  let subtotalMaterial = 0, subtotalLabor = 0, subtotalEquipment = 0;
+  for (const item of pricedItems) {
+    subtotalMaterial += item.unitPriceBreakdown.materialCost * item.quantity;
+    subtotalLabor += item.unitPriceBreakdown.laborCost * item.quantity;
+    subtotalEquipment += item.unitPriceBreakdown.equipmentCost * item.quantity;
+  }
+  const subtotal = subtotalMaterial + subtotalLabor + subtotalEquipment;
+  const wasteIncluded = pricedItems.reduce((sum, item) => {
+    const wf = item.unitPriceBreakdown.wasteFactor;
+    if (wf <= 0) return sum;
+    const basePrice = (item.unitPriceBreakdown.materialCost / (1 + wf / 100) +
+                       item.unitPriceBreakdown.laborCost / (1 + wf / 100) +
+                       item.unitPriceBreakdown.equipmentCost / (1 + wf / 100)) * item.quantity;
+    return sum + (item.totalPrice - basePrice);
+  }, 0);
+
+  return {
+    subtotalMaterial,
+    subtotalLabor,
+    subtotalEquipment,
+    subtotal,
+    taxAmount: settlement.grandTotalRCV - settlement.tradeSubtotals.reduce((s, t) => s + t.tradeRCV, 0) + settlement.tradeSubtotals.reduce((s, t) => s + t.overheadAmount + t.profitAmount, 0),
+    wasteIncluded,
+    grandTotal: settlement.grandTotalRCV,
+    tradesInvolved: settlement.tradesInvolved,
+    qualifiesForOP: settlement.qualifiesForOP,
+    overheadAmount: settlement.totalOverhead,
+    profitAmount: settlement.totalProfit,
+    totalWithOP: settlement.grandTotalRCV,
+    settlement,
+  };
+}
 
 /**
  * Looks up a catalog item by code

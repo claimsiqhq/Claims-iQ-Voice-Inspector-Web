@@ -45,9 +45,19 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Supplemental Claims:** Management of supplemental line items with provenance tracking and delta ESX export.
 - **Photo Reports:** Xactimate-style Photo Sheets with embedded photos, metadata, and AI analysis captions.
 - **Photo Capture & Analysis:** Camera overlay triggered by voice agent, photo saved to Supabase Storage, then sent to GPT-4o Vision for AI analysis (damage detection, quality scoring, label matching).
+- **ACV/RCV Settlement Engine:** Full Xactimate-accurate financial calculation pipeline: RCV → O&P (per-trade, 3+ trade threshold) → Tax → Per-item Depreciation (age/life formula) → ACV → Deductible → Net Claim. Features include:
+  - Per-item depreciation tracking with age, life expectancy, and computed depreciation percentage
+  - Coverage bucket separation (Coverage A/B/C) with auto-derivation from structure names
+  - Per-coverage deductible application and policy limit enforcement
+  - Roof Payment Schedule support (forces Non-Recoverable depreciation on roofing items)
+  - Recoverable vs Non-Recoverable vs Paid When Incurred depreciation types
+  - `calculateSettlement()` engine with backward-compatible `calculateEstimateTotalsV2()` wrapper
+  - Policy rules auto-seeded from briefing coverage data on inspection start
+  - Voice agent captures item age and life expectancy for major items (roofing, siding, HVAC, flooring)
+  - PDF reports show full settlement breakdown: O&P, recoverable/non-recoverable depreciation split, deductible, net claim
 
 ### Data Model
-The system uses 16 PostgreSQL tables in Supabase:
+The system uses 18 PostgreSQL tables in Supabase:
 
 | Table | Purpose |
 |-------|---------|
@@ -61,7 +71,7 @@ The system uses 16 PostgreSQL tables in Supabase:
 | `sketch_annotations` | L5 hierarchy — metadata overlays (hail counts, pitch, notes) |
 | `sketch_templates` | Reusable sketch templates |
 | `damage_observations` | Damage records per room |
-| `line_items` | Xactimate-compatible estimate line items |
+| `line_items` | Xactimate-compatible estimate line items with per-item depreciation (age, lifeExpectancy, depreciationPct, depreciationAmount, taxAmount, coverageBucket) |
 | `inspection_photos` | Photos with AI analysis and Supabase storage paths |
 | `moisture_readings` | Moisture meter readings |
 | `voice_transcripts` | Voice session transcripts |
@@ -69,6 +79,8 @@ The system uses 16 PostgreSQL tables in Supabase:
 | `scope_line_items` | Scope-level line items for supplements |
 | `regional_price_sets` | Xactimate pricing catalog data |
 | `user_settings` | Per-user preferences (voice model, VAD sensitivity, verbosity) |
+| `policy_rules` | Per-claim coverage rules (Coverage A/B/C/D) with policy limits, deductibles, O&P rates, tax rates, and roof schedule settings |
+| `inspection_flows` | Dynamic peril-specific inspection workflows |
 
 ### Key Relationships
 - `structures` has unique constraint on `(sessionId, name)` — prevents duplicate structures
@@ -78,6 +90,32 @@ The system uses 16 PostgreSQL tables in Supabase:
 - `room_openings.sessionId` → `inspection_sessions.id` (enables session-level opening queries)
 - `sketch_annotations.roomId` → `inspection_rooms.id` (L2→L5 annotations)
 - Elevation rooms are deduplicated: server returns existing room if duplicate viewType+structure detected
+- `policy_rules.claimId` → `claims.id` (per-claim coverage configuration)
+- `line_items.coverageBucket` routes items to coverage buckets (Coverage A/B/C) for settlement calculation
+
+### Settlement Engine
+The settlement calculation pipeline follows Xactimate order of operations:
+1. **Group by trade** — Items grouped by trade code (RFG, DRY, PNT, etc.)
+2. **O&P calculation** — 10% overhead + 10% profit per trade when 3+ trades involved
+3. **Tax** — Applied per coverage bucket's tax rate (default 8%)
+4. **Per-item RCV** — totalPrice + O&P share + tax
+5. **Depreciation** — age/lifeExpectancy formula or manual override, capped at 100%
+6. **ACV** — RCV minus depreciation (Paid When Incurred items held at $0 ACV)
+7. **Coverage grouping** — Items split by Coverage A/B/C
+8. **Deductible** — Per-coverage deductible subtracted from ACV
+9. **Policy limits** — Net claim capped at policy limit per coverage
+10. **Grand totals** — Sum across all coverages = check amount
+
+Key functions in `server/estimateEngine.ts`:
+- `calculateSettlement()` — Full settlement from line items + policy rules → SettlementSummary
+- `calculateItemDepreciation()` — Per-item depreciation with roof schedule override
+- `deriveCoverageBucket()` — Auto-derives Coverage A/B/C from structure name
+- `calculateEstimateTotalsV2()` — Backward-compatible wrapper producing old EstimateTotals + settlement
+
+Policy rule API endpoints:
+- `POST /api/claims/:claimId/policy-rules` — Create coverage rule
+- `GET /api/claims/:claimId/policy-rules` — List rules for claim
+- `PATCH /api/claims/:claimId/policy-rules/:ruleId` — Update rule
 
 ### Voice Agent Configuration
 - **Model:** `gpt-4o-realtime-preview` via WebRTC
@@ -105,7 +143,7 @@ Professional insurance app aesthetic with a primary purple and gold color scheme
 - `client/src/pages/ReviewFinalize.tsx` — Post-inspection review and export
 - `server/routes.ts` — All API endpoints including realtime session creation, session-level opening endpoints
 - `server/storage.ts` — Database operations, IStorage interface, hierarchy queries, opening CRUD
-- `server/estimateEngine.ts` — Pricing engine, calculateNetWallArea(), companion item suggestions
+- `server/estimateEngine.ts` — Pricing engine, settlement calculator (calculateSettlement, calculateItemDepreciation, deriveCoverageBucket), calculateNetWallArea(), companion item suggestions
 - `server/esxGenerator.ts` — ESX/Xactimate export with MISS_WALL elements and deduction-adjusted WALL_SF
 - `shared/schema.ts` — Drizzle ORM table definitions and types
 
