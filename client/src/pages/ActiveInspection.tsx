@@ -31,6 +31,7 @@ import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
 import InspectionProgressTracker from "@/components/InspectionProgressTracker";
 import PropertySketch from "@/components/PropertySketch";
+import SketchEditor from "@/components/SketchEditor";
 import RoomEditorPanel, { AddRoomPanel } from "@/components/RoomEditorPanel";
 import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -125,6 +126,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [showProgressTracker, setShowProgressTracker] = useState(false);
   const [sketchCollapsed, setSketchCollapsed] = useState(false);
   const [sketchExpanded, setSketchExpanded] = useState(false);
+  const [sketchEditMode, setSketchEditMode] = useState(false);
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -1863,52 +1865,92 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 <span className="text-sm font-semibold">Floor Plan Sketch</span>
                 <span className="text-xs text-muted-foreground">{rooms.length} area{rooms.length !== 1 ? "s" : ""}</span>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                onClick={() => setSketchExpanded(false)}
-                data-testid="button-close-expanded-sketch"
-              >
-                <X size={18} />
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex bg-slate-100 rounded-lg p-0.5" data-testid="sketch-mode-toggle">
+                  <button
+                    onClick={() => setSketchEditMode(false)}
+                    className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                      !sketchEditMode ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                    data-testid="button-sketch-view-mode"
+                  >
+                    View
+                  </button>
+                  <button
+                    onClick={() => setSketchEditMode(true)}
+                    className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                      sketchEditMode ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                    data-testid="button-sketch-edit-mode"
+                  >
+                    Edit
+                  </button>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => { setSketchExpanded(false); setSketchEditMode(false); }}
+                  data-testid="button-close-expanded-sketch"
+                >
+                  <X size={18} />
+                </Button>
+              </div>
             </div>
-            <div className="flex-1 overflow-auto p-4 flex items-start justify-center">
-              <div className="w-full max-w-4xl">
-                <PropertySketch
-                  sessionId={sessionId}
+            <div className="flex-1 overflow-hidden flex items-stretch">
+              {sketchEditMode && sessionId ? (
+                <SketchEditor
                   rooms={rooms}
+                  sessionId={sessionId}
                   currentRoomId={currentRoomId}
-                  onRoomClick={(roomId) => {
+                  onRoomSelect={(roomId) => {
                     setCurrentRoomId(roomId);
                     setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                   }}
-                  onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                  onRoomUpdate={() => refreshRooms()}
                   onAddRoom={() => setShowAddRoom(true)}
-                  expanded
+                  getAuthHeaders={getAuthHeaders}
+                  className="flex-1 rounded-none border-0"
                 />
-              </div>
+              ) : (
+                <div className="flex-1 overflow-auto p-4 flex items-start justify-center">
+                  <div className="w-full max-w-4xl">
+                    <PropertySketch
+                      sessionId={sessionId}
+                      rooms={rooms}
+                      currentRoomId={currentRoomId}
+                      onRoomClick={(roomId) => {
+                        setCurrentRoomId(roomId);
+                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                      }}
+                      onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                      onAddRoom={() => setShowAddRoom(true)}
+                      expanded
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="h-14 flex items-center justify-center border-t border-border bg-card/80">
-              <div className="flex gap-6 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-2 rounded-sm border border-green-500 bg-green-500/10" />
-                  <span>Complete</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-2 rounded-sm border border-primary bg-primary/15" />
-                  <span>In Progress</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-2 rounded-sm border border-gray-500 border-dashed bg-gray-800/80" />
-                  <span>Not Started</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-red-500" />
-                  <span>Damages</span>
+            {!sketchEditMode && (
+              <div className="h-14 flex items-center justify-center border-t border-border bg-card/80">
+                <div className="flex gap-6 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-2 rounded-sm border border-green-500 bg-green-500/10" />
+                    <span>Complete</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-2 rounded-sm border border-primary bg-primary/15" />
+                    <span>In Progress</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-2 rounded-sm border border-gray-500 border-dashed bg-gray-800/80" />
+                    <span>Not Started</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <span>Damages</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
