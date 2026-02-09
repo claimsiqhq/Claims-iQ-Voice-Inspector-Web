@@ -1021,6 +1021,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         throw new Error(tokenData.message || "Failed to create session");
       }
 
+      const previousTranscript: string | null = tokenData.transcriptSummary || null;
+
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
@@ -1047,18 +1049,28 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         if (!hasGreetedRef.current) {
           hasGreetedRef.current = true;
-          dc.send(JSON.stringify({
-            type: "response.create",
-            response: {
-              instructions: "Do NOT introduce yourself or make small talk. Execute these steps in order: 1) Silently call get_inspection_state. 2) If no structures exist, silently call create_structure for 'Main Dwelling'. 3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state where the inspection will begin. Keep the greeting to one or two sentences. 4) Then call trigger_photo_capture for the property verification photo.",
-            },
-          }));
+          if (previousTranscript) {
+            dc.send(JSON.stringify({
+              type: "response.create",
+              response: {
+                instructions: `You are RESUMING an inspection that was previously interrupted. Here is the conversation transcript from the previous session:\n\n---\n${previousTranscript}\n---\n\nExecute these steps in order: 1) Silently call get_inspection_state to understand current progress. 2) Based on the transcript and inspection state, determine exactly where the adjuster left off. 3) Greet the adjuster briefly, acknowledge this is a resumption, tell them where you're picking back up (e.g., "Welcome back. We left off inspecting the master bedroom. Let's continue from there."). Keep it to 1-2 sentences. 4) Continue the inspection from that point — do NOT restart from the beginning or re-do completed steps.`,
+              },
+            }));
+          } else {
+            dc.send(JSON.stringify({
+              type: "response.create",
+              response: {
+                instructions: "Do NOT introduce yourself or make small talk. Execute these steps in order: 1) Silently call get_inspection_state. 2) If no structures exist, silently call create_structure for 'Main Dwelling'. 3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state where the inspection will begin. Keep the greeting to one or two sentences. 4) Then call trigger_photo_capture for the property verification photo.",
+              },
+            }));
+          }
         }
       };
 
       dc.onclose = () => {
         setIsConnected(false);
         setVoiceState("disconnected");
+        hasGreetedRef.current = false;
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = setTimeout(() => {
           reconnectTimeoutRef.current = null;
@@ -1120,6 +1132,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       errorRecoveryTimeoutRef.current = null;
     }
     isConnectingRef.current = false;
+    hasGreetedRef.current = false;
     setIsConnected(false);
     setIsConnecting(false);
     setVoiceState("disconnected");

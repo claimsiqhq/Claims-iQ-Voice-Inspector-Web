@@ -2231,9 +2231,30 @@ Respond in JSON format:
         await storage.updateSession(sessionId, { voiceSessionId: data.id });
       }
 
+      let transcriptSummary: string | null = null;
+      if (sessionId) {
+        try {
+          const transcripts = await storage.getTranscript(sessionId);
+          if (transcripts.length > 0) {
+            const recentEntries = transcripts.slice(-80);
+            const lines = recentEntries.map(t => `${t.speaker === "user" ? "Adjuster" : "Agent"}: ${t.content}`);
+            let summary = lines.join("\n");
+            if (summary.length > 12000) {
+              summary = summary.slice(-12000);
+              const firstNewline = summary.indexOf("\n");
+              if (firstNewline > 0) summary = summary.slice(firstNewline + 1);
+            }
+            transcriptSummary = summary;
+          }
+        } catch (e) {
+          logger.error("Failed to build transcript summary", e);
+        }
+      }
+
       res.json({
         clientSecret: data.client_secret.value,
         sessionId,
+        transcriptSummary,
         activeFlow: inspectionFlow ? {
           id: inspectionFlow.id,
           name: inspectionFlow.name,
