@@ -44,6 +44,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Export:** ESX/Xactimate XML, configurable PDF reports, Xactimate-style Photo Reports (PDF and Word), and "Submit for Review" workflow.
 - **Supplemental Claims:** Management of supplemental line items with provenance tracking and delta ESX export.
 - **Photo Reports:** Xactimate-style Photo Sheets with embedded photos, metadata, and AI analysis captions.
+- **User Profile Management:** Profile page (/profile) with avatar photo upload (Supabase Storage, signed URLs), name/title editing. Header shows actual user data (name, title, avatar) and links to profile page.
 - **Photo Capture & Analysis:** Camera overlay triggered by voice agent, photo saved to Supabase Storage, then sent to GPT-4o Vision for AI analysis (damage detection, quality scoring, label matching).
 - **ACV/RCV Settlement Engine:** Full Xactimate-accurate financial calculation pipeline: RCV → O&P (per-trade, 3+ trade threshold) → Tax → Per-item Depreciation (age/life formula) → ACV → Deductible → Net Claim. Features include:
   - Per-item depreciation tracking with age, life expectancy, and computed depreciation percentage
