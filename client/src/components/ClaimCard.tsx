@@ -60,10 +60,15 @@ export default function ClaimCard({
     const s = status.toLowerCase().replace(/\s+/g, "_");
     switch (s) {
       case "draft": return `/upload/${id}`;
-      case "documents_uploaded": return `/review/${id}`;
+      case "documents_uploaded": return `/upload/${id}`;
+      case "parsed": return `/upload/${id}`;
       case "extractions_confirmed": return `/review/${id}`;
       case "briefing_ready": return `/briefing/${id}`;
-      case "inspecting": return `/inspection/${id}`;
+      case "inspecting":
+      case "in_progress": return `/inspection/${id}`;
+      case "review": return `/inspection/${id}/review`;
+      case "completed":
+      case "closed": return `/inspection/${id}/review`;
       default: return `/upload/${id}`;
     }
   };
