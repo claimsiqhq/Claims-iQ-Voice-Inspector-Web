@@ -5,6 +5,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
 import { seedInspectionFlows } from "./seed-flows";
+import { logger } from "./logger";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -125,6 +126,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      logger.info("SERVER", `Application started on port ${port}`);
     },
   );
 })();

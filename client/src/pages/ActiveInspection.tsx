@@ -184,6 +184,15 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     return headers;
   }, []);
 
+  const sendLogToServer = useCallback(async (toolName: string, type: "call" | "result" | "error", data: any) => {
+    try {
+      const headers = await getAuthHeaders();
+      fetch("/api/logs/voice-tool", {
+        method: "POST", headers, body: JSON.stringify({ toolName, type, data }),
+      }).catch(() => {});
+    } catch {}
+  }, [getAuthHeaders]);
+
   const refreshEstimate = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -331,6 +340,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       args = {};
     }
     console.log(`[Voice Tool] ▶ ${name}`, args);
+    sendLogToServer(name, "call", args);
 
     let result: any;
 
@@ -889,6 +899,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     }
 
     console.log(`[Voice Tool] ◀ ${name}`, result);
+    sendLogToServer(name, "result", result);
 
     if (dcRef.current && dcRef.current.readyState === "open") {
       dcRef.current.send(JSON.stringify({
@@ -901,7 +912,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }));
       dcRef.current.send(JSON.stringify({ type: "response.create" }));
     }
-  }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry]);
+  }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry, sendLogToServer]);
 
   const handleRealtimeEvent = useCallback((event: any) => {
     switch (event.type) {
