@@ -5,6 +5,7 @@ import {
   lineItems, inspectionPhotos, moistureReadings, voiceTranscripts,
   supplementalClaims, structures, roomOpenings, sketchAnnotations, sketchTemplates,
   testSquares,
+  policyRules,
   type Claim, type InsertClaim,
   type Document, type InsertDocument,
   type Extraction, type InsertExtraction,
@@ -23,6 +24,7 @@ import {
   type TestSquare, type InsertTestSquare,
   type VoiceTranscript, type InsertVoiceTranscript,
   type SupplementalClaim, type InsertSupplementalClaim,
+  type PolicyRule, type InsertPolicyRule,
   scopeLineItems, regionalPriceSets,
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
@@ -184,6 +186,15 @@ export interface IStorage {
   getDefaultFlowForPeril(perilType: string, userId?: string): Promise<InspectionFlow | undefined>;
   updateInspectionFlow(id: number, updates: Partial<InsertInspectionFlow>): Promise<InspectionFlow | undefined>;
   deleteInspectionFlow(id: number): Promise<boolean>;
+
+  // ── Policy Rules ──────────────────────────
+  createPolicyRule(data: InsertPolicyRule): Promise<PolicyRule>;
+  getPolicyRulesForClaim(claimId: number): Promise<PolicyRule[]>;
+  getPolicyRule(claimId: number, coverageType: string): Promise<PolicyRule | undefined>;
+  updatePolicyRule(id: number, updates: Partial<PolicyRule>): Promise<PolicyRule | undefined>;
+
+  // ── Settlement Summary ──────────────────────────
+  getSettlementSummary(sessionId: number, claimId: number): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -974,6 +985,72 @@ export class DatabaseStorage implements IStorage {
   async deleteInspectionFlow(id: number): Promise<boolean> {
     const [deleted] = await db.delete(inspectionFlows).where(eq(inspectionFlows.id, id)).returning();
     return !!deleted;
+  }
+
+  // ── Policy Rules ──────────────────────────
+
+  async createPolicyRule(data: InsertPolicyRule): Promise<PolicyRule> {
+    const [rule] = await db.insert(policyRules).values(data).returning();
+    return rule;
+  }
+
+  async getPolicyRulesForClaim(claimId: number): Promise<PolicyRule[]> {
+    return db.select().from(policyRules).where(eq(policyRules.claimId, claimId));
+  }
+
+  async getPolicyRule(claimId: number, coverageType: string): Promise<PolicyRule | undefined> {
+    const [rule] = await db.select().from(policyRules)
+      .where(and(eq(policyRules.claimId, claimId), eq(policyRules.coverageType, coverageType)));
+    return rule;
+  }
+
+  async updatePolicyRule(id: number, updates: Partial<PolicyRule>): Promise<PolicyRule | undefined> {
+    const [rule] = await db.update(policyRules).set(updates).where(eq(policyRules.id, id)).returning();
+    return rule;
+  }
+
+  // ── Settlement Summary ──────────────────────────
+
+  async getSettlementSummary(sessionId: number, claimId: number): Promise<any> {
+    const items = await this.getLineItems(sessionId);
+    const rooms = await this.getRooms(sessionId);
+    const rules = await this.getPolicyRulesForClaim(claimId);
+
+    // Build a room lookup for structure resolution
+    const roomLookup = new Map(rooms.map(r => [r.id, r]));
+
+    // Map line items to the shape calculateSettlement expects
+    const mapped = items.map(item => {
+      const room = item.roomId ? roomLookup.get(item.roomId) : null;
+      return {
+        id: item.id,
+        description: item.description,
+        category: item.category,
+        tradeCode: (item.xactCode || item.category || "GEN").substring(0, 3).toUpperCase(),
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        totalPrice: Number(item.totalPrice) || 0,
+        age: (item as any).age || null,
+        lifeExpectancy: (item as any).lifeExpectancy || null,
+        depreciationPercentage: (item as any).depreciationPercentage || null,
+        depreciationType: item.depreciationType || "Recoverable",
+        coverageBucket: (item as any).coverageBucket || "Coverage A",
+        structure: room?.structure || null,
+      };
+    });
+
+    const policyInput = rules.map(r => ({
+      coverageType: r.coverageType,
+      policyLimit: r.policyLimit,
+      deductible: r.deductible,
+      applyRoofSchedule: r.applyRoofSchedule || false,
+      overheadPct: r.overheadPct || 10,
+      profitPct: r.profitPct || 10,
+      taxRate: r.taxRate || 8,
+    }));
+
+    const { calculateSettlement } = await import("./estimateEngine");
+    return calculateSettlement(mapped, policyInput);
   }
 }
 

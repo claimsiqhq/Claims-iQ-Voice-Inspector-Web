@@ -309,8 +309,14 @@ export const lineItems = pgTable(
     depreciationRate: numeric("depreciation_rate", { precision: 5, scale: 2 }),
     wasteFactor: integer("waste_factor"),
     provenance: varchar("provenance", { length: 20 }).default("voice"),
+    // ── Financial / Depreciation Columns ──────────────
+    taxAmount: real("tax_amount").default(0),
+    age: real("age"),                                   // Item age in years (e.g., 15.0 for a 15-year-old roof)
+    lifeExpectancy: real("life_expectancy"),             // Expected useful life in years (e.g., 30.0 for architectural shingles)
+    depreciationPercentage: real("depreciation_pct"),    // Computed or manual override: age/life × 100, capped at 100
+    depreciationAmount: real("depreciation_amount"),     // Computed: RCV × depreciationPercentage / 100
     // Pro-Grade financial attributes
-    coverageBucket: varchar("coverage_bucket", { length: 30 }).default("Dwelling"),
+    coverageBucket: varchar("coverage_bucket", { length: 30 }).default("Coverage A"),
     qualityGrade: varchar("quality_grade", { length: 30 }),
     applyOAndP: boolean("apply_o_and_p").default(false),
     macroSource: varchar("macro_source", { length: 50 }),
@@ -507,6 +513,33 @@ export const userSettings = pgTable("user_settings", {
 });
 
 export type UserSettings = typeof userSettings.$inferSelect;
+
+// ── Policy Coverage Rules ──────────────────────────
+export const policyRules = pgTable("policy_rules", {
+  id: serial("id").primaryKey(),
+  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+  coverageType: varchar("coverage_type", { length: 20 }).notNull(),
+  // coverageType enum: "Coverage A" | "Coverage B" | "Coverage C" | "Coverage D"
+  policyLimit: real("policy_limit"),
+  deductible: real("deductible"),
+  applyRoofSchedule: boolean("apply_roof_schedule").default(false),
+  // When true: roofing items under this coverage use Non-Recoverable depreciation regardless of depreciationType
+  roofScheduleAge: real("roof_schedule_age"),
+  // Age threshold in years — roofs older than this get roof schedule applied
+  overheadPct: real("overhead_pct").default(10),
+  profitPct: real("profit_pct").default(10),
+  taxRate: real("tax_rate").default(8),
+  // Tax rate as percentage (e.g., 8 for 8%)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPolicyRuleSchema = createInsertSchema(policyRules).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PolicyRule = typeof policyRules.$inferSelect;
+export type InsertPolicyRule = z.infer<typeof insertPolicyRuleSchema>;
 
 export const insertScopeLineItemSchema = createInsertSchema(scopeLineItems).omit({ id: true });
 export const insertRegionalPriceSetSchema = createInsertSchema(regionalPriceSets).omit({ id: true });

@@ -119,10 +119,14 @@ const lineItemCreateSchema = z.object({
   depreciationType: z.string().max(30).nullable().optional(),
   depreciationRate: z.number().min(0).max(100).nullable().optional(),
   wasteFactor: z.number().int().nonnegative().optional(),
-  coverageBucket: z.enum(["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"]).optional(),
+  coverageBucket: z.string().max(30).optional(),
   qualityGrade: z.string().max(30).nullable().optional(),
   applyOAndP: z.boolean().optional(),
   macroSource: z.string().max(50).nullable().optional(),
+  // ── Financial / Depreciation fields ──
+  age: z.number().nonnegative().nullable().optional(),
+  lifeExpectancy: z.number().positive().nullable().optional(),
+  depreciationPercentage: z.number().min(0).max(100).nullable().optional(),
 });
 
 const testSquareCreateSchema = z.object({
@@ -144,6 +148,17 @@ const smartMacroSchema = z.object({
 const checkRelatedItemsSchema = z.object({
   primaryCategory: z.enum(["Cabinetry", "Roofing", "Drywall", "Siding", "Flooring", "Plumbing", "Electrical", "Windows", "Doors"]),
   actionTaken: z.string().optional(),
+});
+
+const policyRuleSchema = z.object({
+  coverageType: z.enum(["Coverage A", "Coverage B", "Coverage C", "Coverage D"]),
+  policyLimit: z.number().positive().nullable().optional(),
+  deductible: z.number().nonnegative().nullable().optional(),
+  applyRoofSchedule: z.boolean().optional(),
+  roofScheduleAge: z.number().positive().nullable().optional(),
+  overheadPct: z.number().nonnegative().default(10),
+  profitPct: z.number().nonnegative().default(10),
+  taxRate: z.number().nonnegative().default(8),
 });
 
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
@@ -198,6 +213,67 @@ async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
   if (error) throw new Error(`Storage download failed: ${error.message}`);
   const arrayBuffer = await data.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Auto-create default policy rules from briefing coverage data when none exist.
+ */
+async function ensurePolicyRules(claimId: number) {
+  const existing = await storage.getPolicyRulesForClaim(claimId);
+  if (existing.length > 0) return existing;
+
+  // Seed from briefing
+  const briefing = await storage.getBriefing(claimId);
+  const coverage = briefing?.coverageSnapshot as any;
+
+  const rules: Array<any> = [];
+
+  // Coverage A — Dwelling
+  rules.push({
+    claimId,
+    coverageType: "Coverage A",
+    policyLimit: coverage?.coverageA?.limit || null,
+    deductible: coverage?.deductible || 1000,
+    applyRoofSchedule: coverage?.roofSchedule?.applies || false,
+    roofScheduleAge: coverage?.roofSchedule?.ageThreshold || null,
+    overheadPct: 10,
+    profitPct: 10,
+    taxRate: 8,
+  });
+
+  // Coverage B — Other Structures (if present)
+  if (coverage?.coverageB) {
+    rules.push({
+      claimId,
+      coverageType: "Coverage B",
+      policyLimit: coverage.coverageB.limit || null,
+      deductible: coverage.coverageB.deductible || coverage?.deductible || 0,
+      applyRoofSchedule: false,
+      overheadPct: 10,
+      profitPct: 10,
+      taxRate: 8,
+    });
+  }
+
+  // Coverage C — Contents (if present)
+  if (coverage?.coverageC) {
+    rules.push({
+      claimId,
+      coverageType: "Coverage C",
+      policyLimit: coverage.coverageC.limit || null,
+      deductible: 0,
+      applyRoofSchedule: false,
+      overheadPct: 10,
+      profitPct: 10,
+      taxRate: 8,
+    });
+  }
+
+  const created = [];
+  for (const rule of rules) {
+    created.push(await storage.createPolicyRule(rule));
+  }
+  return created;
 }
 
 export async function registerRoutes(
@@ -360,6 +436,45 @@ export async function registerRoutes(
       res.json({ message: "Claim and all related data deleted" });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Policy Rules ───────────────────────────────
+
+  app.post("/api/claims/:claimId/policy-rules", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.claimId);
+      const parsed = policyRuleSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid policy rule data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const rule = await storage.createPolicyRule({ claimId, ...parsed.data });
+      res.status(201).json(rule);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/claims/:claimId/policy-rules", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.claimId);
+      const rules = await storage.getPolicyRulesForClaim(claimId);
+      res.json(rules);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/claims/:claimId/policy-rules/:ruleId", authenticateRequest, async (req, res) => {
+    try {
+      const ruleId = parseInt(req.params.ruleId);
+      const rule = await storage.updatePolicyRule(ruleId, req.body);
+      res.json(rule);
+    } catch (error: any) {
+      console.error("Server error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -801,6 +916,8 @@ export async function registerRoutes(
       const claimId = parseInt(param(req.params.id));
       const existing = await storage.getActiveSessionForClaim(claimId);
       if (existing) {
+        // Ensure policy rules exist even for existing sessions
+        await ensurePolicyRules(claimId);
         return res.json({ sessionId: existing.id, session: existing });
       }
       const session = await storage.createInspectionSession(claimId);
@@ -808,6 +925,8 @@ export async function registerRoutes(
         await storage.updateSession(session.id, { inspectorId: req.user.id });
       }
       await storage.updateClaimStatus(claimId, "inspecting");
+      // Seed default policy rules from briefing coverage data
+      await ensurePolicyRules(claimId);
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
@@ -1274,7 +1393,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
-      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource } = parsed.data;
+      const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource, age, lifeExpectancy, depreciationPercentage } = parsed.data;
       const wf = wasteFactor || 0;
       const qty = quantity || 1;
       const up = unitPrice || 0;
@@ -1297,11 +1416,15 @@ export async function registerRoutes(
         totalPrice,
         depreciationType: depreciationType || "Recoverable",
         wasteFactor: wf,
-        coverageBucket: coverageBucket || "Dwelling",
+        coverageBucket: coverageBucket || "Coverage A",
         qualityGrade: qualityGrade || null,
         applyOAndP: applyOAndP || false,
         macroSource: macroSource || null,
-      });
+        // ── Financial / Depreciation fields ──
+        age: age || null,
+        lifeExpectancy: lifeExpectancy || null,
+        depreciationPercentage: depreciationPercentage || null,
+      } as any);
       res.status(201).json(item);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });

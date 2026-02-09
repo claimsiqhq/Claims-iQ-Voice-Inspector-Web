@@ -20,6 +20,21 @@ interface PDFReportData {
       subtotal: number;
       items: LineItem[];
     }>;
+    // ── Settlement details ──
+    recoverableDepreciation?: number;
+    nonRecoverableDepreciation?: number;
+    deductible?: number;
+    netClaim?: number;
+    overheadAmount?: number;
+    profitAmount?: number;
+    qualifiesForOP?: boolean;
+    coverageBreakdown?: Array<{
+      coverageType: string;
+      totalRCV: number;
+      totalACV: number;
+      deductible: number;
+      netClaim: number;
+    }>;
   };
   inspectorName?: string;
   transcript?: any[];
@@ -318,30 +333,65 @@ function renderEstimateSummary(doc: InstanceType<typeof PDFDocument>, data: PDFR
     yPos += 14;
   }
 
-  // Totals box
+  // Totals box — expanded with full settlement breakdown
   yPos += 10;
-  doc.rect(40, yPos, doc.page.width - 80, 80).fill(COLORS.lightGray);
+  const boxHeight = data.estimate.netClaim != null ? 160 : 80;
+  doc.rect(40, yPos, doc.page.width - 80, boxHeight).fill(COLORS.lightGray);
 
-  doc.font(FONTS.normal, 10)
-    .fill(COLORS.darkGray)
+  // RCV
+  doc.font(FONTS.normal, 10).fill(COLORS.darkGray)
     .text("RCV (Replacement Cost Value):", 50, yPos + 10);
-  doc.font(FONTS.bold, 12)
-    .fill(COLORS.deep)
+  doc.font(FONTS.bold, 12).fill(COLORS.deep)
     .text(`$${data.estimate.totalRCV.toFixed(2)}`, 400, yPos + 10, { align: "right" });
 
-  doc.font(FONTS.normal, 10)
-    .fill(COLORS.darkGray)
-    .text("Depreciation:", 50, yPos + 30);
-  doc.font(FONTS.bold, 12)
-    .fill(COLORS.deep)
-    .text(`-$${data.estimate.totalDepreciation.toFixed(2)}`, 400, yPos + 30, { align: "right" });
+  // O&P (if applicable)
+  let lineY = yPos + 26;
+  if (data.estimate.qualifiesForOP && data.estimate.overheadAmount) {
+    doc.font(FONTS.normal, 9).fill(COLORS.darkGray)
+      .text(`  Includes O&P: $${(data.estimate.overheadAmount + (data.estimate.profitAmount || 0)).toFixed(2)} (OH: $${data.estimate.overheadAmount.toFixed(2)} + Profit: $${(data.estimate.profitAmount || 0).toFixed(2)})`, 50, lineY);
+    lineY += 14;
+  }
 
-  doc.font(FONTS.bold, 11)
-    .fill(COLORS.primary)
-    .text("ACV (Actual Cash Value):", 50, yPos + 50);
-  doc.font(FONTS.bold, 14)
-    .fill(COLORS.gold)
-    .text(`$${data.estimate.totalACV.toFixed(2)}`, 400, yPos + 50, { align: "right" });
+  // Depreciation breakdown
+  doc.font(FONTS.normal, 10).fill(COLORS.darkGray)
+    .text("Total Depreciation:", 50, lineY);
+  doc.font(FONTS.bold, 12).fill(COLORS.deep)
+    .text(`-$${data.estimate.totalDepreciation.toFixed(2)}`, 400, lineY, { align: "right" });
+  lineY += 16;
+
+  if (data.estimate.recoverableDepreciation != null) {
+    doc.font(FONTS.normal, 9).fill(COLORS.darkGray)
+      .text(`  Recoverable (holdback): ($${data.estimate.recoverableDepreciation.toFixed(2)})`, 50, lineY);
+    lineY += 12;
+    doc.font(FONTS.normal, 9).fill(COLORS.darkGray)
+      .text(`  Non-Recoverable: <$${(data.estimate.nonRecoverableDepreciation || 0).toFixed(2)}>`, 50, lineY);
+    lineY += 14;
+  }
+
+  // ACV
+  doc.font(FONTS.bold, 11).fill(COLORS.primary)
+    .text("ACV (Actual Cash Value):", 50, lineY);
+  doc.font(FONTS.bold, 14).fill(COLORS.gold)
+    .text(`$${data.estimate.totalACV.toFixed(2)}`, 400, lineY, { align: "right" });
+  lineY += 18;
+
+  // Deductible and Net Claim
+  if (data.estimate.deductible != null) {
+    doc.font(FONTS.normal, 10).fill(COLORS.darkGray)
+      .text("Less Deductible:", 50, lineY);
+    doc.font(FONTS.bold, 12).fill(COLORS.deep)
+      .text(`-$${data.estimate.deductible.toFixed(2)}`, 400, lineY, { align: "right" });
+    lineY += 16;
+  }
+
+  if (data.estimate.netClaim != null) {
+    doc.moveTo(50, lineY).lineTo(doc.page.width - 50, lineY).stroke(COLORS.gold);
+    lineY += 6;
+    doc.font(FONTS.bold, 12).fill(COLORS.primary)
+      .text("NET CLAIM (Check Amount):", 50, lineY);
+    doc.font(FONTS.bold, 16).fill(COLORS.gold)
+      .text(`$${data.estimate.netClaim.toFixed(2)}`, 400, lineY, { align: "right" });
+  }
 }
 
 function renderPhotoAppendix(doc: InstanceType<typeof PDFDocument>, photos: InspectionPhoto[]) {

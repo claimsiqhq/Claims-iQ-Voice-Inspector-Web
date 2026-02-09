@@ -297,7 +297,22 @@ For each room, the agent should calculate tearout SF: lfFloorPerim × tearoutHei
    - Once the adjuster says "123" or "one two three", acknowledge: "Override confirmed." Then call skip_step with passwordConfirmed: true.
    - After skipping, move to the next logical step and prompt the adjuster.
 
-10. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.`;
+10. **Keep It Conversational:** This is a voice interface. Keep responses to 1-2 sentences. Don't read back long lists. Say "Got it" or "Added" for confirmations. Only elaborate when asked.
+
+11. **Depreciation Capture:** When adding a line item for a material with significant age, ask for the item's age to calculate depreciation accurately:
+   - Roof: "How old is this roof?" → sets age. Life expectancy defaults: 3-tab = 20 years, architectural/laminated = 30 years, metal = 50 years.
+   - Siding: "How old is the siding?" → vinyl = 30 years, wood = 25 years, fiber cement = 40 years.
+   - HVAC: "How old is the unit?" → 15 years typical.
+   - Flooring: Carpet = 10 years, hardwood = 25 years, tile = 30 years.
+   If the adjuster doesn't know the age, make your best estimate from the property profile in the briefing and note it. Age is CRITICAL for determining the check amount — don't skip it for major items.
+
+12. **Coverage Bucket Awareness:** Items are auto-assigned coverage based on the current structure:
+    - Main Dwelling → Coverage A
+    - Detached structures (garage, shed, fence, gazebo) → Coverage B
+    - Contents/personal property → Coverage C
+    The adjuster can override this. Alert them if you detect a bucket mismatch (e.g., "You're adding items to the Detached Garage — these will fall under Coverage B with a separate deductible. Is that correct?")
+
+13. **Roof Payment Schedule:** If the briefing indicates a Roof Payment Schedule endorsement, ask: "The policy has a roof payment schedule. How old is the roof?" If the roof age exceeds the schedule threshold, depreciation becomes NON-RECOVERABLE — the insured will NOT get that money back upon completion. Inform the adjuster: "With a [age]-year-old roof and the payment schedule, depreciation of [amount] is non-recoverable."`;
 }
 
 /**
@@ -525,6 +540,9 @@ export const realtimeTools = [
         unitPrice: { type: "number", description: "Price per unit (estimate if not known exactly)" },
         wasteFactor: { type: "integer", description: "Waste percentage for materials (10, 12, 15)" },
         depreciationType: { type: "string", enum: ["Recoverable", "Non-Recoverable", "Paid When Incurred"], description: "Default Recoverable unless roof schedule or fence" },
+        age: { type: "number", description: "Age of the item in years (e.g., 15 for a 15-year-old roof). Used to calculate depreciation." },
+        lifeExpectancy: { type: "number", description: "Expected useful life in years (e.g., 30 for architectural shingles, 20 for 3-tab). Used with age to calculate depreciation percentage." },
+        coverageBucket: { type: "string", enum: ["Coverage A", "Coverage B", "Coverage C"], description: "Override coverage assignment. Auto-derived from structure if not set. A=Dwelling, B=Other Structures, C=Contents." },
         coverage_bucket: { type: "string", enum: ["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"], description: "Policy coverage section. Default: Dwelling. Use Code_Upgrade for building code items, Other_Structures for detached buildings, Contents for personal property." },
         quality_grade: { type: "string", description: "Material grade (e.g., 'MDF', 'Pine', 'Standard', 'High Grade', 'Builder Grade'). Prevents pricing disputes by documenting exact material spec." },
         apply_o_and_p: { type: "boolean", description: "Whether to apply 10% Overhead + 10% Profit markup. Typically true when 3+ trades are involved per Xactimate standards." }
