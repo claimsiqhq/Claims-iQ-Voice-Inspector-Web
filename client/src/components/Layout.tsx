@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -22,7 +23,12 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, title = "Claims IQ", showBack = false }: LayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { user } = useAuth();
+
+  const displayName = user?.fullName || user?.email?.split("@")[0] || "User";
+  const displayTitle = user?.title || (user?.role === "admin" ? "Administrator" : user?.role === "supervisor" ? "Supervisor" : "Field Adjuster");
+  const initials = displayName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -64,16 +70,20 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             <span className="absolute top-1.5 right-1.5 md:top-2 md:right-2 h-2 w-2 bg-accent rounded-full" />
           </Button>
           
-          <div className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10">
+          <button
+            data-testid="button-profile-header"
+            onClick={() => setLocation("/profile")}
+            className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10 cursor-pointer hover:bg-white/5 rounded-lg py-1.5 px-2 transition-colors"
+          >
             <div className="text-right hidden md:block">
-              <p className="text-sm font-medium leading-none">Alex Morgan</p>
-              <p className="text-xs text-white/60 mt-1">Senior Adjuster</p>
+              <p className="text-sm font-medium leading-none" data-testid="text-header-name">{displayName}</p>
+              <p className="text-xs text-white/60 mt-1" data-testid="text-header-title">{displayTitle}</p>
             </div>
-            <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-white/20">
-              <AvatarImage src="/images/avatar_adjuster.png" />
-              <AvatarFallback>AM</AvatarFallback>
+            <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-white/20" data-testid="img-header-avatar">
+              <AvatarImage src={user?.avatarUrl || undefined} />
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
-          </div>
+          </button>
         </div>
       </header>
 

@@ -175,7 +175,7 @@ export interface IStorage {
   submitSupplemental(id: number): Promise<SupplementalClaim | undefined>;
   approveSupplemental(id: number): Promise<SupplementalClaim | undefined>;
 
-  updateUserProfile(userId: string, updates: { fullName?: string }): Promise<User | undefined>;
+  updateUserProfile(userId: string, updates: { fullName?: string; title?: string; avatarUrl?: string }): Promise<User | undefined>;
   getUserSettings(userId: string): Promise<Record<string, any> | null>;
   upsertUserSettings(userId: string, settings: Record<string, any>): Promise<UserSettings>;
 
@@ -888,7 +888,7 @@ export class DatabaseStorage implements IStorage {
     return claim;
   }
 
-  async updateUserProfile(userId: string, updates: { fullName?: string }): Promise<User | undefined> {
+  async updateUserProfile(userId: string, updates: { fullName?: string; title?: string; avatarUrl?: string }): Promise<User | undefined> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, userId)).returning();
     return user;
   }

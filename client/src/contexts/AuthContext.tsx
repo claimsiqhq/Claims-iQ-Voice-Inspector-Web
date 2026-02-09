@@ -3,11 +3,13 @@ import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   email: string;
   fullName: string | null;
   role: string;
+  title: string | null;
+  avatarUrl: string | null;
 }
 
 interface AuthContextType {
@@ -19,6 +21,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  updateProfile: (updates: Partial<Pick<AuthUser, "fullName" | "title" | "avatarUrl">>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -238,6 +241,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  function updateProfile(updates: Partial<Pick<AuthUser, "fullName" | "title" | "avatarUrl">>) {
+    setUser((prev) => (prev ? { ...prev, ...updates } : prev));
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -249,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signUp,
         signOut,
         refreshSession,
+        updateProfile,
       }}
     >
       {children}

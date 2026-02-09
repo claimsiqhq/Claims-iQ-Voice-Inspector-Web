@@ -22,6 +22,7 @@ import DocumentsHub from "@/pages/DocumentsHub";
 import SettingsPage from "@/pages/SettingsPage";
 import SupplementalPage from "@/pages/SupplementalPage";
 import WorkflowBuilder from "@/pages/WorkflowBuilder";
+import ProfilePage from "@/pages/ProfilePage";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback?: React.ReactNode },
@@ -116,6 +117,7 @@ function ProtectedRouter() {
           <Route path="/documents" component={DocumentsHub} />
           <Route path="/settings" component={SettingsPage} />
           <Route path="/settings/workflows" component={WorkflowBuilder} />
+          <Route path="/profile" component={ProfilePage} />
           <Route path="/upload/:id" component={DocumentUpload} />
           <Route path="/review/:id" component={ExtractionReview} />
           <Route path="/briefing/:id" component={InspectionBriefing} />
