@@ -208,8 +208,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/line-items`, { headers });
+      if (!res.ok) return;
       const items = await res.json();
-      setRecentLineItems(items.slice(-5).reverse());
+      if (Array.isArray(items)) {
+        setRecentLineItems(items.slice(-5).reverse());
+      }
       refreshEstimate();
     } catch (e) { console.error("[Voice] Refresh line items error:", e); }
   }, [sessionId, refreshEstimate, getAuthHeaders]);
