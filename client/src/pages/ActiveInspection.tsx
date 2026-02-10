@@ -25,7 +25,6 @@ import {
   Maximize2,
   X,
   Building2,
-  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -2184,8 +2183,67 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           structureName={currentStructure}
           onClose={() => setShowAddRoom(false)}
           onCreated={() => {}}
+          onStructureCreated={(name) => setCurrentStructure(name)}
           getAuthHeaders={getAuthHeaders}
         />
+      )}
+
+      {showAddStructure && sessionId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={() => setShowAddStructure(false)} data-testid="add-structure-overlay">
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="add-structure-panel"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Add structure</h3>
+              <button onClick={() => setShowAddStructure(false)} className="p-1 rounded hover:bg-slate-100">
+                <X size={18} className="text-slate-500" />
+              </button>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Name</label>
+              <input
+                type="text"
+                value={addStructureName}
+                onChange={(e) => setAddStructureName(e.target.value)}
+                placeholder="e.g., Detached Garage, Shed"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                data-testid="input-add-structure-name"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Type</label>
+              <select
+                value={addStructureType}
+                onChange={(e) => setAddStructureType(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                data-testid="select-add-structure-type"
+              >
+                <option value="dwelling">Main / Dwelling</option>
+                <option value="garage">Garage</option>
+                <option value="shed">Shed</option>
+                <option value="fence">Fence</option>
+                <option value="carport">Carport</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={handleCreateStructure}
+                disabled={creatingStructure || !addStructureName.trim()}
+                data-testid="button-confirm-add-structure"
+              >
+                {creatingStructure ? "Creating…" : "Create"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowAddStructure(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
