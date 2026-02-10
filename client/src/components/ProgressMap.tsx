@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle2, Circle, AlertTriangle, MapPin, Camera, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import FloorPlanSketch from "@/components/FloorPlanSketch";
 
 interface ProgressMapProps {
   isOpen: boolean;
@@ -16,8 +18,11 @@ interface ProgressMapProps {
     photoCount: number;
     structure?: string;
     phase?: number;
+    roomType?: string;
+    dimensions?: { length?: number; width?: number; height?: number; dimVars?: Record<string, number> };
   }>;
   currentPhase: number;
+  currentRoomId?: number | null;
   onNavigateToRoom: (roomId: number) => void;
 }
 
@@ -27,8 +32,19 @@ export default function ProgressMap({
   sessionId,
   rooms,
   currentPhase,
+  currentRoomId = null,
   onNavigateToRoom,
 }: ProgressMapProps) {
+  const { data: adjacencies = [] } = useQuery({
+    queryKey: [`/api/sessions/${sessionId}/adjacencies`],
+    enabled: !!sessionId && isOpen,
+  });
+
+  const { data: openingsData = [] } = useQuery({
+    queryKey: [`/api/inspection/${sessionId}/openings`],
+    enabled: !!sessionId && isOpen,
+  });
+
   const completedRooms = rooms.filter((r) => r.status === "complete").length;
   const totalRooms = rooms.length;
   const completenessPercent = totalRooms > 0 ? Math.round((completedRooms / totalRooms) * 100) : 0;
@@ -128,6 +144,17 @@ export default function ProgressMap({
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {/* Live Sketch */}
+              {rooms.length > 0 && (
+                <FloorPlanSketch
+                  rooms={rooms}
+                  adjacencies={adjacencies}
+                  openings={openingsData}
+                  currentRoomId={currentRoomId}
+                  onRoomClick={onNavigateToRoom}
+                />
+              )}
+
               {/* Interior Structure Sections */}
               {Object.entries(structureGroups).map(([structure, structureRooms]) => (
                 <div key={structure}>

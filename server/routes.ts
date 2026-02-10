@@ -11,7 +11,7 @@ import { authenticateRequest, authenticateSupabaseToken, requireRole, optionalAu
 import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
-import { lookupCatalogItem, getRegionalPrice, calculateLineItemPrice, calculateEstimateTotals, validateEstimate } from "./estimateEngine";
+import { lookupCatalogItem, getRegionalPrice, calculateLineItemPrice, calculateEstimateTotals, validateEstimate, calculateDimVars, type RoomDimensions, type OpeningData } from "./estimateEngine";
 import { z } from "zod";
 import { logger } from "./logger";
 
@@ -1506,6 +1506,25 @@ export async function registerRoutes(
 
       const existingDims = (room.dimensions as Record<string, any>) || {};
       const merged = { ...existingDims, ...req.body };
+
+      // Recalculate DIM_VARS when length/width/height are present
+      const dims = merged as RoomDimensions;
+      if (dims.length && dims.width) {
+        const openings = await storage.getOpeningsForRoom(roomId);
+        const openingData: OpeningData[] = openings.map((o) => ({
+          openingType: o.openingType,
+          widthFt: o.widthFt ?? o.width ?? 0,
+          heightFt: o.heightFt ?? o.height ?? 0,
+          quantity: o.quantity ?? 1,
+          opensInto: o.opensInto ?? null,
+          goesToFloor: o.goesToFloor ?? false,
+          goesToCeiling: o.goesToCeiling ?? false,
+        }));
+        const { beforeMW, afterMW } = calculateDimVars(dims, openingData);
+        merged.dimVars = afterMW;
+        merged.dimVarsBeforeMW = beforeMW;
+      }
+
       const updated = await storage.updateRoomDimensions(roomId, merged);
       res.json(updated);
     } catch (error: any) {

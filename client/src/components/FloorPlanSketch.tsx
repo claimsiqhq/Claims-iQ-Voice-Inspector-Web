@@ -1,6 +1,8 @@
 import React, { useMemo } from "react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
+// ── Types ──────────────────────────────────────────
 interface RoomData {
   id: number;
   name: string;
@@ -8,367 +10,523 @@ interface RoomData {
   damageCount: number;
   photoCount: number;
   roomType?: string;
-  dimensions?: { length?: number; width?: number; height?: number };
+  dimensions?: {
+    length?: number;
+    width?: number;
+    height?: number;
+    dimVars?: {
+      W: number;
+      F: number;
+      PF: number;
+      C: number;
+      V: number;
+      LW: number;
+      SW: number;
+      HH: number;
+      SH: number;
+      PC: number;
+      LL: number;
+      R: number;
+      SQ: number;
+    };
+  };
   structure?: string;
+}
+
+interface AdjacencyData {
+  id: number;
+  roomIdA: number;
+  roomIdB: number;
+  wallDirectionA?: string;
+  wallDirectionB?: string;
+  sharedWallLengthFt?: number;
+  openingId?: number;
+}
+
+interface OpeningData {
+  id: number;
+  roomId: number;
+  openingType: string;
+  wallDirection?: string;
+  widthFt: number;
+  heightFt: number;
+  quantity: number;
+  opensInto?: string;
+  goesToFloor?: boolean;
 }
 
 interface FloorPlanSketchProps {
   rooms: RoomData[];
+  adjacencies?: AdjacencyData[];
+  openings?: OpeningData[];
   currentRoomId: number | null;
   onRoomClick?: (roomId: number) => void;
   className?: string;
-  expanded?: boolean;
 }
 
-const FONT = "Work Sans, sans-serif";
-const MONO = "Space Mono, monospace";
+// ── Constants ──────────────────────────────────────
+const PIXELS_PER_FOOT = 4;
+const MIN_ROOM_PX = 40;
+const WALL_THICKNESS = 3;
+const PADDING = 16;
+const SVG_WIDTH = 280;
 
-const STATUS_COLORS: Record<string, { fill: string; stroke: string; text: string; bg: string }> = {
-  complete: { fill: "rgba(34,197,94,0.06)", stroke: "#22C55E", text: "#166534", bg: "#DCFCE7" },
-  in_progress: { fill: "rgba(119,99,183,0.08)", stroke: "#7763B7", text: "#4C3D8F", bg: "#EDE9FE" },
-  not_started: { fill: "rgba(241,245,249,0.4)", stroke: "#CBD5E1", text: "#64748B", bg: "#F1F5F9" },
+const STATUS_COLORS = {
+  not_started: { fill: "rgba(31,41,55,0.6)", stroke: "#374151", text: "#9CA3AF" },
+  in_progress: { fill: "rgba(119,99,183,0.15)", stroke: "#7763B7", text: "#C4B5FD" },
+  complete: { fill: "rgba(34,197,94,0.1)", stroke: "#22C55E", text: "#86EFAC" },
+  flagged: { fill: "rgba(198,165,78,0.1)", stroke: "#C6A54E", text: "#C6A54E" },
 };
-const ACTIVE_STROKE = "#C6A54E";
-const WALL = "#334155";
-const DIM = "#94A3B8";
-const MUTED = "#64748B";
-const DMG = "#EF4444";
 
-function sc(room: RoomData, active: boolean) {
-  const c = STATUS_COLORS[room.status] || STATUS_COLORS.not_started;
-  return active ? { ...c, stroke: ACTIVE_STROKE, text: ACTIVE_STROKE } : c;
-}
-
-function dimLabel(d: any): string {
-  if (!d) return "";
-  const parts: string[] = [];
-  if (d.length && d.width) parts.push(`${d.length}' × ${d.width}'`);
-  else if (d.length) parts.push(`${d.length}' LF`);
-  if (d.height) parts.push(`${d.height}'h`);
-  return parts.join("  ");
-}
-
-interface StructureData {
-  name: string;
-  interior: RoomData[];
-  exterior: RoomData[];
-}
-
-function groupByStructure(rooms: RoomData[]): StructureData[] {
-  const map: Record<string, StructureData> = {};
-  for (const r of rooms) {
-    const s = r.structure || "Main Dwelling";
-    if (!map[s]) map[s] = { name: s, interior: [], exterior: [] };
-    const rt = r.roomType || "";
-    if (rt.startsWith("exterior_")) map[s].exterior.push(r);
-    else map[s].interior.push(r);
-  }
-  return Object.values(map);
-}
-
-function layoutRooms(rooms: RoomData[], maxW: number, scale: number) {
-  const MIN_W = 48;
-  const MIN_H = 34;
-
-  const sized = rooms.map(r => {
-    const d = r.dimensions as any;
-    return {
-      room: r,
-      w: d?.length ? Math.max(d.length * scale, MIN_W) : MIN_W + 6,
-      h: d?.width ? Math.max(d.width * scale, MIN_H) : MIN_H,
-    };
-  });
-
-  const placed: Array<{ room: RoomData; x: number; y: number; w: number; h: number }> = [];
-  let cx = 0, cy = 0, rowH = 0;
-
-  for (const { room, w, h } of sized) {
-    if (cx + w > maxW && cx > 0) {
-      cx = 0;
-      cy += rowH;
-      rowH = 0;
+const OPENING_SYMBOLS: Record<string, (x: number, y: number, w: number, isVertical: boolean) => React.ReactNode> = {
+  standard_door: (x, y, w, isVert) => {
+    const radius = w * 0.8;
+    if (isVert) {
+      return (
+        <g key={`door-${x}-${y}`}>
+          <line x1={x} y1={y} x2={x} y2={y + w} stroke="transparent" strokeWidth={WALL_THICKNESS + 2} />
+          <path d={`M ${x} ${y} A ${radius} ${radius} 0 0 1 ${x + radius} ${y + w * 0.5}`}
+            fill="none" stroke="#9CA3AF" strokeWidth={0.8} strokeDasharray="2,1" />
+        </g>
+      );
     }
-    placed.push({ room, x: cx, y: cy, w, h });
-    cx += w;
-    rowH = Math.max(rowH, h);
-  }
-
-  const totalW = placed.length > 0 ? Math.max(...placed.map(p => p.x + p.w)) : 0;
-  const totalH = placed.length > 0 ? cy + rowH : 0;
-  return { placed, totalW, totalH };
-}
-
-function FloorPlanSVG({ rooms, svgW, scale, currentRoomId, onRoomClick }: {
-  rooms: RoomData[]; svgW: number; scale: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
-}) {
-  const margin = 14;
-  const wallT = 2;
-  const { placed, totalW, totalH } = layoutRooms(rooms, svgW - margin * 2, scale);
-
-  if (totalW === 0 || totalH === 0) return null;
-
-  const ox = (svgW - totalW) / 2;
-
-  const interiorWalls: React.ReactNode[] = [];
-  for (let i = 0; i < placed.length; i++) {
-    const p = placed[i];
-    for (let j = i + 1; j < placed.length; j++) {
-      const q = placed[j];
-      if (Math.abs(p.x + p.w - q.x) < 0.5 && p.y < q.y + q.h && q.y < p.y + p.h) {
-        const wy1 = Math.max(p.y, q.y);
-        const wy2 = Math.min(p.y + p.h, q.y + q.h);
-        interiorWalls.push(<line key={`w-v-${i}-${j}`} x1={q.x} y1={wy1} x2={q.x} y2={wy2} stroke={WALL} strokeWidth={1} />);
-      }
-      if (Math.abs(p.y + p.h - q.y) < 0.5 && p.x < q.x + q.w && q.x < p.x + p.w) {
-        const wx1 = Math.max(p.x, q.x);
-        const wx2 = Math.min(p.x + p.w, q.x + q.w);
-        interiorWalls.push(<line key={`w-h-${i}-${j}`} x1={wx1} y1={q.y} x2={wx2} y2={q.y} stroke={WALL} strokeWidth={1} />);
-      }
-    }
-  }
-
-  return (
-    <g>
-      <text x={8} y={10} fontSize="6" fontFamily={MONO} fontWeight="700" fill={MUTED} letterSpacing="0.8">
-        INTERIOR ROOMS
-      </text>
-      <text x={svgW - 8} y={10} textAnchor="end" fontSize="5" fontFamily={MONO} fill={DIM}>
-        {rooms.length} room{rooms.length !== 1 ? "s" : ""}
-      </text>
-      <line x1={8} y1={13} x2={svgW - 8} y2={13} stroke="#E2E8F0" strokeWidth={0.3} />
-
-      <g transform={`translate(${ox}, ${margin + 6})`}>
-        <rect x={-wallT} y={-wallT} width={totalW + wallT * 2} height={totalH + wallT * 2}
-          fill="none" stroke={WALL} strokeWidth={wallT} />
-
-        {placed.map(({ room, x, y, w, h }) => {
-          const active = room.id === currentRoomId;
-          const c = sc(room, active);
-          const d = room.dimensions as any;
-          const hasDims = d?.length && d?.width;
-          const truncName = room.name.length > 15 ? room.name.slice(0, 14) + "…" : room.name;
-
-          return (
-            <g key={room.id}
-              onClick={() => onRoomClick?.(room.id)}
-              style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-
-              <rect x={x} y={y} width={w} height={h}
-                fill={c.fill} stroke={c.stroke}
-                strokeWidth={active ? 2 : 0.6}
-                strokeDasharray={room.status === "not_started" ? "3,2" : undefined} />
-
-              <text x={x + w / 2} y={y + h / 2 - (hasDims ? 3.5 : 0)}
-                textAnchor="middle" dominantBaseline="middle"
-                fontSize={w < 50 ? "5.5" : "6.5"} fontFamily={FONT} fontWeight="600" fill={c.text}>
-                {truncName}
-              </text>
-
-              {hasDims && (
-                <text x={x + w / 2} y={y + h / 2 + 5}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fontSize="5" fontFamily={MONO} fill={DIM}>
-                  {d.length}' × {d.width}'
-                </text>
-              )}
-
-              {room.damageCount > 0 && (
-                <>
-                  <circle cx={x + w - 7} cy={y + 7} r={4.5} fill={DMG} opacity={0.9} />
-                  <text x={x + w - 7} y={y + 7.5} textAnchor="middle" dominantBaseline="middle"
-                    fontSize="5" fill="white" fontWeight="bold">{room.damageCount}</text>
-                </>
-              )}
-            </g>
-          );
-        })}
-
-        {interiorWalls}
+    return (
+      <g key={`door-${x}-${y}`}>
+        <line x1={x} y1={y} x2={x + w} y2={y} stroke="transparent" strokeWidth={WALL_THICKNESS + 2} />
+        <path d={`M ${x} ${y} A ${radius} ${radius} 0 0 0 ${x + w * 0.5} ${y - radius}`}
+          fill="none" stroke="#9CA3AF" strokeWidth={0.8} strokeDasharray="2,1" />
       </g>
-    </g>
-  );
+    );
+  },
+  door: (x, y, w, isVert) => OPENING_SYMBOLS.standard_door(x, y, w, isVert),
+  window: (x, y, w, isVert) => {
+    if (isVert) {
+      return (
+        <g key={`win-${x}-${y}`}>
+          <line x1={x - 1} y1={y + 1} x2={x - 1} y2={y + w - 1} stroke="#60A5FA" strokeWidth={0.5} />
+          <line x1={x} y1={y + 1} x2={x} y2={y + w - 1} stroke="#60A5FA" strokeWidth={0.8} />
+          <line x1={x + 1} y1={y + 1} x2={x + 1} y2={y + w - 1} stroke="#60A5FA" strokeWidth={0.5} />
+        </g>
+      );
+    }
+    return (
+      <g key={`win-${x}-${y}`}>
+        <line x1={x + 1} y1={y - 1} x2={x + w - 1} y2={y - 1} stroke="#60A5FA" strokeWidth={0.5} />
+        <line x1={x + 1} y1={y} x2={x + w - 1} y2={y} stroke="#60A5FA" strokeWidth={0.8} />
+        <line x1={x + 1} y1={y + 1} x2={x + w - 1} y2={y + 1} stroke="#60A5FA" strokeWidth={0.5} />
+      </g>
+    );
+  },
+  overhead_door: (x, y, w, isVert) => {
+    if (isVert) {
+      return <line key={`ohd-${x}-${y}`} x1={x} y1={y} x2={x} y2={y + w} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="4,2" />;
+    }
+    return <line key={`ohd-${x}-${y}`} x1={x} y1={y} x2={x + w} y2={y} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="4,2" />;
+  },
+};
+
+interface PositionedRoom {
+  room: RoomData;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
-function ExteriorRow({ room, x, y, w, active, onRoomClick }: {
-  room: RoomData; x: number; y: number; w: number; active: boolean; onRoomClick?: (id: number) => void;
+function getRoomPixelSize(room: RoomData): { w: number; h: number } {
+  const dims = room.dimensions;
+  if (dims?.length && dims?.width) {
+    return {
+      w: Math.max(dims.length * PIXELS_PER_FOOT, MIN_ROOM_PX),
+      h: Math.max(dims.width * PIXELS_PER_FOOT, MIN_ROOM_PX),
+    };
+  }
+  return { w: MIN_ROOM_PX + 16, h: MIN_ROOM_PX + 6 };
+}
+
+function layoutRoomsWithAdjacency(
+  roomList: RoomData[],
+  adjacencies: AdjacencyData[],
+  maxWidth: number
+): PositionedRoom[] {
+  if (roomList.length === 0) return [];
+
+  const positioned: Map<number, PositionedRoom> = new Map();
+  const roomById = new Map(roomList.map((r) => [r.id, r]));
+
+  const first = roomList[0];
+  const firstSize = getRoomPixelSize(first);
+  positioned.set(first.id, { room: first, x: PADDING, y: PADDING, w: firstSize.w, h: firstSize.h });
+
+  const queue: number[] = [first.id];
+  const visited = new Set<number>([first.id]);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const current = positioned.get(currentId)!;
+
+    const relatedAdjs = adjacencies.filter(
+      (a) =>
+        (a.roomIdA === currentId || a.roomIdB === currentId) &&
+        roomById.has(a.roomIdA) &&
+        roomById.has(a.roomIdB)
+    );
+
+    for (const adj of relatedAdjs) {
+      const otherId = adj.roomIdA === currentId ? adj.roomIdB : adj.roomIdA;
+      if (visited.has(otherId)) continue;
+
+      const otherRoom = roomById.get(otherId);
+      if (!otherRoom) continue;
+
+      const otherSize = getRoomPixelSize(otherRoom);
+      const wallDir = adj.roomIdA === currentId ? adj.wallDirectionA : adj.wallDirectionB;
+
+      let newX = current.x;
+      let newY = current.y;
+
+      switch (wallDir) {
+        case "east":
+        case "right":
+          newX = current.x + current.w;
+          break;
+        case "west":
+        case "left":
+          newX = current.x - otherSize.w;
+          break;
+        case "south":
+        case "rear":
+          newY = current.y + current.h;
+          break;
+        case "north":
+        case "front":
+          newY = current.y - otherSize.h;
+          break;
+        default:
+          newX = current.x + current.w;
+      }
+
+      let hasCollision = false;
+      for (const [, placed] of positioned) {
+        if (
+          newX < placed.x + placed.w &&
+          newX + otherSize.w > placed.x &&
+          newY < placed.y + placed.h &&
+          newY + otherSize.h > placed.y
+        ) {
+          hasCollision = true;
+          break;
+        }
+      }
+
+      if (!hasCollision) {
+        positioned.set(otherId, { room: otherRoom, x: newX, y: newY, w: otherSize.w, h: otherSize.h });
+        visited.add(otherId);
+        queue.push(otherId);
+      }
+    }
+  }
+
+  const unplaced = roomList.filter((r) => !positioned.has(r.id));
+  if (unplaced.length > 0) {
+    let maxY = 0;
+    for (const [, p] of positioned) {
+      maxY = Math.max(maxY, p.y + p.h);
+    }
+
+    let curX = PADDING;
+    let curY = maxY + 12;
+    let rowH = 0;
+
+    for (const room of unplaced) {
+      const size = getRoomPixelSize(room);
+      if (curX + size.w + PADDING > maxWidth && curX > PADDING) {
+        curX = PADDING;
+        curY += rowH + 4;
+        rowH = 0;
+      }
+      positioned.set(room.id, { room, x: curX, y: curY, w: size.w, h: size.h });
+      curX += size.w + 4;
+      rowH = Math.max(rowH, size.h);
+    }
+  }
+
+  let minX = Infinity,
+    minY = Infinity;
+  for (const [, p] of positioned) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+  }
+  const offsetX = PADDING - minX;
+  const offsetY = PADDING - minY;
+  const result: PositionedRoom[] = [];
+  for (const [, p] of positioned) {
+    result.push({ ...p, x: p.x + offsetX, y: p.y + offsetY });
+  }
+
+  return result;
+}
+
+function RoomRect({
+  room,
+  x,
+  y,
+  w,
+  h,
+  isCurrent,
+  openings,
+  onClick,
+}: {
+  room: RoomData;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  isCurrent: boolean;
+  openings: OpeningData[];
+  onClick?: () => void;
 }) {
-  const c = sc(room, active);
-  const dims = dimLabel(room.dimensions);
-  const rowH = 18;
-  const typeLabel = (room.roomType || "").replace("exterior_", "").replace(/_/g, " ");
-  const truncName = room.name.length > 20 ? room.name.slice(0, 19) + "…" : room.name;
+  const dims = room.dimensions;
+  const dv = dims?.dimVars;
+  const colors = isCurrent
+    ? { fill: "rgba(198,165,78,0.15)", stroke: "#C6A54E", text: "#C6A54E" }
+    : STATUS_COLORS[room.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.not_started;
+
+  const displayName = room.name.length > 16 ? room.name.substring(0, 15) + "…" : room.name;
+  const dimText = dims?.length && dims?.width ? `${dims.length}'×${dims.width}'` : null;
+  const sfText = dv?.F ? `${dv.F} SF` : dims?.length && dims?.width ? `${dims.length * dims.width} SF` : null;
 
   return (
-    <g onClick={() => onRoomClick?.(room.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-      <rect x={x} y={y} width={w} height={rowH} rx={1.5}
-        fill={c.fill} stroke={c.stroke} strokeWidth={active ? 1.5 : 0.5} />
+    <g onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+      <motion.rect
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 }}
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        fill={colors.fill}
+        stroke={colors.stroke}
+        strokeWidth={isCurrent ? WALL_THICKNESS : WALL_THICKNESS - 1}
+        strokeDasharray={room.status === "not_started" ? "4,3" : "none"}
+      />
 
-      <circle cx={x + 9} cy={y + rowH / 2} r={3}
-        fill={c.stroke} opacity={0.7} />
-      <text x={x + 9} y={y + rowH / 2 + 0.5} textAnchor="middle" dominantBaseline="middle"
-        fontSize="4" fill="white" fontWeight="bold">
-        {room.status === "complete" ? "✓" : room.status === "in_progress" ? "●" : "○"}
+      <text
+        x={x + w / 2}
+        y={y + h / 2 - (dimText ? 5 : 0)}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="7"
+        fontFamily="Work Sans, sans-serif"
+        fontWeight="600"
+        fill={colors.text}
+      >
+        {displayName}
       </text>
 
-      <text x={x + 17} y={y + rowH / 2}
-        dominantBaseline="middle" fontSize="6" fontFamily={FONT} fontWeight="500" fill={c.text}>
-        {truncName}
-      </text>
+      {dimText && (
+        <text
+          x={x + w / 2}
+          y={y + h / 2 + 5}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="5.5"
+          fontFamily="Space Mono, monospace"
+          fill="#6B7280"
+        >
+          {dimText}
+        </text>
+      )}
 
-      {dims && (
-        <text x={x + w - (room.damageCount > 0 ? 18 : 6)} y={y + rowH / 2}
-          textAnchor="end" dominantBaseline="middle"
-          fontSize="4.5" fontFamily={MONO} fill={DIM}>
-          {dims}
+      {sfText && h > 35 && (
+        <text
+          x={x + w / 2}
+          y={y + h / 2 + 12}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="5"
+          fontFamily="Space Mono, monospace"
+          fill="#4B5563"
+        >
+          {sfText}
         </text>
       )}
 
       {room.damageCount > 0 && (
         <>
-          <circle cx={x + w - 8} cy={y + rowH / 2} r={4} fill={DMG} opacity={0.85} />
-          <text x={x + w - 8} y={y + rowH / 2 + 0.5} textAnchor="middle" dominantBaseline="middle"
-            fontSize="4.5" fill="white" fontWeight="bold">{room.damageCount}</text>
+          <circle cx={x + w - 6} cy={y + 6} r={5} fill="#EF4444" opacity={0.9} />
+          <text x={x + w - 6} y={y + 6.5} textAnchor="middle" dominantBaseline="middle" fontSize="5.5" fill="white" fontWeight="bold">
+            {room.damageCount}
+          </text>
         </>
       )}
+
+      {room.photoCount > 0 && (
+        <>
+          <circle cx={x + 6} cy={y + h - 6} r={4} fill="rgba(119,99,183,0.8)" />
+          <text x={x + 6} y={y + h - 5.5} textAnchor="middle" dominantBaseline="middle" fontSize="5" fill="white" fontWeight="bold">
+            {room.photoCount}
+          </text>
+        </>
+      )}
+
+      {openings.map((opening, i) => {
+        const openingPx = opening.widthFt * PIXELS_PER_FOOT;
+        const symbol = OPENING_SYMBOLS[opening.openingType] || OPENING_SYMBOLS.standard_door;
+        const wallDir = opening.wallDirection || "south";
+
+        let ox: number, oy: number;
+        const isVert = wallDir === "east" || wallDir === "west" || wallDir === "right" || wallDir === "left";
+
+        if (wallDir === "north" || wallDir === "front") {
+          ox = x + w / 2 - openingPx / 2 + i * 4;
+          oy = y;
+        } else if (wallDir === "south" || wallDir === "rear") {
+          ox = x + w / 2 - openingPx / 2 + i * 4;
+          oy = y + h;
+        } else if (wallDir === "east" || wallDir === "right") {
+          ox = x + w;
+          oy = y + h / 2 - openingPx / 2 + i * 4;
+        } else {
+          ox = x;
+          oy = y + h / 2 - openingPx / 2 + i * 4;
+        }
+
+        return symbol ? symbol(ox, oy, Math.min(openingPx, isVert ? h * 0.6 : w * 0.6), isVert) : null;
+      })}
     </g>
   );
 }
 
-function ExteriorSection({ rooms, svgW, yStart, currentRoomId, onRoomClick }: {
-  rooms: RoomData[]; svgW: number; yStart: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
-}) {
-  const categories = [
-    { label: "ROOF", filter: (r: RoomData) => r.roomType === "exterior_roof_slope" },
-    { label: "ELEVATIONS", filter: (r: RoomData) => (r.roomType || "").startsWith("exterior_elevation_") },
-    { label: "OTHER EXTERIOR", filter: (r: RoomData) => {
-      const rt = r.roomType || "";
-      return rt.startsWith("exterior_") && rt !== "exterior_roof_slope" && !rt.startsWith("exterior_elevation_");
-    }},
-  ];
-
-  const rowH = 18;
-  const gap = 3;
-  const catGap = 8;
-  let cy = yStart;
-  const elements: React.ReactNode[] = [];
-
-  for (const cat of categories) {
-    const items = rooms.filter(cat.filter);
-    if (items.length === 0) continue;
-
-    elements.push(
-      <g key={`cat-${cat.label}`}>
-        <text x={8} y={cy + 8} fontSize="5.5" fontFamily={MONO} fontWeight="700" fill={MUTED}
-          letterSpacing="0.6">{cat.label}</text>
-        <text x={svgW - 8} y={cy + 8} textAnchor="end" fontSize="4.5" fontFamily={MONO} fill={DIM}>
-          {items.length} {items.length === 1 ? "area" : "areas"}
-        </text>
-        <line x1={8} y1={cy + 11} x2={svgW - 8} y2={cy + 11} stroke="#E2E8F0" strokeWidth={0.3} />
-      </g>
-    );
-    cy += 14;
-
-    for (const room of items) {
-      elements.push(
-        <ExteriorRow key={room.id} room={room} x={8} y={cy} w={svgW - 16}
-          active={room.id === currentRoomId} onRoomClick={onRoomClick} />
-      );
-      cy += rowH + gap;
-    }
-
-    cy += catGap;
-  }
-
-  return { elements, totalHeight: cy - yStart };
-}
-
-export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, className, expanded }: FloorPlanSketchProps) {
-  const structures = useMemo(() => groupByStructure(rooms), [rooms]);
-  const svgW = expanded ? 520 : 260;
-  const scale = expanded ? 4 : 3;
-
-  const rendered = useMemo(() => {
-    const parts: React.ReactNode[] = [];
-    let y = 4;
-
-    for (const group of structures) {
-      if (structures.length > 1 || group.name !== "Main Dwelling") {
-        parts.push(
-          <g key={`hdr-${group.name}`}>
-            <text x={svgW / 2} y={y + 10} textAnchor="middle" fontSize="7" fontFamily={FONT}
-              fontWeight="700" fill={MUTED} letterSpacing="0.5">
-              {group.name.toUpperCase()}
-            </text>
-            <line x1={8} y1={y + 14} x2={svgW - 8} y2={y + 14} stroke={MUTED} strokeWidth={0.4} />
-          </g>
-        );
-        y += 20;
-      }
-
-      if (group.interior.length > 0) {
-        const fpMargin = 14;
-        const { totalW, totalH } = layoutRooms(group.interior, svgW - fpMargin * 2, scale);
-        if (totalW > 0 && totalH > 0) {
-          parts.push(
-            <g key={`fp-${group.name}`} transform={`translate(0, ${y})`}>
-              <FloorPlanSVG rooms={group.interior} svgW={svgW} scale={scale}
-                currentRoomId={currentRoomId} onRoomClick={onRoomClick} />
-            </g>
-          );
-          y += totalH + fpMargin * 2 + 20;
-        }
-      }
-
-      if (group.exterior.length > 0) {
-        const ext = ExteriorSection({
-          rooms: group.exterior, svgW, yStart: 0,
-          currentRoomId, onRoomClick
-        });
-        parts.push(
-          <g key={`ext-${group.name}`} transform={`translate(0, ${y})`}>
-            {ext.elements}
-          </g>
-        );
-        y += ext.totalHeight + 6;
+export default function FloorPlanSketch({
+  rooms,
+  adjacencies = [],
+  openings = [],
+  currentRoomId,
+  onRoomClick,
+  className,
+}: FloorPlanSketchProps) {
+  const structureGroups = useMemo(() => {
+    const groups: Record<string, { interior: RoomData[]; exterior: RoomData[] }> = {};
+    for (const room of rooms) {
+      const structure = room.structure || "Main Dwelling";
+      if (!groups[structure]) groups[structure] = { interior: [], exterior: [] };
+      if (room.roomType?.startsWith("exterior_")) {
+        groups[structure].exterior.push(room);
+      } else {
+        groups[structure].interior.push(room);
       }
     }
+    return Object.entries(groups).map(([name, { interior, exterior }]) => ({
+      name,
+      interior,
+      exterior,
+    }));
+  }, [rooms]);
 
-    return { parts, totalHeight: y + 4 };
-  }, [structures, svgW, scale, currentRoomId, onRoomClick]);
+  const openingsByRoom = useMemo(() => {
+    const map: Record<number, OpeningData[]> = {};
+    for (const o of openings) {
+      if (!map[o.roomId]) map[o.roomId] = [];
+      map[o.roomId].push(o);
+    }
+    return map;
+  }, [openings]);
 
   if (rooms.length === 0) {
     return (
-      <div className={cn("bg-slate-50 rounded-lg border border-slate-200 p-4", className)}>
-        <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2 font-mono">Property Sketch</p>
+      <div className={cn("bg-primary/5 rounded-lg border border-primary/15 p-4", className)}>
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2">Live Sketch</p>
         <div className="h-24 flex items-center justify-center">
-          <p className="text-xs text-slate-300">Rooms will appear as they're created during inspection</p>
+          <p className="text-xs text-purple-300/30">Rooms will appear as they're created</p>
         </div>
       </div>
     );
   }
 
+  let runningY = 0;
+  const sections: Array<{
+    label: string;
+    sublabel: string;
+    yOffset: number;
+    positioned: PositionedRoom[];
+    sectionHeight: number;
+  }> = [];
+
+  for (const group of structureGroups) {
+    for (const [sublabel, roomList] of [["EXTERIOR", group.exterior], ["INTERIOR", group.interior]] as const) {
+      if (roomList.length === 0) continue;
+
+      const roomIds = new Set(roomList.map((r) => r.id));
+      const groupAdjs = adjacencies.filter((a) => roomIds.has(a.roomIdA) && roomIds.has(a.roomIdB));
+
+      const positioned = layoutRoomsWithAdjacency(roomList, groupAdjs, SVG_WIDTH);
+
+      let maxY = 0;
+      for (const p of positioned) {
+        maxY = Math.max(maxY, p.y + p.h);
+      }
+      const sectionHeight = maxY + PADDING;
+
+      sections.push({
+        label: group.name,
+        sublabel,
+        yOffset: runningY,
+        positioned,
+        sectionHeight,
+      });
+      runningY += sectionHeight + 20;
+    }
+  }
+
+  const totalHeight = runningY + 4;
+
   return (
-    <div className={cn("bg-white rounded-lg border border-slate-200 overflow-hidden", className)} data-testid="floor-plan-sketch">
-      <div className="px-3 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">Property Sketch</p>
-        <p className="text-[10px] text-slate-400 font-mono">
-          {structures.length > 1 ? `${structures.length} structures · ` : ""}
-          {rooms.length} area{rooms.length !== 1 ? "s" : ""}
-        </p>
+    <div className={cn("bg-primary/5 rounded-lg border border-primary/15 overflow-hidden", className)} data-testid="floor-plan-sketch">
+      <div className="px-3 py-2 border-b border-primary/15 flex justify-between items-center">
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50">Live Sketch</p>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-green-500/60" />
+            <span className="text-[8px] text-purple-300/40">Done</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-purple-500/60" />
+            <span className="text-[8px] text-purple-300/40">Active</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-gray-500/40" />
+            <span className="text-[8px] text-purple-300/40">Pending</span>
+          </span>
+        </div>
       </div>
 
-      <svg
-        viewBox={`0 0 ${svgW} ${rendered.totalHeight}`}
-        className="w-full"
-        style={expanded ? undefined : { maxHeight: 500 }}
-      >
-        <defs>
-          <pattern id="sketchGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#F1F5F9" strokeWidth={0.3} />
-          </pattern>
-        </defs>
-        <rect width={svgW} height={rendered.totalHeight} fill="url(#sketchGrid)" />
-        {rendered.parts}
+      <svg viewBox={`0 0 ${SVG_WIDTH} ${totalHeight}`} className="w-full" style={{ maxHeight: 450 }}>
+        {sections.map((section, si) => (
+          <g key={si} transform={`translate(0, ${section.yOffset})`}>
+            <text x={PADDING} y={10} fontSize="7" fontFamily="Space Mono, monospace" fill="rgba(157,139,191,0.4)" fontWeight="600">
+              {section.label.toUpperCase()}
+            </text>
+            <text x={SVG_WIDTH - PADDING} y={10} fontSize="6" fontFamily="Space Mono, monospace" fill="rgba(157,139,191,0.3)" textAnchor="end">
+              {section.sublabel}
+            </text>
+
+            {section.positioned.map(({ room, x, y, w, h }) => (
+              <RoomRect
+                key={room.id}
+                room={room}
+                x={x}
+                y={y + 14}
+                w={w}
+                h={h}
+                isCurrent={room.id === currentRoomId}
+                openings={openingsByRoom[room.id] || []}
+                onClick={() => onRoomClick?.(room.id)}
+              />
+            ))}
+          </g>
+        ))}
       </svg>
     </div>
   );

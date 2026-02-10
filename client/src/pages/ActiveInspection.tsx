@@ -1908,6 +1908,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         sessionId={sessionId!}
         rooms={rooms}
         currentPhase={currentPhase}
+        currentRoomId={currentRoomId}
         onNavigateToRoom={(roomId) => {
           setCurrentRoomId(roomId);
           setShowProgressMap(false);
