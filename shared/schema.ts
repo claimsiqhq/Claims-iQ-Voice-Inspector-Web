@@ -243,6 +243,32 @@ export const roomOpenings = pgTable("room_openings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ── Room Adjacency (which rooms share walls) ────────────────
+export const roomAdjacencies = pgTable("room_adjacencies", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomIdA: integer("room_id_a").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+  roomIdB: integer("room_id_b").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+  // Which wall of Room A faces Room B
+  wallDirectionA: varchar("wall_direction_a", { length: 20 }),
+  // "north" | "south" | "east" | "west"
+  // Which wall of Room B faces Room A (should be opposite of wallDirectionA)
+  wallDirectionB: varchar("wall_direction_b", { length: 20 }),
+  // Shared wall length in feet (may be partial — rooms don't have to be the same width)
+  sharedWallLengthFt: real("shared_wall_length_ft"),
+  // If there's an opening in this shared wall, reference the opening
+  openingId: integer("opening_id").references(() => roomOpenings.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRoomAdjacencySchema = createInsertSchema(roomAdjacencies).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type RoomAdjacency = typeof roomAdjacencies.$inferSelect;
+export type InsertRoomAdjacency = z.infer<typeof insertRoomAdjacencySchema>;
+
 // ── L5: Sketch Annotations ─────────────────────────────
 // Non-geometric metadata overlaid on sketch: damage counts, pitch, storm direction, facet labels
 export const sketchAnnotations = pgTable("sketch_annotations", {

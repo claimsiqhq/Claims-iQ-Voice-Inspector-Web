@@ -16,6 +16,7 @@ import {
   type Structure, type InsertStructure,
   type InspectionRoom, type InsertInspectionRoom,
   type RoomOpening, type InsertRoomOpening,
+  roomAdjacencies, type RoomAdjacency, type InsertRoomAdjacency,
   type SketchAnnotation, type InsertSketchAnnotation,
   type SketchTemplate, type InsertSketchTemplate,
   type DamageObservation, type InsertDamageObservation,
@@ -114,6 +115,15 @@ export interface IStorage {
   getOpeningsForRoom(roomId: number): Promise<RoomOpening[]>;
   getOpeningsForSession(sessionId: number): Promise<RoomOpening[]>;
   deleteOpening(id: number): Promise<void>;
+
+  // ── Room Adjacency ──────────────────────────
+  createAdjacency(data: InsertRoomAdjacency): Promise<RoomAdjacency>;
+  getAdjacenciesForRoom(roomId: number): Promise<RoomAdjacency[]>;
+  getAdjacenciesForSession(sessionId: number): Promise<RoomAdjacency[]>;
+  deleteAdjacency(id: number): Promise<void>;
+  getAdjacentRooms(roomId: number): Promise<Array<{ adjacency: RoomAdjacency; room: InspectionRoom }>>;
+  // Update room dimensions (specifically the jsonb `dimensions` column)
+  updateRoomDimensions(roomId: number, dimensions: Record<string, any>): Promise<InspectionRoom | undefined>;
 
   // Sketch annotations (L5: damage counts, pitch, storm direction per facet)
   createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation>;
@@ -620,6 +630,46 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOpening(id: number): Promise<void> {
     await db.delete(roomOpenings).where(eq(roomOpenings.id, id));
+  }
+
+  async createAdjacency(data: InsertRoomAdjacency): Promise<RoomAdjacency> {
+    const [adjacency] = await db.insert(roomAdjacencies).values(data).returning();
+    return adjacency;
+  }
+
+  async getAdjacenciesForRoom(roomId: number): Promise<RoomAdjacency[]> {
+    return db.select().from(roomAdjacencies)
+      .where(
+        sql`${roomAdjacencies.roomIdA} = ${roomId} OR ${roomAdjacencies.roomIdB} = ${roomId}`
+      );
+  }
+
+  async getAdjacenciesForSession(sessionId: number): Promise<RoomAdjacency[]> {
+    return db.select().from(roomAdjacencies)
+      .where(eq(roomAdjacencies.sessionId, sessionId));
+  }
+
+  async deleteAdjacency(id: number): Promise<void> {
+    await db.delete(roomAdjacencies).where(eq(roomAdjacencies.id, id));
+  }
+
+  async getAdjacentRooms(roomId: number): Promise<Array<{ adjacency: RoomAdjacency; room: InspectionRoom }>> {
+    const adjacencies = await this.getAdjacenciesForRoom(roomId);
+    const results: Array<{ adjacency: RoomAdjacency; room: InspectionRoom }> = [];
+    for (const adj of adjacencies) {
+      const otherRoomId = adj.roomIdA === roomId ? adj.roomIdB : adj.roomIdA;
+      const room = await this.getRoom(otherRoomId);
+      if (room) results.push({ adjacency: adj, room });
+    }
+    return results;
+  }
+
+  async updateRoomDimensions(roomId: number, dimensions: Record<string, any>): Promise<InspectionRoom | undefined> {
+    const [updated] = await db.update(inspectionRooms)
+      .set({ dimensions })
+      .where(eq(inspectionRooms.id, roomId))
+      .returning();
+    return updated;
   }
 
   // ── Sketch Annotations (L5: Metadata) ──────────────

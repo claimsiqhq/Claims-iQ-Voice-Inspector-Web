@@ -190,6 +190,15 @@ const taxRuleSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 
+const adjacencyCreateSchema = z.object({
+  roomIdA: z.number().int().positive(),
+  roomIdB: z.number().int().positive(),
+  wallDirectionA: z.string().max(20).nullable().optional(),
+  wallDirectionB: z.string().max(20).nullable().optional(),
+  sharedWallLengthFt: z.number().positive().nullable().optional(),
+  openingId: z.number().int().positive().nullable().optional(),
+});
+
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
