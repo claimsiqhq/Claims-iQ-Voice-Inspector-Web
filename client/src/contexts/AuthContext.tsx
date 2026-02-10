@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return prev;
       });
-    }, 8000);
+    }, 3000);
     return () => clearTimeout(timeout);
   }, []);
 
@@ -167,6 +167,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(email: string, password: string, rememberMe: boolean = true) {
     try {
+      if (!supabase) {
+        toast({ title: "Sign in failed", description: "Authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.", variant: "destructive" });
+        return;
+      }
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -197,6 +201,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signUp(email: string, password: string, fullName: string) {
     try {
+      if (!supabase) {
+        toast({ title: "Sign up failed", description: "Authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.", variant: "destructive" });
+        return;
+      }
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
