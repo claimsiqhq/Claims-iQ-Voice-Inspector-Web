@@ -24,6 +24,8 @@ import SettingsPage from "@/pages/SettingsPage";
 import SupplementalPage from "@/pages/SupplementalPage";
 import WorkflowBuilder from "@/pages/WorkflowBuilder";
 import ProfilePage from "@/pages/ProfilePage";
+import PhotoGallery from "@/pages/PhotoGallery";
+import SketchGallery from "@/pages/SketchGallery";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback?: React.ReactNode },
@@ -119,6 +121,8 @@ function ProtectedRouter() {
           <Route path="/settings" component={SettingsPage} />
           <Route path="/settings/workflows" component={WorkflowBuilder} />
           <Route path="/profile" component={ProfilePage} />
+          <Route path="/gallery/photos" component={PhotoGallery} />
+          <Route path="/gallery/sketches" component={SketchGallery} />
           <Route path="/upload/:id" component={DocumentUpload} />
           <Route path="/review/:id" component={ExtractionReview} />
           <Route path="/briefing/:id" component={InspectionBriefing} />

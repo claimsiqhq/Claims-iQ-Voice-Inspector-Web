@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, FileText, Mic, ClipboardCheck, Settings } from "lucide-react";
+import { Home, FileText, Mic, ClipboardCheck, Camera, PenTool } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,10 +52,16 @@ function getNavItems(): NavItem[] {
       matchPaths: ["/inspection/*/review", "/inspection/*/export"],
     },
     {
-      icon: Settings,
-      label: "Settings",
-      getPath: () => "/settings",
-      matchPaths: ["/settings"],
+      icon: Camera,
+      label: "Photos",
+      getPath: () => "/gallery/photos",
+      matchPaths: ["/gallery/photos"],
+    },
+    {
+      icon: PenTool,
+      label: "Sketches",
+      getPath: () => "/gallery/sketches",
+      matchPaths: ["/gallery/sketches"],
     },
   ];
 }
