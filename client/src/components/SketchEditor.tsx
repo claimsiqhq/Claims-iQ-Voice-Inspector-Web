@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { MousePointer2, DoorOpen, Square, AlertTriangle, RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview } from "./SketchRenderer";
+import PropertySketch from "./PropertySketch";
 import { bfsLayout, hitTestWall, type Adjacency } from "@/lib/sketchLayout";
 
 interface RoomData {
@@ -55,7 +56,7 @@ const SCALE = 4;
 const MIN_W = 44;
 const MIN_H = 32;
 const HIT_PADDING = 12;
-const HANDLE_SIZE = 8;
+const HANDLE_SIZE = 12;
 
 function categorizeInterior(rooms: RoomData[]): RoomData[] {
   return rooms.filter((r) => {
@@ -67,6 +68,21 @@ function categorizeInterior(rooms: RoomData[]): RoomData[] {
     if (vt === "exterior_other" || (rt.startsWith("exterior_") && !rt.includes("elevation") && !rt.includes("roof"))) return false;
     return true;
   });
+}
+
+function categorizeRoofElevExterior(rooms: RoomData[]): { roofSlopes: RoomData[]; elevations: RoomData[]; otherExterior: RoomData[] } {
+  const roofSlopes: RoomData[] = [];
+  const elevations: RoomData[] = [];
+  const otherExterior: RoomData[] = [];
+  for (const r of rooms) {
+    if (r.parentRoomId) continue;
+    const vt = r.viewType || "";
+    const rt = r.roomType || "";
+    if (vt === "roof_plan" || rt === "exterior_roof_slope") roofSlopes.push(r);
+    else if (vt === "elevation" || rt.startsWith("exterior_elevation_")) elevations.push(r);
+    else if (vt === "exterior_other" || (rt.startsWith("exterior_") && !rt.includes("elevation") && !rt.includes("roof"))) otherExterior.push(r);
+  }
+  return { roofSlopes, elevations, otherExterior };
 }
 
 export default function SketchEditor({
@@ -1268,31 +1284,42 @@ export default function SketchEditor({
         </div>
       )}
 
-      <div
-        className="relative flex-1 min-h-[400px] overflow-hidden"
-        style={{ touchAction: "none" }}
-        onPointerDown={handleSvgPointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onLostPointerCapture={handlePointerUp}
-      >
-        <SketchRenderer
-          ref={svgRef}
-          layouts={layouts}
-          openings={allOpeningsList}
-          annotations={allAnnotationsList}
-          selection={{
-            selectedRoomId,
-            selectedOpeningId,
-            selectedAnnotationId,
-          }}
-          viewBox={viewBox}
-          ghostPreview={ghostPreview}
-          onRoomPointerDown={handleRoomPointerDown}
-          onOpeningPointerDown={handleOpeningPointerDown}
-          onAnnotationPointerDown={handleAnnotationPointerDown}
-          onHandlePointerDown={handleHandlePointerDown}
-          renderHandles={tool === "select"}
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <div
+          className="relative flex-shrink-0 min-h-[400px] overflow-hidden"
+          style={{ touchAction: "none" }}
+          onPointerDown={handleSvgPointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onLostPointerCapture={handlePointerUp}
+        >
+          <SketchRenderer
+            ref={svgRef}
+            layouts={layouts}
+            openings={allOpeningsList}
+            annotations={allAnnotationsList}
+            selection={{
+              selectedRoomId,
+              selectedOpeningId,
+              selectedAnnotationId,
+            }}
+            viewBox={viewBox}
+            ghostPreview={ghostPreview}
+            onRoomPointerDown={handleRoomPointerDown}
+            onOpeningPointerDown={handleOpeningPointerDown}
+            onAnnotationPointerDown={handleAnnotationPointerDown}
+            onHandlePointerDown={handleHandlePointerDown}
+            renderHandles={tool === "select"}
+          />
+        </div>
+        <PropertySketch
+          sessionId={sessionId}
+          rooms={rooms}
+          currentRoomId={selectedRoomId ?? currentRoomId}
+          sections={["roof", "elevations", "exterior"]}
+          structureName={structureName}
+          compact
+          className="flex-shrink-0 border-t border-slate-200"
         />
       </div>
     </div>

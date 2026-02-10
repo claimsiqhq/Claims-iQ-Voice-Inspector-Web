@@ -418,12 +418,12 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
               );
             })}
 
-            {/* Resize handles (when room selected) */}
+            {/* Resize handles (when room selected) — min 24px for touch */}
             {renderHandles && isSelected && onHandlePointerDown && (
               <>
                 {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
                   let hx: number, hy: number;
-                  const sz = 6;
+                  const sz = 12;
                   if (handle === "n") { hx = x + w / 2; hy = y; }
                   else if (handle === "s") { hx = x + w / 2; hy = y + h; }
                   else if (handle === "e") { hx = x + w; hy = y + h / 2; }

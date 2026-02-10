@@ -83,6 +83,12 @@ interface PropertySketchProps {
   className?: string;
   expanded?: boolean;
   showSurfaceAreas?: boolean;
+  /** When set, only render these sections (e.g. ["roof","elevations","exterior"] for read-only non-interior) */
+  sections?: ("interior" | "roof" | "elevations" | "exterior")[];
+  /** When set, force which structure to display (e.g. when embedded in SketchEditor) */
+  structureName?: string;
+  /** When true, use compact header (for embedded read-only roof/elevation section) */
+  compact?: boolean;
 }
 
 function calcFloorSF(dims: any): number {
@@ -992,7 +998,7 @@ function categorizeRooms(rooms: HierarchyRoom[]): {
 
 /* ─── Main Component ─── */
 
-export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true }: PropertySketchProps) {
+export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true, sections: sectionsFilter, structureName: structureNameProp, compact }: PropertySketchProps) {
   const [activeStructure, setActiveStructure] = useState<string | null>(null);
 
   const { data: hierarchyData } = useQuery<{ structures: StructureData[] }>({
@@ -1033,7 +1039,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     return Object.values(map);
   }, [hierarchyData, rooms]);
 
-  const currentStructureName = activeStructure || structures[0]?.name || "Main Dwelling";
+  const currentStructureName = structureNameProp ?? activeStructure ?? structures[0]?.name ?? "Main Dwelling";
   const currentStructureData = structures.find(s => s.name === currentStructureName) || structures[0];
   const structureRooms = currentStructureData?.rooms || [];
 
@@ -1044,8 +1050,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   const layout = useMemo(() => {
     const sections: Array<{ height: number; render: (y: number) => React.ReactNode }> = [];
+    const show = (key: "interior" | "roof" | "elevations" | "exterior") =>
+      !sectionsFilter || sectionsFilter.includes(key);
 
-    if (categories.interior.length > 0) {
+    if (show("interior") && categories.interior.length > 0) {
       const sec = InteriorSection({
         rooms: categories.interior, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas,
         adjacencies, openings: allOpenings,
@@ -1053,17 +1061,17 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
       sections.push(sec);
     }
 
-    if (categories.roofSlopes.length > 0) {
+    if (show("roof") && categories.roofSlopes.length > 0) {
       const sec = RoofPlanSection({ slopes: categories.roofSlopes, svgW, currentRoomId, onRoomClick });
       sections.push(sec);
     }
 
-    if (categories.elevations.length > 0) {
+    if (show("elevations") && categories.elevations.length > 0) {
       const sec = ElevationsSection({ elevations: categories.elevations, svgW, expanded: !!expanded, currentRoomId, onRoomClick, onEditRoom });
       sections.push(sec);
     }
 
-    if (categories.otherExterior.length > 0) {
+    if (show("exterior") && categories.otherExterior.length > 0) {
       const sec = OtherExteriorSection({ items: categories.otherExterior, svgW, expanded: !!expanded, currentRoomId, onRoomClick, onEditRoom });
       sections.push(sec);
     }
@@ -1074,9 +1082,11 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     }
 
     return { sections, totalHeight: totalH + 4 };
-  }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded, adjacencies, allOpenings]);
+  }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded, adjacencies, allOpenings, sectionsFilter]);
 
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
+
+  if (sectionsFilter && sectionsFilter.length > 0 && layout.sections.length === 0) return null;
 
   if (totalRooms === 0 && rooms.length === 0) {
     return (
@@ -1095,7 +1105,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     <div className={cn("bg-white rounded-lg border border-slate-200 overflow-hidden", className)} data-testid="property-sketch">
       <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/50">
         <div className="flex justify-between items-center mb-1">
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">Property Sketch</p>
+          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">
+            {compact ? "Roof & Elevations (read-only)" : "Property Sketch"}
+          </p>
+          {!compact && (
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-slate-400 font-mono">
               {structures.length > 1 ? `${structures.length} structures \u00B7 ` : ""}
@@ -1112,9 +1125,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
               </button>
             )}
           </div>
+          )}
         </div>
 
-        {structures.length > 1 && (
+        {!compact && structures.length > 1 && (
           <div className="flex gap-1 mt-1.5 overflow-x-auto">
             {structures.map((s) => (
               <button

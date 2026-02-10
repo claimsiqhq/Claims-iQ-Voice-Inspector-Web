@@ -60,11 +60,12 @@ The Sketch Editor provides a touch-first, on-canvas editing experience for inter
 - **No free-drag** — Room positions computed from dimensions + adjacency. Resize changes dimensions; layout recomputes.
 - **Add Room** — User taps wall → we create room + adjacency → layout places new room automatically.
 
-## Extending to Roof / Elevations
+## Roof / Elevations (Read-Only)
 
-- Roof and elevation sections currently render read-only (no handles, no Add Room).
-- To make editable: add tool-mode awareness to those sections; wall handles for elevation dimensions; similar persistence pattern.
-- Roof facets use different geometry (gable/hip); would need facet-specific handle logic.
+- When roof, elevation, or exterior rooms exist for the current structure, they appear below the interior editor in a read-only section titled "Roof & Elevations (read-only)".
+- SketchEditor embeds PropertySketch with `sections={["roof","elevations","exterior"]}` and `compact`, so the full sketch stays visible.
+- Roof and elevation sections are not editable; interior floor plan remains the only editable area.
+- To make roof/elevations editable: add tool-mode awareness to those sections; wall handles for elevation dimensions; similar persistence pattern.
 
 ## Undo / Redo
 
