@@ -3914,18 +3914,3 @@ Respond in JSON format:
 
   return httpServer;
 }
-ddress,
-            sessionId: sessions[0].id,
-            structures: claimStructures,
-          });
-        }
-      }
-      res.json(result);
-    } catch (error: any) {
-      logger.apiError("GET", "/api/gallery/sketches", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  return httpServer;
-}

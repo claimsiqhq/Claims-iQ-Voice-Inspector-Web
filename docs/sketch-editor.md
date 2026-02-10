@@ -9,7 +9,7 @@ The Sketch Editor provides a touch-first, on-canvas editing experience for inter
 | Mode | Description | Interaction |
 |------|-------------|-------------|
 | **Select** | Default mode. Tap room to select; drag handles to resize. | Room selection, wall/corner handle resize |
-| **Add Room** | Tap an existing room's wall to attach a new room. | Ghost preview → confirm dimensions → create room + adjacency |
+| **Add Room** | Tap an existing room's wall to attach a new room. | Toolbar button opens add-room flow; wall-tap placement (MVP) |
 | **Add Door** | Tap wall segment to place door. | Position stored as `positionOnWall` (0..1); drag along wall to reposition |
 | **Add Window** | Tap wall segment to place window. | Same as door; type differs for ESX export |
 | **Add Damage** | Tap inside room to place damage marker. | Marker stores `position` (room-relative x,y); click to edit note |
@@ -50,9 +50,9 @@ The Sketch Editor provides a touch-first, on-canvas editing experience for inter
 
 ## Architecture
 
-- **SketchRenderer** — Pure component. Receives `roomRects`, `openings`, `annotations`, `selectionState`. Renders SVG. No side effects.
-- **SketchEditor** — Owns tool mode, selection, pointer handlers, undo/redo, server persistence. Composes SketchRenderer.
-- **PropertySketch** — Read-only view. Uses SketchRenderer for interior; roof/elevations remain read-only sections.
+- **SketchRenderer** — Pure component. Receives `layouts`, `openings`, `annotations`, `selection`. Renders SVG. No side effects. Supports `forwardRef` for SVG element access.
+- **SketchEditor** — Owns tool mode, selection, pointer handlers, undo/redo, server persistence. Composes SketchRenderer. Uses BFS layout from `sketchLayout.ts`.
+- **PropertySketch** — Read-only view for non-edit mode. Interior, roof, elevations each have their own section. SketchEditor is shown when in edit mode.
 
 ## Layout Model
 
