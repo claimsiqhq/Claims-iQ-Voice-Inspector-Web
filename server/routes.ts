@@ -1401,6 +1401,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/inspection/:sessionId/rooms/:roomId/openings/:openingId", authenticateRequest, async (req, res) => {
+    try {
+      const openingId = parseInt(param(req.params.openingId));
+      const opening = await storage.getOpening(openingId);
+      if (!opening) return res.status(404).json({ error: "Opening not found" });
+
+      const parsed = openingUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid update data", errors: parsed.error.flatten().fieldErrors });
+
+      const updated = await storage.updateOpening(openingId, parsed.data);
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.delete("/api/inspection/:sessionId/rooms/:roomId/openings/:openingId", authenticateRequest, async (req, res) => {
     try {
       const openingId = parseInt(param(req.params.openingId));
