@@ -43,7 +43,7 @@ The Sketch Editor provides a touch-first, on-canvas editing experience for inter
 |--------|------|---------|
 | PATCH | `/api/rooms/:roomId/dimensions` | Update room dimensions (recalculates DIM_VARS) |
 | POST | `/api/inspection/:sessionId/rooms/:roomId/openings` | Create opening (wallDirection, positionOnWall, widthFt, heightFt) |
-| PATCH | `/api/inspection/:sessionId/rooms/:roomId/openings/:openingId` | Update opening (positionOnWall, widthFt, heightFt, etc.) |
+| PATCH | `/api/inspection/:sessionId/rooms/:roomId/openings/:openingId` | Update opening (positionOnWall, widthFt, heightFt, openingType, etc.) |
 | POST | `/api/inspection/:sessionId/rooms/:roomId/annotations` | Create annotation (position, label, value, annotationType) |
 | PATCH | `/api/inspection/:sessionId/annotations/:annotationId` | Update annotation |
 | POST | `/api/sessions/:sessionId/adjacencies` | Create room adjacency (for Add Room) |
