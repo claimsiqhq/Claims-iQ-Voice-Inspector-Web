@@ -337,6 +337,8 @@ export const lineItems = pgTable(
     depreciationType: varchar("depreciation_type", { length: 30 }).default("Recoverable"),
     depreciationRate: numeric("depreciation_rate", { precision: 5, scale: 2 }),
     wasteFactor: integer("waste_factor"),
+    tradeCode: varchar("trade_code", { length: 10 }),
+    coverageType: varchar("coverage_type", { length: 1 }).default("A"),
     provenance: varchar("provenance", { length: 20 }).default("voice"),
     // ── Financial / Depreciation Columns ──────────────
     taxAmount: real("tax_amount").default(0),
@@ -435,16 +437,17 @@ export const scopeLineItems = pgTable("scope_line_items", {
   tradeCode: varchar("trade_code", { length: 10 }).notNull(),
   quantityFormula: varchar("quantity_formula", { length: 50 }),
   defaultWasteFactor: real("default_waste_factor").default(0),
-  activityType: varchar("activity_type", { length: 20 }).default("install"),
+  activityType: varchar("activity_type", { length: 20 }).default("replace"),
+  coverageType: varchar("coverage_type", { length: 1 }).default("A"),
   scopeConditions: jsonb("scope_conditions"),
   companionRules: jsonb("companion_rules"),
+  xactCategoryCode: varchar("xact_category_code", { length: 10 }),
+  xactSelector: varchar("xact_selector", { length: 20 }),
+  notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
   // ── Financial behavior flags ──
   opEligibleDefault: boolean("op_eligible_default").default(true),
-  // Whether items in this trade typically receive O&P. Carriers may override per-claim.
   isCodeUpgrade: boolean("is_code_upgrade").default(false),
-  // Whether this item represents a building code upgrade (Ice & Water Barrier, GFCI, etc.)
-  // Code upgrades are typically "Paid When Incurred" — not paid until work is completed.
   isActive: boolean("is_active").default(true),
 });
 
@@ -459,6 +462,74 @@ export const regionalPriceSets = pgTable("regional_price_sets", {
   effectiveDate: varchar("effective_date", { length: 20 }),
   priceListVersion: varchar("price_list_version", { length: 20 }),
 });
+
+// ── Scope Trades (trade categories with O&P eligibility) ─────
+export const scopeTrades = pgTable("scope_trades", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 10 }).notNull().unique(),
+  name: varchar("name", { length: 100 }).notNull(),
+  xactCategoryPrefix: varchar("xact_category_prefix", { length: 10 }),
+  opEligible: boolean("op_eligible").default(true),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+});
+
+export const insertScopeTradeSchema = createInsertSchema(scopeTrades).omit({ id: true });
+export type ScopeTrade = typeof scopeTrades.$inferSelect;
+export type InsertScopeTrade = z.infer<typeof insertScopeTradeSchema>;
+
+// ── Scope Items (assembled scope for a specific estimate) ────
+export const scopeItems = pgTable("scope_items", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").references(() => inspectionRooms.id, { onDelete: "set null" }),
+  damageId: integer("damage_id").references(() => damageObservations.id, { onDelete: "set null" }),
+  catalogCode: varchar("catalog_code", { length: 30 }).references(() => scopeLineItems.code),
+  description: text("description").notNull(),
+  tradeCode: varchar("trade_code", { length: 10 }).notNull(),
+  quantity: real("quantity").notNull(),
+  unit: varchar("unit", { length: 10 }).notNull(),
+  quantityFormula: varchar("quantity_formula", { length: 50 }),
+  provenance: varchar("provenance", { length: 30 }).notNull().default("voice_command"),
+  coverageType: varchar("coverage_type", { length: 1 }).default("A"),
+  activityType: varchar("activity_type", { length: 20 }).default("replace"),
+  wasteFactor: real("waste_factor"),
+  status: varchar("status", { length: 20 }).default("active"),
+  parentScopeItemId: integer("parent_scope_item_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertScopeItemSchema = createInsertSchema(scopeItems).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type ScopeItem = typeof scopeItems.$inferSelect;
+export type InsertScopeItem = z.infer<typeof insertScopeItemSchema>;
+
+// ── Scope Summary (aggregate totals per trade per session) ───
+export const scopeSummary = pgTable("scope_summary", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  tradeCode: varchar("trade_code", { length: 10 }).notNull(),
+  tradeName: varchar("trade_name", { length: 100 }),
+  itemCount: integer("item_count").default(0),
+  quantitiesByUnit: jsonb("quantities_by_unit"),
+  totalMaterial: real("total_material").default(0),
+  totalLabor: real("total_labor").default(0),
+  totalEquipment: real("total_equipment").default(0),
+  totalTax: real("total_tax").default(0),
+  totalRCV: real("total_rcv").default(0),
+  totalDepreciation: real("total_depreciation").default(0),
+  totalACV: real("total_acv").default(0),
+  opEligible: boolean("op_eligible").default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertScopeSummarySchema = createInsertSchema(scopeSummary).omit({
+  id: true, updatedAt: true,
+});
+export type ScopeSummary = typeof scopeSummary.$inferSelect;
+export type InsertScopeSummary = z.infer<typeof insertScopeSummarySchema>;
 
 export const insertInspectionSessionSchema = createInsertSchema(inspectionSessions).omit({ id: true, startedAt: true, completedAt: true });
 export const insertStructureSchema = createInsertSchema(structures).omit({ id: true, createdAt: true });

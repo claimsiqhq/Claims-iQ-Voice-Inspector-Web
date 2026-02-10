@@ -29,8 +29,12 @@ import {
   type PolicyRule, type InsertPolicyRule,
   type TaxRule, type InsertTaxRule,
   scopeLineItems, regionalPriceSets,
+  scopeTrades, scopeItems, scopeSummary,
   type ScopeLineItem, type InsertScopeLineItem,
   type RegionalPriceSet, type InsertRegionalPriceSet,
+  type ScopeTrade, type InsertScopeTrade,
+  type ScopeItem, type InsertScopeItem,
+  type ScopeSummary, type InsertScopeSummary,
   userSettings, type UserSettings,
   inspectionFlows, type InspectionFlow, type InsertInspectionFlow,
 } from "@shared/schema";
@@ -186,6 +190,25 @@ export interface IStorage {
   getScopeLineItemsByTrade(tradeCode: string): Promise<ScopeLineItem[]>;
   getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined>;
   getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]>;
+
+  // ── Scope Trades ─────────────────────────────────
+  getScopeTrades(): Promise<ScopeTrade[]>;
+  getScopeTradeByCode(code: string): Promise<ScopeTrade | undefined>;
+
+  // ── Scope Items ──────────────────────────────────
+  createScopeItem(data: InsertScopeItem): Promise<ScopeItem>;
+  createScopeItems(data: InsertScopeItem[]): Promise<ScopeItem[]>;
+  getScopeItems(sessionId: number): Promise<ScopeItem[]>;
+  getScopeItemsForRoom(roomId: number): Promise<ScopeItem[]>;
+  getScopeItemsForDamage(damageId: number): Promise<ScopeItem[]>;
+  updateScopeItem(id: number, updates: Partial<ScopeItem>): Promise<ScopeItem | undefined>;
+  deleteScopeItem(id: number): Promise<void>;
+  getActiveScopeItemCount(sessionId: number): Promise<number>;
+
+  // ── Scope Summary ────────────────────────────────
+  upsertScopeSummary(sessionId: number, tradeCode: string, data: Partial<InsertScopeSummary>): Promise<ScopeSummary>;
+  getScopeSummary(sessionId: number): Promise<ScopeSummary[]>;
+  recalculateScopeSummary(sessionId: number): Promise<ScopeSummary[]>;
 
   createSupplementalClaim(data: InsertSupplementalClaim): Promise<SupplementalClaim>;
   getSupplementalsForSession(sessionId: number): Promise<SupplementalClaim[]>;
@@ -970,6 +993,124 @@ export class DatabaseStorage implements IStorage {
 
   async getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]> {
     return db.select().from(regionalPriceSets).where(eq(regionalPriceSets.regionId, regionId));
+  }
+
+  // ── Scope Trades ─────────────────────────────────
+
+  async getScopeTrades(): Promise<ScopeTrade[]> {
+    return db.select().from(scopeTrades).where(eq(scopeTrades.isActive, true)).orderBy(scopeTrades.sortOrder);
+  }
+
+  async getScopeTradeByCode(code: string): Promise<ScopeTrade | undefined> {
+    const [trade] = await db.select().from(scopeTrades).where(eq(scopeTrades.code, code)).limit(1);
+    return trade;
+  }
+
+  // ── Scope Items ──────────────────────────────────
+
+  async createScopeItem(data: InsertScopeItem): Promise<ScopeItem> {
+    const [item] = await db.insert(scopeItems).values(data).returning();
+    return item;
+  }
+
+  async createScopeItems(data: InsertScopeItem[]): Promise<ScopeItem[]> {
+    if (data.length === 0) return [];
+    return db.insert(scopeItems).values(data).returning();
+  }
+
+  async getScopeItems(sessionId: number): Promise<ScopeItem[]> {
+    return db.select().from(scopeItems)
+      .where(and(eq(scopeItems.sessionId, sessionId), eq(scopeItems.status, "active")))
+      .orderBy(scopeItems.tradeCode, scopeItems.createdAt);
+  }
+
+  async getScopeItemsForRoom(roomId: number): Promise<ScopeItem[]> {
+    return db.select().from(scopeItems)
+      .where(and(eq(scopeItems.roomId, roomId), eq(scopeItems.status, "active")));
+  }
+
+  async getScopeItemsForDamage(damageId: number): Promise<ScopeItem[]> {
+    return db.select().from(scopeItems)
+      .where(and(eq(scopeItems.damageId, damageId), eq(scopeItems.status, "active")));
+  }
+
+  async updateScopeItem(id: number, updates: Partial<ScopeItem>): Promise<ScopeItem | undefined> {
+    const [item] = await db.update(scopeItems).set(updates).where(eq(scopeItems.id, id)).returning();
+    return item;
+  }
+
+  async deleteScopeItem(id: number): Promise<void> {
+    await db.update(scopeItems).set({ status: "removed" }).where(eq(scopeItems.id, id));
+  }
+
+  async getActiveScopeItemCount(sessionId: number): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(scopeItems)
+      .where(and(eq(scopeItems.sessionId, sessionId), eq(scopeItems.status, "active")));
+    return result[0]?.count || 0;
+  }
+
+  // ── Scope Summary ────────────────────────────────
+
+  async upsertScopeSummary(
+    sessionId: number,
+    tradeCode: string,
+    data: Partial<InsertScopeSummary>
+  ): Promise<ScopeSummary> {
+    const [existing] = await db.select().from(scopeSummary)
+      .where(and(eq(scopeSummary.sessionId, sessionId), eq(scopeSummary.tradeCode, tradeCode)))
+      .limit(1);
+
+    if (existing) {
+      const [updated] = await db.update(scopeSummary)
+        .set(data)
+        .where(eq(scopeSummary.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(scopeSummary)
+      .values({ sessionId, tradeCode, ...data })
+      .returning();
+    return created;
+  }
+
+  async getScopeSummary(sessionId: number): Promise<ScopeSummary[]> {
+    return db.select().from(scopeSummary)
+      .where(eq(scopeSummary.sessionId, sessionId))
+      .orderBy(scopeSummary.tradeCode);
+  }
+
+  async recalculateScopeSummary(sessionId: number): Promise<ScopeSummary[]> {
+    const items = await this.getScopeItems(sessionId);
+    const trades = await this.getScopeTrades();
+    const tradeMap = new Map(trades.map(t => [t.code, t.name]));
+
+    const byTrade = new Map<string, ScopeItem[]>();
+    for (const item of items) {
+      const existing = byTrade.get(item.tradeCode) || [];
+      existing.push(item);
+      byTrade.set(item.tradeCode, existing);
+    }
+
+    const summaries: ScopeSummary[] = [];
+    for (const [tradeCode, tradeItems] of byTrade) {
+      const tradeName = tradeMap.get(tradeCode);
+      const quantitiesByUnit: Record<string, number> = {};
+      for (const item of tradeItems) {
+        quantitiesByUnit[item.unit] = (quantitiesByUnit[item.unit] || 0) + item.quantity;
+      }
+
+      const summary = await this.upsertScopeSummary(sessionId, tradeCode, {
+        tradeName: tradeName || tradeCode,
+        itemCount: tradeItems.length,
+        quantitiesByUnit,
+        opEligible: trades.find(t => t.code === tradeCode)?.opEligible ?? true,
+      });
+      summaries.push(summary);
+    }
+
+    return summaries;
   }
 
   async createSupplementalClaim(data: InsertSupplementalClaim): Promise<SupplementalClaim> {

@@ -2038,6 +2038,110 @@ export async function registerRoutes(
     }
   });
 
+  // ── Scope Assembly ─────────────────────────────────
+
+  app.post("/api/inspection/:sessionId/scope/assemble", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { roomId, damageId } = req.body;
+
+      if (!roomId || !damageId) {
+        return res.status(400).json({ message: "roomId and damageId are required" });
+      }
+
+      const room = await storage.getRoom(roomId);
+      if (!room) return res.status(404).json({ message: "Room not found" });
+
+      const damages = await storage.getDamages(roomId);
+      const damage = damages.find(d => d.id === damageId);
+      if (!damage) return res.status(404).json({ message: "Damage not found" });
+
+      let netWallDeduction = 0;
+      try {
+        const openings = await storage.getOpeningsForRoom(roomId);
+        const openingData: OpeningData[] = openings.map(o => ({
+          openingType: o.openingType || "door",
+          widthFt: (o.widthFt ?? o.width ?? 0) as number,
+          heightFt: (o.heightFt ?? o.height ?? 0) as number,
+          quantity: o.quantity ?? 1,
+          opensInto: o.opensInto ?? null,
+          goesToFloor: o.goesToFloor ?? false,
+          goesToCeiling: o.goesToCeiling ?? false,
+        }));
+        const dims = room.dimensions as { length?: number; width?: number; height?: number } | null;
+        if (dims?.length && dims?.width) {
+          const grossWall = ((dims.length! + dims.width!) * 2) * (dims.height ?? 8);
+          const { afterMW } = calculateDimVars(
+            { length: dims.length!, width: dims.width!, height: dims.height ?? 8 },
+            openingData
+          );
+          netWallDeduction = Math.max(0, grossWall - (afterMW?.W ?? 0));
+        }
+      } catch {
+        // Use 0 if DIM_VARS calculation fails
+      }
+
+      const { assembleScope } = await import("./scopeAssemblyService");
+      const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+
+      res.json({
+        created: result.created.length,
+        companions: result.companionItems.length,
+        manualNeeded: result.manualQuantityNeeded,
+        warnings: result.warnings,
+        items: [...result.created, ...result.companionItems],
+      });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Scope assembly failed" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/scope/items", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const items = await storage.getScopeItems(sessionId);
+      res.json(items);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/scope/summary", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      let summary = await storage.getScopeSummary(sessionId);
+      if (summary.length === 0) {
+        summary = await storage.recalculateScopeSummary(sessionId);
+      }
+      res.json(summary);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/scope/items/:id", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(param(req.params.id));
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { quantity, description, wasteFactor, status } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (quantity !== undefined) updates.quantity = quantity;
+      if (description !== undefined) updates.description = description;
+      if (wasteFactor !== undefined) updates.wasteFactor = wasteFactor;
+      if (status !== undefined) updates.status = status;
+
+      const item = await storage.updateScopeItem(id, updates as any);
+      if (item) await storage.recalculateScopeSummary(sessionId);
+      res.json(item);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Photos ───────────────────────────────────────
 
   app.post("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
