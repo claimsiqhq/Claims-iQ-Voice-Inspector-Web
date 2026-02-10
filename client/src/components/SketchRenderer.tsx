@@ -51,6 +51,14 @@ export interface SelectionState {
   selectedAnnotationId: number | null;
 }
 
+export interface GhostPreview {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  wall: "north" | "south" | "east" | "west";
+}
+
 type WallSide = "north" | "south" | "east" | "west";
 
 function getOpeningWallSide(opening: OpeningData): WallSide {
@@ -244,6 +252,7 @@ export interface SketchRendererProps {
   annotations: AnnotationData[];
   selection: SelectionState;
   viewBox: { x: number; y: number; w: number; h: number };
+  ghostPreview?: GhostPreview | null;
   onRoomPointerDown?: (roomId: number, e: React.PointerEvent) => void;
   onOpeningPointerDown?: (openingId: number, e: React.PointerEvent) => void;
   onAnnotationPointerDown?: (annotationId: number, e: React.PointerEvent) => void;
@@ -257,6 +266,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
   annotations,
   selection,
   viewBox,
+  ghostPreview,
   onRoomPointerDown,
   onOpeningPointerDown,
   onAnnotationPointerDown,
@@ -282,6 +292,18 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
       className="w-full h-full"
       style={{ touchAction: "none" }}
     >
+      {ghostPreview && (
+        <rect
+          x={ghostPreview.x}
+          y={ghostPreview.y}
+          width={ghostPreview.w}
+          height={ghostPreview.h}
+          fill="rgba(34,197,94,0.08)"
+          stroke="#22C55E"
+          strokeWidth={2}
+          strokeDasharray="6,4"
+        />
+      )}
       {layouts.map((layout) => {
         const { roomId, x, y, w, h, room } = layout;
         const dims = room.dimensions as { length?: number; width?: number } | undefined;

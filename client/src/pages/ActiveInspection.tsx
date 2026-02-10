@@ -1981,6 +1981,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   rooms={rooms}
                   sessionId={sessionId}
                   currentRoomId={currentRoomId}
+                  structureName={currentStructure}
                   onRoomSelect={(roomId) => {
                     setCurrentRoomId(roomId);
                     setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
