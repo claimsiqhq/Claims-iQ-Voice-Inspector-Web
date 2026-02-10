@@ -207,7 +207,7 @@ function layoutRoomsWithAdjacency(
       }
 
       let hasCollision = false;
-      for (const [, placed] of positioned) {
+      for (const placed of Array.from(positioned.values())) {
         if (
           newX < placed.x + placed.w &&
           newX + otherSize.w > placed.x &&
@@ -230,7 +230,7 @@ function layoutRoomsWithAdjacency(
   const unplaced = roomList.filter((r) => !positioned.has(r.id));
   if (unplaced.length > 0) {
     let maxY = 0;
-    for (const [, p] of positioned) {
+    for (const p of Array.from(positioned.values())) {
       maxY = Math.max(maxY, p.y + p.h);
     }
 
@@ -253,14 +253,14 @@ function layoutRoomsWithAdjacency(
 
   let minX = Infinity,
     minY = Infinity;
-  for (const [, p] of positioned) {
+  for (const p of Array.from(positioned.values())) {
     minX = Math.min(minX, p.x);
     minY = Math.min(minY, p.y);
   }
   const offsetX = PADDING - minX;
   const offsetY = PADDING - minY;
   const result: PositionedRoom[] = [];
-  for (const [, p] of positioned) {
+  for (const p of Array.from(positioned.values())) {
     result.push({ ...p, x: p.x + offsetX, y: p.y + offsetY });
   }
 

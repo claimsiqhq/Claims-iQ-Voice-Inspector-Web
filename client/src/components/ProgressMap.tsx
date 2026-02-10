@@ -147,10 +147,10 @@ export default function ProgressMap({
               {/* Live Sketch */}
               {rooms.length > 0 && (
                 <FloorPlanSketch
-                  rooms={rooms}
-                  adjacencies={adjacencies}
-                  openings={openingsData}
-                  currentRoomId={currentRoomId}
+                  rooms={rooms as any}
+                  adjacencies={(adjacencies as any) ?? []}
+                  openings={(openingsData as any) ?? []}
+                  currentRoomId={currentRoomId ?? null}
                   onRoomClick={onNavigateToRoom}
                 />
               )}
