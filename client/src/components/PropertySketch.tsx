@@ -123,6 +123,8 @@ const ANNOTATION_COLOR = "#D97706";
 const WINDOW_COLOR = "#60A5FA";
 const DIM_LINE_COLOR = "#94A3B8";
 const DIM_TEXT_COLOR = "#64748B";
+const HANDLE_SIZE = WALL_THICK;
+const HANDLE_COLOR = CURRENT_STROKE;
 
 const STATUS_STYLES: Record<string, { fill: string; stroke: string; text: string; dash: string }> = {
   complete: { fill: "rgba(34,197,94,0.06)", stroke: "#22C55E", text: "#166534", dash: "" },
@@ -144,6 +146,39 @@ function getStyle(room: RoomData, isCurrent: boolean) {
 
 function truncate(text: string, max: number) {
   return text.length > max ? text.substring(0, max - 1) + "\u2026" : text;
+}
+
+/* ─── Selection Handles ─── */
+
+function SelectionHandles({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+  const hs = HANDLE_SIZE;
+  const half = hs / 2;
+  const positions = [
+    { cx: x, cy: y },
+    { cx: x + w / 2, cy: y },
+    { cx: x + w, cy: y },
+    { cx: x + w, cy: y + h / 2 },
+    { cx: x + w, cy: y + h },
+    { cx: x + w / 2, cy: y + h },
+    { cx: x, cy: y + h },
+    { cx: x, cy: y + h / 2 },
+  ];
+  return (
+    <>
+      {positions.map((p, i) => (
+        <rect
+          key={i}
+          x={p.cx - half}
+          y={p.cy - half}
+          width={hs}
+          height={hs}
+          fill={HANDLE_COLOR}
+          stroke="white"
+          strokeWidth={0.4}
+        />
+      ))}
+    </>
+  );
 }
 
 /* ─── Badge helpers ─── */
@@ -627,8 +662,7 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
                     strokeDasharray={st.dash || undefined} />
 
                   {isCurrent && (
-                    <rect x={x - 1} y={y - 1} width={w + 2} height={h + 2}
-                      fill="none" stroke={CURRENT_STROKE} strokeWidth={1} strokeDasharray="4,2" opacity={0.5} />
+                    <SelectionHandles x={x} y={y} w={w} h={h} />
                   )}
 
                   <text x={x + w / 2} y={labelY}
@@ -1152,7 +1186,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
       <svg
         viewBox={`0 0 ${svgW} ${layout.totalHeight}`}
         className="w-full"
-        style={expanded ? undefined : { maxHeight: 500 }}
+        style={{ ...(expanded ? {} : { maxHeight: 500 }), userSelect: 'none', WebkitUserSelect: 'none' }}
       >
         <defs>
           <pattern id="sketchGrid" width="10" height="10" patternUnits="userSpaceOnUse">
