@@ -1,17 +1,14 @@
 import type { Express } from "express";
-import { emit } from "./events";
-import { storage } from "./storage";
-import { param, parseIntParam, decodeBase64Payload, MAX_PHOTO_BYTES } from "./utils";
-import { db } from "./db";
-import { claims, inspectionSessions, inspectionPhotos, inspectionRooms, structures, lineItems, damageObservations } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
-import { generateESXFile } from "./esxGenerator";
-import { reviewEstimate } from "./aiReview";
-import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
-import { authenticateRequest, authenticateSupabaseToken, requireRole, optionalAuth } from "./auth";
-import { lookupCatalogItem, getRegionalPrice, calculateLineItemPrice, calculateEstimateTotals, validateEstimate, calculateDimVars, type RoomDimensions, type OpeningData } from "./estimateEngine";
+import { emit } from "../events";
+import { storage } from "../storage";
+import { param, decodeBase64Payload, MAX_PHOTO_BYTES } from "../utils";
+import { generateESXFile } from "../esxGenerator";
+import { reviewEstimate } from "../aiReview";
+import { supabase, PHOTOS_BUCKET } from "../supabase";
+import { authenticateRequest } from "../auth";
+import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensions, type OpeningData } from "../estimateEngine";
 import { z } from "zod";
-import { logger } from "./logger";
+import { logger } from "../logger";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
@@ -165,7 +162,7 @@ const adjacencyCreateSchema = z.object({
   openingId: z.number().int().positive().nullable().optional(),
 });
 
-export async function registerLegacyRoutes(app: Express): Promise<void> {
+export async function registerInspectionRoutes(app: Express): Promise<void> {
   app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
@@ -217,7 +214,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
       if (!session) return res.status(404).json({ message: "Session not found" });
       const claim = await storage.getClaim(session.claimId);
       const currentPhase = req.query.phase ? parseInt(req.query.phase as string) : (session.currentPhase || 1);
-      const { validatePhaseTransition } = await import("./phaseValidation");
+      const { validatePhaseTransition } = await import("../phaseValidation");
       const validation = await validatePhaseTransition(
         storage,
         sessionId,
@@ -812,7 +809,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
       try {
         const room = await storage.getRoom(roomId);
         if (room) {
-          const { assembleScope } = await import("./scopeAssemblyService");
+          const { assembleScope } = await import("../scopeAssemblyService");
           const result = await assembleScope(storage, sessionId, room, damage);
           const itemsCreated = result.created.length + result.companionItems.length;
           const items: Array<{ code: string; description: string; quantity: number; unit: string; unitPrice?: number; totalPrice?: number; source: string }> = [];
@@ -1279,7 +1276,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
         // Use 0 if DIM_VARS calculation fails
       }
 
-      const { assembleScope } = await import("./scopeAssemblyService");
+      const { assembleScope } = await import("../scopeAssemblyService");
       const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
 
       res.json({
@@ -1309,9 +1306,9 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
       const room = await storage.getRoom(roomId);
       if (!room) return res.status(404).json({ error: "Room not found" });
 
-      const { getMatchingTemplates } = await import("./perilTemplates");
-      const { lookupCatalogItem } = await import("./estimateEngine");
-      const { deriveQuantity } = await import("./scopeQuantityEngine");
+      const { getMatchingTemplates } = await import("../perilTemplates");
+      const { lookupCatalogItem } = await import("../estimateEngine");
+      const { deriveQuantity } = await import("../scopeQuantityEngine");
 
       const perilType = (claim.perilType || "water").toLowerCase().replace(/_/g, " ").split(" ")[0] || "water";
       const roomType = room.roomType || "interior_bedroom";
@@ -1340,7 +1337,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
         const catalogItem = await lookupCatalogItem(templateItem.catalogCode);
         if (!catalogItem) continue;
 
-        const formula = (catalogItem.quantityFormula || "MANUAL") as import("./scopeQuantityEngine").QuantityFormula;
+        const formula = (catalogItem.quantityFormula || "MANUAL") as import("../scopeQuantityEngine").QuantityFormula;
         const qResult = formula !== "MANUAL" ? deriveQuantity(room, formula) : null;
         const quantity = (qResult?.quantity ?? 1) * (templateItem.quantityMultiplier || 1);
 
@@ -1438,7 +1435,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
         storage.getRooms(sessionId),
         storage.getDamagesForSession(sessionId),
       ]);
-      const { validateScopeCompleteness } = await import("./scopeValidation");
+      const { validateScopeCompleteness } = await import("../scopeValidation");
       const validation = await validateScopeCompleteness(storage, sessionId, scopeItems, rooms, damages);
       res.json(validation);
     } catch (error: any) {
@@ -1671,7 +1668,7 @@ Respond in JSON format:
       const photo = await storage.getPhoto(photoId);
       if (photo?.roomId && analysis.damageVisible && analysis.damageVisible.length > 0) {
         try {
-          const { processPhotoAnalysis } = await import("./photoScopeBridge");
+          const { processPhotoAnalysis } = await import("../photoScopeBridge");
           damageSuggestions = processPhotoAnalysis(analysis, sessionId, photo.roomId);
         } catch (err) {
           logger.apiError(req.method, req.path, err as Error);
@@ -2149,7 +2146,7 @@ Respond in JSON format:
       const transcript = exportPrefs.includeTranscriptInExport ? await storage.getTranscript(sessionId) : [];
 
       // Import the PDF generator
-      const { generateInspectionPDF } = await import("./pdfGenerator");
+      const { generateInspectionPDF } = await import("../pdfGenerator");
 
       // Build categories from line items
       const categoryMap = new Map<string, typeof items>();
@@ -2218,7 +2215,7 @@ Respond in JSON format:
       const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
       const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
 
-      const { generatePhotoReportPDF } = await import("./photoReportGenerator");
+      const { generatePhotoReportPDF } = await import("../photoReportGenerator");
 
       const pdfBuffer = await generatePhotoReportPDF({
         claim: claim || null,
@@ -2257,7 +2254,7 @@ Respond in JSON format:
       const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
       const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
 
-      const { generatePhotoReportDOCX } = await import("./photoReportGenerator");
+      const { generatePhotoReportDOCX } = await import("../photoReportGenerator");
 
       const docxBuffer = await generatePhotoReportDOCX({
         claim: claim || null,

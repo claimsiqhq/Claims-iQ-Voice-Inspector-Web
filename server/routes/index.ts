@@ -13,7 +13,7 @@ import { notificationsRouter } from "./notifications";
 import { realtimeRouter } from "./realtime";
 import { logsRouter } from "./logs";
 import { galleryRouter } from "./gallery";
-import { registerLegacyRoutes } from "../routes.legacy";
+import { registerInspectionRoutes } from "./inspection";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -71,8 +71,8 @@ export async function registerRoutes(
   app.use("/api/logs", logsRouter());
   app.use("/api/gallery", galleryRouter());
 
-  // ─── Legacy routes (to be extracted incrementally) ─
-  await registerLegacyRoutes(app);
+  // ─── Inspection routes (sessions, rooms, scope, photos, export, etc.) ─
+  await registerInspectionRoutes(app);
 
   return httpServer;
 }
