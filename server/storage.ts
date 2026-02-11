@@ -43,6 +43,8 @@ import { eq, and, desc, sql } from "drizzle-orm";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByEmailOrUsername(identifier: string): Promise<User | undefined>;
   getUserBySupabaseId(supabaseAuthId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   syncSupabaseUser(supabaseAuthId: string, email: string, fullName: string): Promise<User>;
@@ -254,6 +256,18 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async getUserByEmailOrUsername(identifier: string): Promise<User | undefined> {
+    if (identifier.includes("@")) {
+      return this.getUserByEmail(identifier);
+    }
+    return this.getUserByUsername(identifier);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {

@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await signUp(email, password, fullName);
+      await signUp(email, password, fullName, username.trim() || undefined);
     } catch (err: any) {
       setError(err?.message || "Sign up failed. Please try again.");
     } finally {
@@ -72,11 +73,11 @@ export default function LoginPage() {
             <TabsContent value="signin" className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Mail className="h-4 w-4" /> Email
+                  <Mail className="h-4 w-4" /> Email or username
                 </label>
                 <Input
-                  type="email"
-                  placeholder="you@example.com"
+                  type="text"
+                  placeholder="adjuster@demo.claimsiq.com or adjuster"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="border-gray-300"
@@ -133,6 +134,19 @@ export default function LoginPage() {
                   placeholder="John Doe"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  className="border-gray-300"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <User className="h-4 w-4" /> Username
+                </label>
+                <Input
+                  type="text"
+                  placeholder="johndoe"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="border-gray-300"
                 />
               </div>

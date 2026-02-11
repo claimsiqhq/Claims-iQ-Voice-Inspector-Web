@@ -2,8 +2,37 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 import { enqueueMutation } from "./offlineQueue";
 
+const LOCAL_TOKEN_KEY = "claimsiq_local_token";
+
+export function getLocalToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(LOCAL_TOKEN_KEY) || sessionStorage.getItem(LOCAL_TOKEN_KEY);
+}
+
+export function setLocalToken(token: string, rememberMe: boolean): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(LOCAL_TOKEN_KEY);
+  sessionStorage.removeItem(LOCAL_TOKEN_KEY);
+  if (rememberMe) {
+    localStorage.setItem(LOCAL_TOKEN_KEY, token);
+  } else {
+    sessionStorage.setItem(LOCAL_TOKEN_KEY, token);
+  }
+}
+
+export function clearLocalToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(LOCAL_TOKEN_KEY);
+  sessionStorage.removeItem(LOCAL_TOKEN_KEY);
+}
+
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
+  const localToken = getLocalToken();
+  if (localToken) {
+    headers["Authorization"] = `Bearer ${localToken}`;
+    return headers;
+  }
   if (supabase) {
     try {
       const { data } = await supabase.auth.getSession();

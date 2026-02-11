@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { getLocalToken, setLocalToken, clearLocalToken } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export interface AuthUser {
@@ -17,8 +18,8 @@ interface AuthContextType {
   user: AuthUser | null;
   role: string | null;
   loading: boolean;
-  signIn: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signIn: (emailOrUsername: string, password: string, rememberMe?: boolean) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, username?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<AuthUser, "fullName" | "title" | "avatarUrl">>) => void;
@@ -33,13 +34,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
+    const rememberMe = localStorage.getItem("claimsiq_remember_me") === "true";
+    const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
+
+    // Try local token first
+    const localToken = getLocalToken();
+    if (localToken) {
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${localToken}` },
+      })
+        .then((res) => {
+          if (res.ok) return res.json();
+          clearLocalToken();
+          return null;
+        })
+        .then((profile) => {
+          if (profile) setUser(profile);
+        })
+        .catch(() => clearLocalToken())
+        .finally(() => setLoading(false));
+      return;
+    }
+
     if (!supabase) {
       setLoading(false);
       return;
     }
-
-    const rememberMe = localStorage.getItem("claimsiq_remember_me") === "true";
-    const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
 
     if (!rememberMe && !sessionActive) {
       supabase.auth.getSession().then(({ data }) => {
@@ -122,12 +142,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout);
   }, []);
 
-  async function fetchUserProfile(): Promise<AuthUser | null> {
+  async function fetchUserProfile(token?: string): Promise<AuthUser | null> {
     try {
+      const authToken = token || getLocalToken() || (supabase ? (await supabase.auth.getSession()).data.session?.access_token : null);
+      if (!authToken) return null;
       const response = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ""}`,
-        },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
       if (!response.ok) return null;
       return response.json();
@@ -143,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     accessToken?: string
   ): Promise<AuthUser | null> {
     try {
-      const token = accessToken || (await supabase.auth.getSession()).data.session?.access_token || "";
+      const token = accessToken || (supabase ? (await supabase.auth.getSession()).data.session?.access_token : null) || "";
       const response = await fetch("/api/auth/sync", {
         method: "POST",
         headers: {
@@ -165,61 +185,112 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function signIn(email: string, password: string, rememberMe: boolean = true) {
+  async function signIn(emailOrUsername: string, password: string, rememberMe: boolean = true) {
     try {
-      if (!supabase) {
-        toast({ title: "Sign in failed", description: "Authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.", variant: "destructive" });
-        return;
+      // Set remember me flag BEFORE auth (for Supabase custom storage)
+      if (rememberMe) {
+        localStorage.setItem("claimsiq_remember_me", "true");
+        sessionStorage.removeItem("claimsiq_session_active");
+      } else {
+        localStorage.removeItem("claimsiq_remember_me");
+        sessionStorage.setItem("claimsiq_session_active", "true");
       }
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+
+      // Try local auth first (works with or without Supabase)
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailOrUsername: emailOrUsername.trim(),
+          password,
+        }),
       });
-      if (error) throw error;
-      if (data.session && data.user) {
-        if (rememberMe) {
-          localStorage.setItem("claimsiq_remember_me", "true");
-        } else {
-          localStorage.removeItem("claimsiq_remember_me");
-          sessionStorage.setItem("claimsiq_session_active", "true");
-        }
-        const token = data.session.access_token;
-        const profile =
-          (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
-          (await fetchUserProfile());
-        if (!profile) {
-          throw new Error("Unable to load your profile. Please try again.");
-        }
+
+      if (loginRes.ok) {
+        const { token, user: profile } = await loginRes.json();
+        setLocalToken(token, rememberMe);
         setUser(profile);
         setLocation("/");
         toast({ title: "Signed in successfully" });
+        return;
+      }
+
+      // Fall back to Supabase if configured
+      if (supabase) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: emailOrUsername,
+          password,
+        });
+        if (error) throw error;
+        if (data.session && data.user) {
+          const token = data.session.access_token;
+          const profile =
+            (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
+            (await fetchUserProfile(token));
+          if (!profile) {
+            throw new Error("Unable to load your profile. Please try again.");
+          }
+          setUser(profile);
+          setLocation("/");
+          toast({ title: "Signed in successfully" });
+        }
+      } else {
+        const err = await loginRes.json().catch(() => ({}));
+        throw new Error(err.message || "Invalid email/username or password");
       }
     } catch (error: any) {
       toast({ title: "Sign in failed", description: error.message, variant: "destructive" });
     }
   }
 
-  async function signUp(email: string, password: string, fullName: string) {
+  async function signUp(email: string, password: string, fullName: string, username?: string) {
     try {
-      if (!supabase) {
-        toast({ title: "Sign up failed", description: "Authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.", variant: "destructive" });
-        return;
-      }
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
+      // Set remember me for new users (default true)
+      localStorage.setItem("claimsiq_remember_me", "true");
+      sessionStorage.removeItem("claimsiq_session_active");
+
+      // Try local registration first
+      const registerRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username || email.split("@")[0],
+          email: email || undefined,
+          password,
+          fullName: fullName || undefined,
+        }),
       });
-      if (error) throw error;
-      if (data.session && data.user) {
-        const token = data.session.access_token;
-        const profile = await syncUserToBackend(data.user.id, email, fullName, token);
-        if (!profile) {
-          throw new Error("Unable to complete registration. Please try again.");
-        }
+
+      if (registerRes.ok) {
+        const { token, user: profile } = await registerRes.json();
+        setLocalToken(token, true);
+        setUser(profile);
         setLocation("/");
         toast({ title: "Account created successfully" });
-      } else if (data.user) {
-        toast({ title: "Check your email", description: "Please verify your email address to complete registration." });
+        return;
+      }
+
+      // Fall back to Supabase if configured
+      if (supabase) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data.session && data.user) {
+          const token = data.session.access_token;
+          const profile = await syncUserToBackend(data.user.id, email, fullName, token);
+          if (!profile) {
+            throw new Error("Unable to complete registration. Please try again.");
+          }
+          setLocation("/");
+          toast({ title: "Account created successfully" });
+        } else if (data.user) {
+          toast({ title: "Check your email", description: "Please verify your email address to complete registration." });
+        }
+      } else {
+        const err = await registerRes.json().catch(() => ({}));
+        throw new Error(err.message || "Registration failed");
       }
     } catch (error: any) {
       toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
@@ -228,9 +299,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     try {
+      clearLocalToken();
       localStorage.removeItem("claimsiq_remember_me");
       sessionStorage.removeItem("claimsiq_session_active");
-      await supabase.auth.signOut();
+      if (supabase) await supabase.auth.signOut();
       setUser(null);
       setLocation("/login");
       toast({ title: "Signed out" });
@@ -240,11 +312,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function refreshSession() {
-    const session = await supabase.auth.getSession();
-    if (session.data.session) {
-      const profile = await fetchUserProfile();
-      if (profile) {
-        setUser(profile);
+    const localToken = getLocalToken();
+    if (localToken) {
+      const profile = await fetchUserProfile(localToken);
+      if (profile) setUser(profile);
+      return;
+    }
+    if (supabase) {
+      const session = await supabase.auth.getSession();
+      if (session.data.session) {
+        const profile = await fetchUserProfile();
+        if (profile) setUser(profile);
       }
     }
   }

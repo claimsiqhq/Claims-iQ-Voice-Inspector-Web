@@ -13,6 +13,7 @@
  *   - Pricing catalog (via existing seed endpoint)
  */
 
+import bcrypt from "bcrypt";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../shared/schema";
@@ -206,15 +207,24 @@ async function seedDemoData() {
   // ─── Create Users ───
   console.log("👤 Creating demo users...");
   const createdUsers: Record<string, string> = {};
+  const hashedPassword = await bcrypt.hash("demo123", 10);
   for (const user of DEMO_USERS) {
     const existing = await db.query.users.findFirst({
       where: eq(schema.users.username, user.username),
     });
     if (existing) {
+      // Update password in case we switched from plain to hashed
+      await db
+        .update(schema.users)
+        .set({ password: hashedPassword })
+        .where(eq(schema.users.id, existing.id));
       createdUsers[user.role] = existing.id;
       console.log(`  Exists: ${user.fullName} (${user.role})`);
     } else {
-      const [created] = await db.insert(schema.users).values(user).returning();
+      const [created] = await db
+        .insert(schema.users)
+        .values({ ...user, password: hashedPassword })
+        .returning();
       createdUsers[user.role] = created.id;
       console.log(`  Created: ${user.fullName} (${user.role})`);
     }

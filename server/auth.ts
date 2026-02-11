@@ -1,6 +1,7 @@
 import { type Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { supabase } from "./supabase";
+import { verifyLocalToken } from "./localAuth";
 
 declare global {
   namespace Express {
@@ -19,6 +20,18 @@ declare global {
   }
 }
 
+function setReqUser(req: Request, user: { id: string; email: string | null; role: string; fullName: string | null; title: string | null; avatarUrl: string | null; supabaseAuthId: string | null }) {
+  req.user = {
+    id: user.id,
+    email: user.email || "",
+    role: user.role,
+    fullName: user.fullName,
+    title: user.title ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    supabaseAuthId: user.supabaseAuthId,
+  };
+}
+
 export async function authenticateRequest(
   req: Request,
   res: Response,
@@ -33,6 +46,24 @@ export async function authenticateRequest(
 
     const token = authHeader.substring(7);
 
+    // Try local JWT first
+    const localPayload = verifyLocalToken(token);
+    if (localPayload) {
+      const user = await storage.getUser(localPayload.userId);
+      if (!user) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      if (!user.isActive) {
+        res.status(403).json({ message: "Account is deactivated" });
+        return;
+      }
+      setReqUser(req, user);
+      next();
+      return;
+    }
+
+    // Fall back to Supabase
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
       res.status(401).json({ message: "Invalid or expired token" });
@@ -40,7 +71,6 @@ export async function authenticateRequest(
     }
 
     const supabaseAuthId = authData.user.id;
-
     const user = await storage.getUserBySupabaseId(supabaseAuthId);
     if (!user) {
       res.status(401).json({ message: "User not found" });
@@ -52,16 +82,7 @@ export async function authenticateRequest(
       return;
     }
 
-    req.user = {
-      id: user.id,
-      email: user.email || "",
-      role: user.role,
-      fullName: user.fullName,
-      title: user.title ?? null,
-      avatarUrl: user.avatarUrl ?? null,
-      supabaseAuthId: user.supabaseAuthId,
-    };
-
+    setReqUser(req, user);
     next();
   } catch (error) {
     res.status(500).json({ message: "Authentication failed" });
@@ -88,7 +109,7 @@ export async function authenticateSupabaseToken(
       return;
     }
 
-    req.supabaseUser = authData.user;
+    req.supabaseUser = authData.user as unknown as { id: string; email?: string; [key: string]: unknown };
     next();
   } catch (error) {
     res.status(500).json({ message: "Authentication failed" });
@@ -124,6 +145,18 @@ export async function optionalAuth(
 
     const token = authHeader.substring(7);
 
+    const localPayload = verifyLocalToken(token);
+    if (localPayload) {
+      const user = await storage.getUser(localPayload.userId);
+      if (user && user.isActive) {
+        setReqUser(req, user);
+      } else {
+        req.user = undefined;
+      }
+      next();
+      return;
+    }
+
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
       req.user = undefined;
@@ -132,17 +165,8 @@ export async function optionalAuth(
     }
 
     const user = await storage.getUserBySupabaseId(authData.user.id);
-
     if (user) {
-      req.user = {
-        id: user.id,
-        email: user.email || "",
-        role: user.role,
-        fullName: user.fullName,
-        title: user.title ?? null,
-        avatarUrl: user.avatarUrl ?? null,
-        supabaseAuthId: user.supabaseAuthId,
-      };
+      setReqUser(req, user);
     } else {
       req.user = undefined;
     }
