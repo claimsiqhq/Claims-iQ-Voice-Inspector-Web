@@ -445,7 +445,7 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/sessions/${sessionId}/adjacencies`] });
       onRoomUpdate?.();
     } catch (e) {
-      console.error("Add room error:", e);
+      logger.error("SketchEditor", "Add room error", e);
     }
   }, [addRoomPopover, addRoomForm, sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, pushHistory]);
 
@@ -465,7 +465,7 @@ export default function SketchEditor({
           onRoomUpdate?.();
         }
       } catch (e) {
-        console.error("Failed to persist opening position:", e);
+        logger.error("SketchEditor", "Failed to persist opening position", e);
       }
     },
     [sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate]
@@ -533,7 +533,7 @@ export default function SketchEditor({
                   onRoomUpdate?.();
                 }
               } catch (err) {
-                console.error("Create opening error:", err);
+                logger.error("SketchEditor", "Create opening error", err);
               }
             })();
             return;
@@ -583,7 +583,7 @@ export default function SketchEditor({
                   onRoomUpdate?.();
                 }
               } catch (err) {
-                console.error("Create annotation error:", err);
+                logger.error("SketchEditor", "Create annotation error", err);
               }
             })();
             return;

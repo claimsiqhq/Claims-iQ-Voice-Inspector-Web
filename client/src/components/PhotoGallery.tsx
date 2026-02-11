@@ -492,7 +492,7 @@ export default function PhotoGallery({ photos, className, sessionId, onDeletePho
                   setAnnotatingPhoto(null);
                 }
               } catch (e) {
-                console.error("Error saving annotations:", e);
+                logger.error("PhotoGallery", "Error saving annotations", e);
               }
             }}
             onCancel={() => setAnnotatingPhoto(null)}

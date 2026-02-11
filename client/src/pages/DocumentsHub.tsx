@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAuthHeaders } from "@/lib/queryClient";
 import Layout from "@/components/Layout";
@@ -11,7 +11,8 @@ import {
   CheckCircle2, Upload, AlertCircle, Clock, Eye, ExternalLink, File
 } from "lucide-react";
 import { useLocation } from "wouter";
-import PdfViewer from "@/components/PdfViewer";
+
+const PdfViewer = lazy(() => import("@/components/PdfViewer"));
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Claim {
@@ -158,11 +159,13 @@ function ClaimCard({ claim, docs }: { claim: Claim; docs: DocRecord[] }) {
               </div>
             </div>
           ) : pdfUrls ? (
-            <PdfViewer
-              urls={pdfUrls}
-              fileName={viewingDoc.fileName}
-              onClose={closePdfViewer}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+              <PdfViewer
+                urls={pdfUrls}
+                fileName={viewingDoc.fileName}
+                onClose={closePdfViewer}
+              />
+            </Suspense>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
