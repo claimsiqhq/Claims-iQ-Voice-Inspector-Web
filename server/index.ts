@@ -131,8 +131,8 @@ export function log(message: string, source = "express") {
 }
 
 (async () => {
-  await ensureStorageBuckets().catch((e) => console.error("Storage bucket init:", e.message));
-  await seedInspectionFlows().catch((e) => console.error("Flow seed:", e.message));
+  await ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
+  await seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
   registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 

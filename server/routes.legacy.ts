@@ -1486,7 +1486,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
         });
 
       if (error) {
-        console.error("Photo upload error:", error);
+        logger.error("PhotoUpload", "Photo upload failed", error);
         return res.status(502).json({ message: "Photo upload failed" });
       }
 
@@ -1623,7 +1623,7 @@ Respond in JSON format:
 
       if (!openaiRes.ok) {
         const errBody = await openaiRes.text();
-        console.error("Vision API error:", errBody);
+        logger.error("VisionAPI", "Vision API error", { errBody });
         // Return a graceful fallback — don't block the workflow
         const fallbackAnalysis = {
           description: "Photo captured successfully. AI analysis unavailable.",
@@ -1684,7 +1684,7 @@ Respond in JSON format:
         damageSuggestions,
       });
     } catch (error: any) {
-      console.error("Photo analysis error:", error);
+      logger.error("PhotoAnalysis", "Photo analysis error", error);
       // Don't block the workflow on analysis failure
       res.json({
         description: "Photo captured. Analysis failed.",
@@ -1972,7 +1972,7 @@ Respond in JSON format:
       const data = await response.json();
 
       if (!response.ok) {
-        console.error("Realtime session error:", data);
+        logger.error("RealtimeSession", "Realtime session error", data);
         return res.status(500).json({ message: "Failed to create Realtime session", details: data });
       }
 
@@ -2456,8 +2456,8 @@ Respond in JSON format:
       );
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error("PDF generation error:", error);
-      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -2495,7 +2495,7 @@ Respond in JSON format:
       );
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error("Photo report PDF error:", error);
+      logger.error("PhotoReportPDF", "Photo report PDF error", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2534,7 +2534,7 @@ Respond in JSON format:
       );
       res.send(docxBuffer);
     } catch (error: any) {
-      console.error("Photo report DOCX error:", error);
+      logger.error("PhotoReportDOCX", "Photo report DOCX error", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

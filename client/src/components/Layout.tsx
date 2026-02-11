@@ -169,6 +169,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             <input 
               className="h-9 w-64 rounded-full bg-white/10 border-none pl-9 pr-4 text-sm text-white placeholder:text-white/50 focus:ring-1 focus:ring-primary"
               placeholder="Search claims..." 
+              aria-label="Search claims"
             />
           </div>
           
@@ -179,6 +180,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
               size="icon"
               className="text-white hover:bg-white/10 relative h-8 w-8 md:h-10 md:w-10"
               onClick={() => setShowNotifications(!showNotifications)}
+              aria-label={showNotifications ? "Close notifications" : `Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
             >
               <Bell className="h-4 w-4 md:h-5 md:w-5" />
               {unreadCount > 0 && (
@@ -225,12 +227,13 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
                           <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                           <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.timestamp)}</p>
                         </div>
-                        <button
-                          data-testid={`button-dismiss-${n.id}`}
-                          onClick={(e) => { e.stopPropagation(); dismissNotification(n.id); }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-200 rounded shrink-0"
-                        >
-                          <X className="h-3.5 w-3.5 text-gray-400" />
+                    <button
+                      data-testid={`button-dismiss-${n.id}`}
+                      onClick={(e) => { e.stopPropagation(); dismissNotification(n.id); }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-200 rounded shrink-0"
+                      aria-label={`Dismiss notification: ${n.title}`}
+                    >
+                      <X className="h-3.5 w-3.5 text-gray-400" />
                         </button>
                       </div>
                     ))
@@ -244,6 +247,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             data-testid="button-profile-header"
             onClick={() => setLocation("/profile")}
             className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10 cursor-pointer hover:bg-white/5 rounded-lg py-1.5 px-2 transition-colors"
+            aria-label={`Profile: ${displayName}`}
           >
             <div className="text-right hidden md:block">
               <p className="text-sm font-medium leading-none" data-testid="text-header-name">{displayName}</p>
