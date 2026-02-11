@@ -16,6 +16,7 @@ import {
   DollarSign,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   WifiOff,
   FileText,
   MapPin,
@@ -25,6 +26,8 @@ import {
   Maximize2,
   X,
   Building2,
+  Zap,
+  Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -116,6 +119,24 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [recentLineItems, setRecentLineItems] = useState<any[]>([]);
   const [estimateSummary, setEstimateSummary] = useState({ totalRCV: 0, totalACV: 0, itemCount: 0 });
   const [recentPhotos, setRecentPhotos] = useState<any[]>([]);
+  // Auto-scope notification (PROMPT-19)
+  const [autoScopeNotification, setAutoScopeNotification] = useState<{
+    visible: boolean;
+    count: number;
+    items: Array<{ code: string; description: string; quantity: number; unit: string; unitPrice: number; totalPrice: number; source: string }>;
+    warnings: string[];
+  }>({ visible: false, count: 0, items: [], warnings: [] });
+  // Photo-detected damage suggestions (PROMPT-19)
+  const [photoDamageSuggestions, setPhotoDamageSuggestions] = useState<any[]>([]);
+  // Phase validation (PROMPT-19)
+  const [phaseValidation, setPhaseValidation] = useState<{
+    visible: boolean;
+    currentPhase: number;
+    nextPhase: number;
+    warnings: string[];
+    missingItems: string[];
+    completionScore: number;
+  } | null>(null);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddStructure, setShowAddStructure] = useState(false);
@@ -425,6 +446,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     try {
       switch (name) {
         case "set_inspection_context": {
+          const prevPhase = currentPhase;
           if (args.phase) setCurrentPhase(args.phase);
           if (args.structure) setCurrentStructure(args.structure);
           if (args.area) setCurrentArea(args.area);
@@ -438,6 +460,37 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 currentStructure: args.structure,
               }),
             });
+
+            if (args.phase && args.phase !== prevPhase) {
+              try {
+                const valRes = await fetch(`/api/inspection/${sessionId}/validate-phase`, { headers });
+                if (valRes.ok) {
+                  const validation = await valRes.json();
+                  const phaseWarnings = validation.warnings || [];
+                  if (phaseWarnings.length > 0) {
+                    setPhaseValidation({
+                      visible: true,
+                      currentPhase: prevPhase,
+                      nextPhase: args.phase,
+                      warnings: phaseWarnings,
+                      missingItems: validation.missingItems || [],
+                      completionScore: validation.completionScore || 0,
+                    });
+                    result = {
+                      success: true,
+                      context: { ...args, phaseName: args.phaseName || args.area },
+                      phaseValidation: {
+                        warnings: phaseWarnings,
+                        message: `Phase ${prevPhase} has ${phaseWarnings.length} warning(s) before advancing to Phase ${args.phase}`,
+                      },
+                    };
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.error("Phase validation in tool call:", e);
+              }
+            }
           }
           result = { success: true, context: { ...args, phaseName: args.phaseName || args.area } };
           break;
@@ -784,7 +837,30 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const json = await damageRes.json();
           const damage = json.damage ?? json;
           await refreshRooms();
-          result = { success: true, damageId: damage.id, autoScope: json.autoScope ?? null };
+
+          const autoScope = json.autoScope;
+          if (autoScope && autoScope.itemsCreated > 0) {
+            await refreshLineItems();
+            setAutoScopeNotification({
+              visible: true,
+              count: autoScope.itemsCreated,
+              items: autoScope.items || [],
+              warnings: autoScope.warnings || [],
+            });
+            setTimeout(() => setAutoScopeNotification((prev) => ({ ...prev, visible: false })), 8000);
+          }
+
+          result = {
+            success: true,
+            damageId: damage.id,
+            autoScope: autoScope ? {
+              itemsCreated: autoScope.itemsCreated,
+              summary: autoScope.items?.map((i: any) =>
+                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${(i.unitPrice ?? 0).toFixed(2)} = $${(i.totalPrice ?? 0).toFixed(2)} [${i.source}]`
+              ).join("\n") || "No items matched",
+              warnings: autoScope.warnings,
+            } : undefined,
+          };
           break;
         }
 
@@ -1447,6 +1523,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         // Step 3: Store in local state WITH thumbnail + analysis for gallery display
+        const damageSuggestions = analysis?.damageSuggestions || [];
         setRecentPhotos((prev) => [
           {
             id: savedPhoto.photoId,
@@ -1457,9 +1534,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             roomId: currentRoomId,
             analysis,
             matchesRequest: analysis?.matchesExpected ?? true,
+            damageSuggestions,
           },
           ...prev,
         ].slice(0, 50));
+
+        if (damageSuggestions.length > 0) {
+          setPhotoDamageSuggestions(damageSuggestions);
+        }
 
         // Step 4: Build the tool result to send back to the voice agent
         photoResult = {
@@ -1671,6 +1753,54 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         </div>
       </div>
 
+      {/* Auto-Scope Notification Toast (PROMPT-19) */}
+      <AnimatePresence>
+        {autoScopeNotification.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            className="bg-[#22C55E]/10 border border-[#22C55E]/30 rounded-lg p-3 space-y-1.5"
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={14} className="text-[#22C55E]" />
+              <span className="text-xs font-semibold text-[#22C55E]">
+                Auto-Scope: {autoScopeNotification.count} item{autoScopeNotification.count !== 1 ? "s" : ""} generated
+              </span>
+              <button
+                onClick={() => setAutoScopeNotification((prev) => ({ ...prev, visible: false }))}
+                className="ml-auto text-muted-foreground hover:text-foreground"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            {autoScopeNotification.items.slice(0, 3).map((item, i) => (
+              <div key={i} className="flex justify-between text-[10px] text-muted-foreground pl-5">
+                <span className="truncate flex-1 mr-2">
+                  {item.description}
+                  {item.source === "companion" && (
+                    <span className="ml-1 text-[#9D8BBF]">(companion)</span>
+                  )}
+                </span>
+                <span className="font-mono whitespace-nowrap">${(item.totalPrice ?? 0).toFixed(2)}</span>
+              </div>
+            ))}
+            {autoScopeNotification.items.length > 3 && (
+              <p className="text-[10px] text-muted-foreground pl-5">
+                +{autoScopeNotification.items.length - 3} more item{autoScopeNotification.items.length - 3 !== 1 ? "s" : ""}
+              </p>
+            )}
+            {autoScopeNotification.warnings.length > 0 && (
+              <div className="text-[10px] text-[#F59E0B] pl-5">
+                {autoScopeNotification.warnings.map((w, i) => (
+                  <p key={i}>⚠ {w}</p>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <PropertySketch
         sessionId={sessionId}
         rooms={rooms}
@@ -1695,16 +1825,39 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               key={item.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-primary/5 rounded-lg px-2.5 py-2 mb-1.5 border border-border"
+              className={cn(
+                "rounded-lg px-2.5 py-2 mb-1.5 border",
+                item.provenance === "auto_scope"
+                  ? "bg-[#22C55E]/5 border-[#22C55E]/20"
+                  : item.provenance === "companion"
+                  ? "bg-[#9D8BBF]/5 border-[#9D8BBF]/20"
+                  : "bg-primary/5 border-border"
+              )}
             >
               <div className="flex justify-between items-start">
-                <p className="text-xs font-medium truncate flex-1 mr-2">{item.description}</p>
+                <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-2">
+                  {item.provenance === "auto_scope" && (
+                    <Zap size={10} className="text-[#22C55E] shrink-0" />
+                  )}
+                  {item.provenance === "companion" && (
+                    <Link2 size={10} className="text-[#9D8BBF] shrink-0" />
+                  )}
+                  <p className="text-xs font-medium truncate">{item.description}</p>
+                </div>
                 <span className="text-xs text-accent font-mono whitespace-nowrap">
                   ${(item.totalPrice || 0).toFixed(2)}
                 </span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
+                {item.category} · {item.action} · {item.quantity} {item.unit}
+                {item.provenance && item.provenance !== "voice" && (
+                  <span className={cn(
+                    "ml-1",
+                    item.provenance === "auto_scope" ? "text-[#22C55E]" : "text-[#9D8BBF]"
+                  )}>
+                    · {item.provenance === "auto_scope" ? "auto-scoped" : item.provenance}
+                  </span>
+                )}
               </p>
             </motion.div>
           ))}
@@ -2282,6 +2435,148 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 </div>
               )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Phase Validation Overlay (PROMPT-19) */}
+      <AnimatePresence>
+        {phaseValidation?.visible && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={() => setPhaseValidation(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card rounded-xl border border-border shadow-xl max-w-md w-full p-5 space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#F59E0B]/10 flex items-center justify-center">
+                  <AlertTriangle size={20} className="text-[#F59E0B]" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-foreground">
+                    Phase {phaseValidation.currentPhase} → {phaseValidation.nextPhase}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {phaseValidation.completionScore}% complete — {phaseValidation.warnings.length} item{phaseValidation.warnings.length !== 1 ? "s" : ""} to review
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                {phaseValidation.warnings.map((warning, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2.5 bg-[#F59E0B]/5 rounded-lg border border-[#F59E0B]/20">
+                    <AlertTriangle size={12} className="text-[#F59E0B] shrink-0 mt-0.5" />
+                    <p className="text-xs text-foreground">{warning}</p>
+                  </div>
+                ))}
+              </div>
+
+              {phaseValidation.missingItems.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Missing Items</p>
+                  <ul className="space-y-1">
+                    {phaseValidation.missingItems.map((item, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-muted-foreground shrink-0" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-xs"
+                  onClick={() => setPhaseValidation(null)}
+                >
+                  Stay & Fix
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 text-xs bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
+                  onClick={() => setPhaseValidation(null)}
+                >
+                  Proceed Anyway
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Photo Damage Suggestions Overlay (PROMPT-19) */}
+      <AnimatePresence>
+        {photoDamageSuggestions.length > 0 && !cameraMode.active && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed inset-x-0 bottom-0 z-40 bg-card border-t border-border shadow-lg p-4 space-y-3 max-h-[40vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera size={14} className="text-primary" />
+                <span className="text-sm font-semibold text-foreground">AI-Detected Damage</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {photoDamageSuggestions.length} suggestion{photoDamageSuggestions.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <button
+                onClick={() => setPhotoDamageSuggestions([])}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {photoDamageSuggestions.map((suggestion: any, i: number) => (
+              <div
+                key={i}
+                className="bg-muted/30 rounded-lg p-3 border border-border"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {suggestion.damageType?.replace(/_/g, " ")}
+                      </span>
+                      <span className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full",
+                        suggestion.severity === "severe" ? "bg-red-500/10 text-red-500" :
+                        suggestion.severity === "moderate" ? "bg-[#F59E0B]/10 text-[#F59E0B]" :
+                        "bg-[#22C55E]/10 text-[#22C55E]"
+                      )}>
+                        {suggestion.severity}
+                      </span>
+                      {suggestion.confidence && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {Math.round(suggestion.confidence * 100)}% confidence
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{suggestion.notes || suggestion.description}</p>
+                  </div>
+                </div>
+                {suggestion.autoCreated && (
+                  <p className="text-[10px] text-[#22C55E] mt-1">✓ Auto-created as damage observation</p>
+                )}
+              </div>
+            ))}
+
+            <p className="text-[10px] text-muted-foreground italic">
+              The voice agent will ask you to confirm or dismiss these suggestions.
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

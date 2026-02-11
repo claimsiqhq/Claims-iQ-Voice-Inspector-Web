@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronDown, ChevronRight, DollarSign,
   Camera, CheckCircle2, AlertTriangle, FileText,
   Edit3, Trash2, ImageIcon, AlertCircle, X,
-  ChevronUp, MessageSquare, MapPin,
+  ChevronUp, MessageSquare, MapPin, Zap, Link2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -225,8 +225,32 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
     setEditForm({ quantity: item.quantity || 0, unitPrice: item.unitPrice || 0, notes: "" });
   };
 
+  const allItems = categories.flatMap((cat: any) =>
+    (cat.rooms || []).flatMap((room: any) => room.items || [])
+  );
+  const autoScopedCount = allItems.filter((i: any) => i.provenance === "auto_scope").length;
+  const companionCount = allItems.filter((i: any) => i.provenance === "companion").length;
+  const autoTotal = allItems
+    .filter((i: any) => i.provenance === "auto_scope" || i.provenance === "companion")
+    .reduce((sum: number, i: any) => sum + (i.totalPrice || 0), 0);
+
   return (
     <div className="pb-4">
+      {/* Auto-Scope Summary (PROMPT-19) */}
+      {autoScopedCount > 0 || companionCount > 0 ? (
+        <div className="mx-4 mt-3 mb-1 bg-[#22C55E]/5 border border-[#22C55E]/20 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={12} className="text-[#22C55E]" />
+            <span className="text-xs font-semibold text-[#22C55E]">Intelligent Scope</span>
+          </div>
+          <div className="flex gap-4 text-[10px] text-muted-foreground">
+            <span>{autoScopedCount} auto-scoped item{autoScopedCount !== 1 ? "s" : ""}</span>
+            {companionCount > 0 && <span>{companionCount} companion item{companionCount !== 1 ? "s" : ""}</span>}
+            <span className="font-mono">${autoTotal.toFixed(2)} auto-generated</span>
+          </div>
+        </div>
+      ) : null}
+
       {/* Hierarchy Tree */}
       <div className="px-3 md:px-5 py-4 space-y-1">
         {categories.length === 0 && (
@@ -352,7 +376,17 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                                           <span>{item.quantity} {item.unit}</span>
                                           <span>@ ${item.unitPrice?.toFixed(2)}</span>
                                           <span>{item.depreciationType || "Recoverable"}</span>
-                                          <span className="text-[#9D8BBF]">{item.provenance || "voice"}</span>
+                                          {item.provenance === "auto_scope" ? (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#22C55E]/10 text-[#22C55E] font-medium">
+                                              <Zap size={8} /> Auto-Scoped
+                                            </span>
+                                          ) : item.provenance === "companion" ? (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#9D8BBF]/10 text-[#9D8BBF] font-medium">
+                                              <Link2 size={8} /> Companion
+                                            </span>
+                                          ) : (
+                                            <span className="text-[#9D8BBF]">{item.provenance || "voice"}</span>
+                                          )}
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-2 shrink-0">
@@ -549,7 +583,12 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
               <button
                 key={photo.id}
                 onClick={() => setSelectedPhoto(photo)}
-                className="aspect-square bg-muted rounded-lg border border-border overflow-hidden relative group hover:ring-2 hover:ring-primary transition-all"
+                className={cn(
+                  "aspect-square bg-muted rounded-lg border overflow-hidden relative group hover:ring-2 hover:ring-primary transition-all",
+                  photo.analysis?.damageVisible?.length > 0
+                    ? "border-[#F59E0B]/40"
+                    : "border-border"
+                )}
               >
                 {photo.signedUrl ? (
                   <img
@@ -567,6 +606,24 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
                 {photo.photoType && (
                   <span className="absolute top-1 right-1 text-[8px] bg-black/60 text-white px-1 py-0.5 rounded">
                     {photo.photoType.replace(/_/g, " ")}
+                  </span>
+                )}
+                {/* AI Damage Detection Badge (PROMPT-19) */}
+                {photo.analysis?.damageVisible?.length > 0 && (
+                  <span className="absolute top-1 left-1 text-[8px] bg-[#F59E0B]/90 text-white px-1 py-0.5 rounded flex items-center gap-0.5">
+                    <AlertTriangle size={7} />
+                    {photo.analysis.damageVisible.length} damage{photo.analysis.damageVisible.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {/* Quality Score Indicator (PROMPT-19) */}
+                {photo.analysis?.qualityScore && (
+                  <span className={cn(
+                    "absolute bottom-6 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white",
+                    photo.analysis.qualityScore >= 4 ? "bg-[#22C55E]" :
+                    photo.analysis.qualityScore >= 3 ? "bg-[#F59E0B]" :
+                    "bg-red-500"
+                  )}>
+                    {photo.analysis.qualityScore}
                   </span>
                 )}
                 {/* Auto Tag Overlay */}
@@ -623,6 +680,56 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
                 {selectedPhoto.analysis?.description && <p><strong>AI Analysis:</strong> {selectedPhoto.analysis.description}</p>}
                 {selectedPhoto.createdAt && <p className="text-xs text-muted-foreground">Taken: {new Date(selectedPhoto.createdAt).toLocaleString()}</p>}
               </div>
+
+              {/* Photo Analysis Detail (PROMPT-19) */}
+              {selectedPhoto?.analysis && (
+                <div className="space-y-3 mt-3">
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">AI Analysis</p>
+                    <p className="text-sm text-foreground">{selectedPhoto.analysis.description}</p>
+                    {selectedPhoto.analysis.qualityScore && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] text-muted-foreground">Quality:</span>
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <span
+                              key={n}
+                              className={cn(
+                                "w-2 h-2 rounded-full",
+                                n <= selectedPhoto.analysis.qualityScore ? "bg-[#22C55E]" : "bg-border"
+                              )}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedPhoto.analysis.damageVisible?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Detected Damage</p>
+                      <div className="space-y-1.5">
+                        {selectedPhoto.analysis.damageVisible.map((damage: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 p-2 bg-[#F59E0B]/5 rounded border border-[#F59E0B]/20">
+                            <AlertTriangle size={12} className="text-[#F59E0B] shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-foreground">{damage.type}</p>
+                              <p className="text-[10px] text-muted-foreground">{damage.severity} — {damage.notes}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPhoto.analysis.matchesExpected === false && (
+                    <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-2.5">
+                      <p className="text-xs text-red-500 font-medium">Photo may not match request</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{selectedPhoto.analysis.matchExplanation}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { claims, inspectionSessions, inspectionPhotos, inspectionRooms, structures } from "@shared/schema";
+import { claims, inspectionSessions, inspectionPhotos, inspectionRooms, structures, lineItems, damageObservations } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { generateESXFile } from "./esxGenerator";
 import { reviewEstimate } from "./aiReview";
@@ -1122,6 +1122,31 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/inspection/:sessionId/validate-phase", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      const claim = await storage.getClaim(session.claimId);
+      const currentPhase = req.query.phase ? parseInt(req.query.phase as string) : (session.currentPhase || 1);
+      const { validatePhaseTransition } = await import("./phaseValidation");
+      const validation = await validatePhaseTransition(
+        storage,
+        sessionId,
+        currentPhase,
+        claim?.perilType || undefined
+      );
+      res.json({
+        currentPhase,
+        nextPhase: currentPhase + 1,
+        ...validation,
+      });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Structures (L1 Hierarchy) ─────────────────────
 
   app.post("/api/inspection/:sessionId/structures", authenticateRequest, async (req, res) => {
@@ -1737,9 +1762,33 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
       const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource, age, lifeExpectancy, depreciationPercentage } = parsed.data;
-      const wf = wasteFactor || 0;
+      let wf = wasteFactor ?? 0;
       const qty = quantity || 1;
-      const up = unitPrice || 0;
+      let up = unitPrice || 0;
+      let finalDescription = description;
+      let finalUnit = unit || null;
+      let catalogMatch = false;
+
+      // PROMPT-18 Part E: If xactCode provided, look up catalog pricing
+      if (xactCode) {
+        const catalogItem = await storage.getScopeLineItemByCode(xactCode);
+        if (catalogItem) {
+          catalogMatch = true;
+          finalDescription = description || catalogItem.description || xactCode;
+          finalUnit = unit || catalogItem.unit;
+          wf = wasteFactor ?? Math.round((catalogItem.defaultWasteFactor ?? 0));
+
+          const regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL");
+          if (regionalPrice) {
+            const baseCost =
+              (Number(regionalPrice.materialCost) || 0) +
+              (Number(regionalPrice.laborCost) || 0) +
+              (Number(regionalPrice.equipmentCost) || 0);
+            up = baseCost;
+          }
+        }
+      }
+
       let totalPrice = Math.round(qty * up * (1 + wf / 100) * 100) / 100;
       if (applyOAndP) {
         totalPrice = Math.round(totalPrice * 1.20 * 100) / 100; // 10% overhead + 10% profit (additive)
@@ -1751,10 +1800,10 @@ export async function registerRoutes(
         damageId: damageId || null,
         category,
         action: action || null,
-        description,
+        description: finalDescription,
         xactCode: xactCode || null,
         quantity: qty,
-        unit: unit || null,
+        unit: finalUnit,
         unitPrice: up,
         totalPrice,
         depreciationType: depreciationType || "Recoverable",
@@ -1768,7 +1817,7 @@ export async function registerRoutes(
         lifeExpectancy: lifeExpectancy || null,
         depreciationPercentage: depreciationPercentage || null,
       } as any);
-      res.status(201).json(item);
+      res.status(201).json({ ...item, catalogMatch });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
@@ -3876,11 +3925,57 @@ Respond in JSON format:
         avgInspectionTime = Math.round(totalMinutes / completedWithTimes.length);
       }
 
+      // PROMPT-19: Auto-scope statistics for supervisor dashboard
+      const autoScopeRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(lineItems)
+        .where(eq(lineItems.provenance, "auto_scope"));
+      const damageRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(damageObservations);
+      const catalogMatchRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(lineItems)
+        .where(sql`${lineItems.xactCode} IS NOT NULL AND ${lineItems.xactCode} != ''`);
+      const totalLineRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(lineItems);
+
+      const autoScopeCount = autoScopeRows[0]?.count ?? 0;
+      const damageCount = damageRows[0]?.count ?? 0;
+      const catalogMatchCount = catalogMatchRows[0]?.count ?? 0;
+      const totalLineCount = totalLineRows[0]?.count ?? 1;
+
+      let avgCompletenessScore = 0;
+      const activeSessionList = sessions.filter((s) => s !== undefined).map((s) => s!);
+      if (activeSessionList.length > 0) {
+        const scores = await Promise.all(
+          activeSessionList.map(async (session) => {
+            const rooms = await storage.getRooms(session.id);
+            const items = await storage.getLineItems(session.id);
+            const photos = await storage.getPhotos(session.id);
+            const damages = await storage.getDamagesForSession(session.id);
+            const overviewCount = photos.filter((p: any) => p.photoType === "overview").length;
+            let passed = 0;
+            if (overviewCount >= 4) passed++;
+            if (rooms.length > 0) passed++;
+            if (damages.length > 0) passed++;
+            if (items.length > 0) passed++;
+            return Math.round((passed / 4) * 100);
+          })
+        );
+        avgCompletenessScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+      }
+
       res.json({
         totalClaims: allClaims.length,
         activeSessions,
         avgInspectionTime,
         totalEstimateValue,
+        autoScopeItemsCreated: autoScopeCount,
+        avgAutoScopePerDamage: damageCount > 0 ? autoScopeCount / damageCount : 0,
+        catalogMatchRate: totalLineCount > 0 ? (catalogMatchCount / totalLineCount) * 100 : 0,
+        avgCompletenessScore: Math.round(avgCompletenessScore),
       });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -3895,6 +3990,22 @@ Respond in JSON format:
         const session = await storage.getActiveSessionForClaim(claim.id);
         if (session) {
           const inspector = session.inspectorId ? await storage.getUser(session.inspectorId) : null;
+          let completenessScore = 0;
+          try {
+            const rooms = await storage.getRooms(session.id);
+            const items = await storage.getLineItems(session.id);
+            const photos = await storage.getPhotos(session.id);
+            const damages = await storage.getDamagesForSession(session.id);
+            const overviewCount = photos.filter((p: any) => p.photoType === "overview").length;
+            let passed = 0;
+            if (overviewCount >= 4) passed++;
+            if (rooms.length > 0) passed++;
+            if (damages.length > 0) passed++;
+            if (items.length > 0) passed++;
+            completenessScore = Math.round((passed / 4) * 100);
+          } catch {
+            /* non-blocking */
+          }
           allSessions.push({
             id: session.id,
             claimNumber: claim.claimNumber,
@@ -3903,6 +4014,7 @@ Respond in JSON format:
             currentPhase: session.currentPhase,
             status: session.status,
             startedAt: session.startedAt,
+            completenessScore,
           });
         }
       }
