@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import { X, Ruler, Trash2, Save, Plus, SquareIcon, ArrowUpDown } from "lucide-react";
 
 interface RoomDimensions {
@@ -132,7 +133,7 @@ export default function RoomEditorPanel({ room, sessionId, onClose, onSave, onDe
       });
       if (!res.ok) {
         const text = await res.text();
-        console.error("Save room failed:", res.status, text);
+        logger.error("RoomEditor", "Save room failed", { status: res.status, text });
         return;
       }
 
@@ -140,7 +141,7 @@ export default function RoomEditorPanel({ room, sessionId, onClose, onSave, onDe
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/rooms`] });
       onSave?.();
     } catch (e) {
-      console.error("Save room error:", e);
+      logger.error("RoomEditor", "Save room error", e);
     } finally {
       setSaving(false);
     }
@@ -160,7 +161,7 @@ export default function RoomEditorPanel({ room, sessionId, onClose, onSave, onDe
       onDelete?.(room.id);
       onClose();
     } catch (e) {
-      console.error("Delete room error:", e);
+      logger.error("RoomEditor", "Delete room error", e);
     } finally {
       setDeleting(false);
     }
@@ -466,7 +467,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, onS
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
       onStructureCreated?.(structure.name);
     } catch (e) {
-      console.error("Create structure error:", e);
+      logger.error("RoomEditor", "Create structure error", e);
     } finally {
       setCreatingStructure(false);
     }
@@ -494,7 +495,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, onS
       });
 
       if (!res.ok) {
-        console.error("Room creation failed:", res.status);
+        logger.error("RoomEditor", "Room creation failed", { status: res.status });
         return;
       }
 
@@ -513,7 +514,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, onS
             }),
           });
         } catch (adjErr) {
-          console.error("Adjacency creation error:", adjErr);
+          logger.error("RoomEditor", "Adjacency creation error", adjErr);
         }
       }
 
@@ -523,7 +524,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, onS
       onCreated?.();
       onClose();
     } catch (e) {
-      console.error("Create room error:", e);
+      logger.error("RoomEditor", "Create room error", e);
     } finally {
       setCreating(false);
     }

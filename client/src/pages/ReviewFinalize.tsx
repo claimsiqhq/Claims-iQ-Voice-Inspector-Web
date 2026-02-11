@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import MoistureMap from "@/components/MoistureMap";
 import PropertySketch from "@/components/PropertySketch";
 import XactimateEstimateView from "@/components/XactimateEstimateView";
@@ -905,7 +906,7 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
       .then((data: any) => {
         if (data?.session?.adjusterNotes) setNotes(data.session.adjusterNotes);
       })
-      .catch((e: any) => console.error("Failed to load adjuster notes:", e));
+      .catch((e: unknown) => logger.error("Notes", "Failed to load adjuster notes", e));
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [sessionId]);
 
@@ -914,7 +915,7 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
     setSaving(true);
     apiRequest("PATCH", `/api/inspection/${sessionId}`, { adjusterNotes: value })
       .then(() => setSaving(false))
-      .catch((e: any) => { console.error("Failed to save adjuster notes:", e); setSaving(false); });
+      .catch((e: unknown) => { logger.error("Notes", "Failed to save adjuster notes", e); setSaving(false); });
   }, [sessionId]);
 
   const handleNotesChange = (value: string) => {

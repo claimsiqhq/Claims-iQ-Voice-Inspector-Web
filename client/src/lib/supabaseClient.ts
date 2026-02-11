@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { logger } from "@/lib/logger";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -28,7 +29,7 @@ function claimsiqAuthStorage() {
 let supabase: SupabaseClient;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Supabase URL or Anon Key not configured. Auth will not work.");
+  logger.warn("Auth", "Supabase URL or Anon Key not configured. Auth will not work.");
   supabase = null as any;
 } else {
   supabase = createClient(supabaseUrl, supabaseAnonKey, {

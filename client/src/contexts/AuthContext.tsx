@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { getLocalToken, setLocalToken, clearLocalToken } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 export interface AuthUser {
   id: string;
@@ -107,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (fetched) setUser(fetched);
         }
       } catch (err) {
-        console.error("Session init failed:", err);
+        logger.error("Auth", "Session init failed", err);
       } finally {
         initDone = true;
         setLoading(false);
@@ -133,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeout = setTimeout(() => {
       setLoading((prev) => {
         if (prev) {
-          console.warn("Auth loading timed out — forcing login screen");
+          logger.warn("Auth", "Auth loading timed out — forcing login screen");
           return false;
         }
         return prev;
@@ -180,7 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(profile);
       return profile;
     } catch (error) {
-      console.error("Sync failed:", error);
+      logger.error("Auth", "Sync failed", error);
       return null;
     }
   }

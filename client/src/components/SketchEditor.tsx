@@ -5,6 +5,7 @@
  */
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import { MousePointer2, DoorOpen, Square, AlertTriangle, RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview } from "./SketchRenderer";
@@ -335,7 +336,7 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
       onRoomUpdate?.();
     } catch (e) {
-      console.error("Undo failed:", e);
+      logger.error("SketchEditor", "Undo failed", e);
     }
   }, [history, sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate]);
 
@@ -381,7 +382,7 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
       onRoomUpdate?.();
     } catch (e) {
-      console.error("Redo failed:", e);
+      logger.error("SketchEditor", "Redo failed", e);
     }
   }, [redoStack, sessionId, allOpenings, layoutByRoomId, getAuthHeaders, queryClient, onRoomUpdate]);
 
@@ -401,7 +402,7 @@ export default function SketchEditor({
           onRoomUpdate?.();
         }
       } catch (e) {
-        console.error("Failed to persist room dimensions:", e);
+        logger.error("SketchEditor", "Failed to persist room dimensions", e);
       }
     },
     [interiorRooms, sessionId, getAuthHeaders, queryClient, onRoomUpdate]

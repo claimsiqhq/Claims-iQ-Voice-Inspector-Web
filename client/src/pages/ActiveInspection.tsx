@@ -45,6 +45,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, resilientMutation } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
+import { logger } from "@/lib/logger";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -310,7 +311,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token;
       if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch (e) { console.error("[Voice] Auth header error:", e); }
+    } catch (e) { logger.error("Voice", "Auth header error", e); }
     return headers;
   }, []);
 
@@ -330,7 +331,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
       const data = await res.json();
       setEstimateSummary(data);
-    } catch (e) { console.error("[Voice] Refresh estimate error:", e); }
+    } catch (e) { logger.error("Voice", "Refresh estimate error", e); }
   }, [sessionId, getAuthHeaders]);
 
   const refreshLineItems = useCallback(async () => {
@@ -344,7 +345,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         setRecentLineItems(items.slice(-5).reverse());
       }
       refreshEstimate();
-    } catch (e) { console.error("[Voice] Refresh line items error:", e); }
+    } catch (e) { logger.error("Voice", "Refresh line items error", e); }
   }, [sessionId, refreshEstimate, getAuthHeaders]);
 
   const fetchFreshRooms = useCallback(async (): Promise<RoomData[]> => {
@@ -357,7 +358,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         return data;
       }
     } catch (e) {
-      console.error("[Voice] Failed to fetch fresh rooms:", e);
+      logger.error("Voice", "Failed to fetch fresh rooms", e);
     }
     return roomsRef.current;
   }, [sessionId, getAuthHeaders]);
@@ -382,7 +383,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }));
       setRooms(enrichedRooms);
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
-    } catch (e) { console.error("[Voice] Refresh rooms error:", e); }
+    } catch (e) { logger.error("Voice", "Refresh rooms error", e); }
   }, [sessionId, getAuthHeaders, queryClient]);
 
   const handleCreateStructure = useCallback(async () => {
@@ -409,7 +410,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       setAddStructureName("");
       setAddStructureType("dwelling");
     } catch (e) {
-      console.error("Create structure error:", e);
+      logger.error("Voice", "Create structure error", e);
     } finally {
       setCreatingStructure(false);
     }
@@ -435,7 +436,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
       refreshRooms();
     } catch (e) {
-      console.error("Delete structure error:", e);
+      logger.error("Voice", "Delete structure error", e);
     } finally {
       setDeletingStructureId(null);
     }
@@ -451,8 +452,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           method: "POST",
           headers,
           body: JSON.stringify({ speaker: role, content: text }),
-        }).catch((e) => console.error("[Voice] Transcript save error:", e));
-      } catch (e) { console.error("[Voice] Transcript error:", e); }
+        }).catch((e) => logger.error("Voice", "Transcript save error", e));
+      } catch (e) { logger.error("Voice", "Transcript error", e); }
     }
   }, [sessionId, getAuthHeaders]);
 
@@ -479,7 +480,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             matchesRequest: p.matchesRequest,
           })));
         }
-      } catch (e) { console.error("[Voice] Photos load error:", e); }
+      } catch (e) { logger.error("Voice", "Photos load error", e); }
     })();
     (async () => {
       try {
@@ -490,7 +491,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (data.session?.currentPhase) setCurrentPhase(data.session.currentPhase);
           if (data.session?.currentStructure) setCurrentStructure(data.session.currentStructure);
         }
-      } catch (e) { console.error("[Voice] Session load error:", e); }
+      } catch (e) { logger.error("Voice", "Session load error", e); }
     })();
   }, [sessionId]);
 
@@ -547,10 +548,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     let args: any;
     try {
       args = JSON.parse(argsString);
-    } catch (e) { console.error("[Voice] Tool args parse error:", e);
+    } catch (e) { logger.error("Voice", "Tool args parse error", e);
       args = {};
     }
-    console.log(`[Voice Tool] ▶ ${name}`, args);
+    logger.info("VoiceTool", `▶ ${name}`, args);
     sendLogToServer(name, "call", args);
 
     let result: any;
@@ -592,7 +593,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   }
                 }
               } catch (e) {
-                console.error("Phase validation in tool call:", e);
+                logger.error("Voice", "Phase validation in tool call", e);
               }
             }
           }
@@ -1032,7 +1033,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 }
               }
             } catch (e) {
-              console.warn("Catalog lookup failed, falling back to provided price:", e);
+              logger.warn("Voice", "Catalog lookup failed, falling back to provided price", e);
             }
           }
 
@@ -1483,7 +1484,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       result = { success: false, error: error.message };
     }
 
-    console.log(`[Voice Tool] ◀ ${name}`, result);
+    logger.info("VoiceTool", `◀ ${name}`, result);
     sendLogToServer(name, "result", result);
 
     if (dcRef.current && dcRef.current.readyState === "open") {
@@ -1576,7 +1577,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         break;
 
       case "error":
-        console.error("Realtime error:", event.error);
+        logger.error("Voice", "Realtime error", event.error);
         setVoiceState("error");
         if (errorRecoveryTimeoutRef.current) clearTimeout(errorRecoveryTimeoutRef.current);
         errorRecoveryTimeoutRef.current = setTimeout(() => {
@@ -1669,7 +1670,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         try {
           const serverEvent = JSON.parse(event.data);
           handleRealtimeEvent(serverEvent);
-        } catch (e) { console.error("[Voice] Realtime event parse error:", e); }
+        } catch (e) { logger.error("Voice", "Realtime event parse error", e); }
       };
 
       const offer = await pc.createOffer();
@@ -1687,7 +1688,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const sdpAnswer = await sdpRes.text();
       await pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
     } catch (error: any) {
-      console.error("Voice connection error:", error);
+      logger.error("Voice", "Voice connection error", error);
       setVoiceState("error");
       isConnectingRef.current = false;
       setIsConnecting(false);
@@ -1793,7 +1794,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             );
             analysis = await analyzeRes.json();
           } catch (e) {
-            console.error("Photo analysis failed:", e);
+            logger.error("Voice", "Photo analysis failed", e);
           }
         }
 
@@ -1845,7 +1846,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           photoResult.damageSuggestions = analysis.damageSuggestions;
         }
       } catch (e: any) {
-        console.error("Camera capture error:", e);
+        logger.error("Voice", "Camera capture error", e);
         photoResult = { success: false, message: e.message };
       }
     }
@@ -1883,7 +1884,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             videoRef.current.srcObject = stream;
           }
         })
-        .catch(console.error);
+        .catch((e) => logger.error("Voice", "Unhandled error", e));
     }
   }, [cameraMode.active]);
 
@@ -2165,7 +2166,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               setRecentPhotos((prev) => prev.filter((p) => p.id !== photoId));
             }
           } catch (e) {
-            console.error("Delete photo error:", e);
+            logger.error("Voice", "Delete photo error", e);
           }
         } : undefined}
       />

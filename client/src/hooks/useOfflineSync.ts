@@ -6,6 +6,7 @@ import {
   markRetry,
 } from "@/lib/offlineQueue";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 /** Interval between sync attempts when online (ms) */
 const SYNC_INTERVAL = 10000; // 10 seconds
@@ -49,9 +50,9 @@ export function useOfflineSync() {
             // Client error — don't retry (bad data)
             await removeMutation(mutation.id);
             failCount++;
-            console.warn(
-              `Offline mutation dropped (${response.status}):`,
-              mutation.label
+            logger.warn(
+              "OfflineSync",
+              `Offline mutation dropped (${response.status}): ${mutation.label}`
             );
           } else {
             // Server error — retry later
