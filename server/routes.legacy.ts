@@ -1375,8 +1375,10 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
 
   app.post("/api/inspection/:sessionId/rooms/:roomId/complete", authenticateRequest, async (req, res) => {
     try {
+      const sessionId = parseInt(param(req.params.sessionId));
       const roomId = parseInt(param(req.params.roomId));
       const room = await storage.completeRoom(roomId);
+      emit({ type: "inspection.roomCompleted", sessionId, userId: req.user?.id, meta: { roomId } });
       res.json(room);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
