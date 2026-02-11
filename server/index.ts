@@ -8,6 +8,7 @@ import { readFileSync } from "fs";
 import path from "path";
 import { parse } from "yaml";
 import { registerRoutes } from "./routes";
+import { registerAuditLogSubscriber } from "./subscribers/auditLog";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
@@ -132,6 +133,7 @@ export function log(message: string, source = "express") {
 (async () => {
   await ensureStorageBuckets().catch((e) => console.error("Storage bucket init:", e.message));
   await seedInspectionFlows().catch((e) => console.error("Flow seed:", e.message));
+  registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

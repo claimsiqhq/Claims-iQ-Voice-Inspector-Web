@@ -14,6 +14,7 @@ declare global {
         avatarUrl: string | null;
         supabaseAuthId: string | null;
       };
+      supabaseUser?: { id: string; email?: string; [key: string]: unknown };
     }
   }
 }
@@ -87,7 +88,7 @@ export async function authenticateSupabaseToken(
       return;
     }
 
-    (req as any).supabaseUser = authData.user;
+    req.supabaseUser = authData.user;
     next();
   } catch (error) {
     res.status(500).json({ message: "Authentication failed" });

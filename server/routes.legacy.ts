@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { emit } from "./events";
 import { storage } from "./storage";
 import { db } from "./db";
 import { claims, inspectionSessions, inspectionPhotos, inspectionRooms, structures, lineItems, damageObservations } from "@shared/schema";
@@ -365,59 +365,8 @@ async function ensurePolicyRules(claimId: number, userId?: number) {
   return created;
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+export async function registerLegacyRoutes(app: Express): Promise<void> {
   const param = (v: string | string[]): string => Array.isArray(v) ? v[0] : v;
-
-  // ─── Health Check Endpoints (no auth required) ───
-
-  app.get("/health", (_req, res) => {
-    res.json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      version: process.env.npm_package_version || "unknown",
-    });
-  });
-
-  app.get("/readiness", async (_req, res) => {
-    const checks: Record<string, { status: string; latencyMs?: number }> = {};
-
-    try {
-      const dbStart = Date.now();
-      await storage.getClaims();
-      checks.database = { status: "ready", latencyMs: Date.now() - dbStart };
-    } catch {
-      checks.database = { status: "not_ready" };
-    }
-
-    try {
-      const storageStart = Date.now();
-      const { error } = await supabase.storage.listBuckets();
-      checks.storage = {
-        status: error ? "not_ready" : "ready",
-        latencyMs: Date.now() - storageStart,
-      };
-    } catch {
-      checks.storage = { status: "not_ready" };
-    }
-
-    checks.openai = {
-      status: process.env.OPENAI_API_KEY ? "configured" : "not_configured",
-    };
-
-    const allReady = Object.values(checks).every(
-      (c) => c.status === "ready" || c.status === "configured"
-    );
-
-    res.status(allReady ? 200 : 503).json({
-      status: allReady ? "ready" : "not_ready",
-      timestamp: new Date().toISOString(),
-      checks,
-    });
-  });
 
   /** Parse an integer route param and return NaN-safe result, or send 400 */
   function parseIntParam(value: string, res: any, label = "id"): number | null {
@@ -471,6 +420,7 @@ export async function registerRoutes(
       }
       const claimData = { ...parsed.data, assignedTo: req.user?.id ?? null };
       const claim = await storage.createClaim(claimData);
+      emit({ type: "claim.created", claimId: claim.id, userId: req.user?.id });
       res.status(201).json(claim);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -506,6 +456,7 @@ export async function registerRoutes(
       const { status, ...otherFields } = req.body;
       if (status) {
         const updated = await storage.updateClaimStatus(id, status);
+        emit({ type: "claim.statusChanged", claimId: id, userId: req.user?.id, meta: { status } });
         return res.json(updated);
       }
       // Support updating other claim fields
@@ -583,6 +534,7 @@ export async function registerRoutes(
       }
       const deleted = await storage.deleteClaim(id);
       if (!deleted) return res.status(404).json({ message: "Claim not found" });
+      emit({ type: "claim.deleted", claimId: id, userId: req.user?.id });
       res.json({ message: "Claim and all related data deleted" });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -791,6 +743,7 @@ export async function registerRoutes(
         storagePath,
         status: "uploaded",
       });
+      emit({ type: "document.uploaded", documentId: doc.id, claimId, userId: req.user?.id });
 
       res.status(201).json({ documentId: doc.id, storagePath, status: "uploaded" });
     } catch (error: any) {
@@ -842,6 +795,7 @@ export async function registerRoutes(
         storagePath: storagePaths.join("|"),
         status: "uploaded",
       });
+      emit({ type: "document.uploaded", documentId: doc.id, claimId, userId: req.user?.id });
 
       res.status(201).json({ documentId: doc.id, storagePaths, fileCount: files.length, status: "uploaded" });
     } catch (error: any) {
@@ -1118,6 +1072,7 @@ export async function registerRoutes(
         await storage.updateSession(session.id, { inspectorId: req.user.id });
       }
       await storage.updateClaimStatus(claimId, "inspecting");
+      emit({ type: "inspection.started", sessionId: session.id, claimId, userId: req.user?.id });
       // Seed default policy rules from briefing coverage data
       await ensurePolicyRules(claimId, req.user?.id);
       res.status(201).json({ sessionId: session.id, session });
@@ -1163,6 +1118,7 @@ export async function registerRoutes(
       const session = await storage.completeSession(sessionId);
       if (session) {
         await storage.updateClaimStatus(session.claimId, "inspection_complete");
+        emit({ type: "inspection.completed", sessionId, claimId: session.claimId, userId: req.user?.id });
       }
       res.json(session);
     } catch (error: any) {
@@ -1356,6 +1312,7 @@ export async function registerRoutes(
         phase: phase || null,
       });
       await storage.updateSessionRoom(sessionId, room.id);
+      emit({ type: "inspection.roomCreated", sessionId, claimId: (await storage.getInspectionSession(sessionId))?.claimId, userId: req.user?.id, meta: { roomId: room.id } });
 
       // Return enriched response with hierarchy context
       const siblings = resolvedStructureId
@@ -1762,6 +1719,7 @@ export async function registerRoutes(
         measurements: measurements || null,
       });
       await storage.incrementRoomDamageCount(roomId);
+      emit({ type: "inspection.damageAdded", sessionId, userId: req.user?.id, meta: { roomId, damageId: damage.id } });
 
       // Auto-trigger scope assembly
       let autoScope: Record<string, unknown> | null = null;
@@ -1899,6 +1857,7 @@ export async function registerRoutes(
         lifeExpectancy: lifeExpectancy || null,
         depreciationPercentage: depreciationPercentage || null,
       } as any);
+      emit({ type: "inspection.lineItemAdded", sessionId, userId: req.user?.id, meta: { lineItemId: item.id } });
       res.status(201).json({ ...item, catalogMatch });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -1952,6 +1911,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid update fields", errors: parsed.error.flatten() });
       }
       const item = await storage.updateLineItem(id, parsed.data);
+      if (item?.sessionId) emit({ type: "inspection.lineItemUpdated", sessionId: item.sessionId, userId: req.user?.id, meta: { lineItemId: id } });
       res.json(item);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -1961,7 +1921,9 @@ export async function registerRoutes(
   app.delete("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(param(req.params.id));
+      const sessionId = parseInt(param(req.params.sessionId));
       await storage.deleteLineItem(id);
+      emit({ type: "inspection.lineItemDeleted", sessionId, userId: req.user?.id, meta: { lineItemId: id } });
       res.status(204).send();
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -3672,135 +3634,6 @@ Respond in JSON format:
     }
   });
 
-  // ── Authentication Routes ──────────────────────────
-
-  app.post("/api/auth/sync", authenticateSupabaseToken, async (req, res) => {
-    try {
-      const supabaseUser = (req as any).supabaseUser;
-      const { supabaseId, email, fullName } = req.body;
-      if (!supabaseId || !email) {
-        return res.status(400).json({ message: "supabaseId and email required" });
-      }
-      if (supabaseUser.id !== supabaseId) {
-        return res.status(403).json({ message: "Token does not match provided supabaseId" });
-      }
-      const user = await storage.syncSupabaseUser(supabaseId, email, fullName || "");
-      res.json({
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        title: user.title,
-        avatarUrl: user.avatarUrl,
-      });
-    } catch (error: any) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.get("/api/auth/me", authenticateRequest, async (req, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      res.json({
-        id: req.user.id,
-        email: req.user.email,
-        fullName: req.user.fullName,
-        role: req.user.role,
-        title: req.user.title,
-        avatarUrl: req.user.avatarUrl,
-      });
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // ── User Profile ───────────────────────────────────
-
-  const profileUpdateSchema = z.object({
-    fullName: z.string().min(1).max(100).optional(),
-    title: z.string().max(100).optional(),
-    avatarUrl: z.string().url().max(2000).optional(),
-  }).strict();
-
-  app.patch("/api/profile", authenticateRequest, async (req, res) => {
-    try {
-      const parsed = profileUpdateSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid profile data", errors: parsed.error.flatten().fieldErrors });
-      }
-      if (Object.keys(parsed.data).length === 0) {
-        return res.status(400).json({ message: "No fields to update" });
-      }
-      const userId = req.user!.id;
-      const updated = await storage.updateUserProfile(userId, parsed.data);
-      if (!updated) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      res.json({
-        id: updated.id,
-        fullName: updated.fullName,
-        email: updated.email,
-        role: updated.role,
-        title: updated.title,
-        avatarUrl: updated.avatarUrl,
-      });
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  const avatarUploadSchema = z.object({
-    base64Data: z.string().min(1),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-  });
-
-  app.post("/api/profile/avatar", authenticateRequest, async (req, res) => {
-    try {
-      const parsed = avatarUploadSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid avatar data" });
-      }
-      const userId = req.user!.id;
-      const ext = parsed.data.mimeType === "image/png" ? "png" : parsed.data.mimeType === "image/webp" ? "webp" : "jpg";
-      const storagePath = `avatars/${userId}/avatar.${ext}`;
-      const fileBuffer = Buffer.from(parsed.data.base64Data, "base64");
-
-      if (fileBuffer.length > 5 * 1024 * 1024) {
-        return res.status(413).json({ message: "Avatar must be under 5MB" });
-      }
-
-      const { error } = await supabase.storage
-        .from(PHOTOS_BUCKET)
-        .upload(storagePath, fileBuffer, {
-          contentType: parsed.data.mimeType,
-          upsert: true,
-        });
-      if (error) throw new Error(`Avatar upload failed: ${error.message}`);
-
-      const { data: signedUrlData, error: signError } = await supabase.storage
-        .from(PHOTOS_BUCKET)
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-      if (signError) throw new Error(`Failed to create signed URL: ${signError.message}`);
-
-      const avatarUrl = signedUrlData.signedUrl;
-      const updated = await storage.updateUserProfile(userId, { avatarUrl });
-      res.json({
-        id: updated!.id,
-        fullName: updated!.fullName,
-        email: updated!.email,
-        role: updated!.role,
-        title: updated!.title,
-        avatarUrl: updated!.avatarUrl,
-      });
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   // ── Notifications (derived from activity) ──────────
 
   app.get("/api/notifications", authenticateRequest, async (req, res) => {
@@ -3868,68 +3701,6 @@ Respond in JSON format:
       notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       res.json(notifications.slice(0, 15));
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // ── User Settings ──────────────────────────────────
-
-  app.get("/api/settings", authenticateRequest, async (req, res) => {
-    try {
-      const userId = req.user!.id;
-      const settings = await storage.getUserSettings(userId);
-      res.json(settings || {});
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  const settingsBodySchema = z.object({
-    voiceModel: z.string().optional(),
-    voiceSpeed: z.number().optional(),
-    assistantVerbosity: z.enum(["concise", "normal", "detailed"]).optional(),
-    pushToTalk: z.boolean().optional(),
-    autoRecordOnRoomEntry: z.boolean().optional(),
-    silenceDetectionSensitivity: z.enum(["low", "medium", "high"]).optional(),
-    defaultRegion: z.string().optional(),
-    defaultOverheadPercent: z.number().optional(),
-    defaultProfitPercent: z.number().optional(),
-    defaultTaxRate: z.number().optional(),
-    defaultWasteFactor: z.number().optional(),
-    measurementUnit: z.enum(["imperial", "metric"]).optional(),
-    autoGenerateBriefing: z.boolean().optional(),
-    requirePhotoVerification: z.boolean().optional(),
-    photoQuality: z.enum(["low", "medium", "high"]).optional(),
-    autoAnalyzePhotos: z.boolean().optional(),
-    timestampWatermark: z.boolean().optional(),
-    gpsTagging: z.boolean().optional(),
-    companyName: z.string().optional(),
-    adjusterLicenseNumber: z.string().optional(),
-    includeTranscriptInExport: z.boolean().optional(),
-    includePhotosInExport: z.boolean().optional(),
-    exportFormat: z.enum(["esx", "pdf", "both"]).optional(),
-    pushNotifications: z.boolean().optional(),
-    soundEffects: z.boolean().optional(),
-    claimStatusAlerts: z.boolean().optional(),
-    inspectionReminders: z.boolean().optional(),
-    theme: z.enum(["light", "dark", "system"]).optional(),
-    compactMode: z.boolean().optional(),
-    fontSize: z.enum(["small", "medium", "large"]).optional(),
-    showPhaseNumbers: z.boolean().optional(),
-  }).strict();
-
-  app.put("/api/settings", authenticateRequest, async (req, res) => {
-    try {
-      const parsed = settingsBodySchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid settings", errors: parsed.error.flatten().fieldErrors });
-      }
-      const userId = req.user!.id;
-      const result = await storage.upsertUserSettings(userId, parsed.data);
-      res.json(result.settings);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
@@ -4125,6 +3896,7 @@ Respond in JSON format:
         modifiedLineItems,
         status: "draft",
       });
+      emit({ type: "supplemental.created", supplementalId: supplemental.id, sessionId, userId: req.user?.id });
 
       res.json(supplemental);
     } catch (error: any) {
@@ -4169,6 +3941,7 @@ Respond in JSON format:
       const id = parseInt(param(req.params.id));
       const supplemental = await storage.submitSupplemental(id);
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
+      emit({ type: "supplemental.submitted", supplementalId: id, sessionId: supplemental.originalSessionId, userId: req.user?.id });
       res.json(supplemental);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -4366,5 +4139,4 @@ Respond in JSON format:
     }
   });
 
-  return httpServer;
 }
