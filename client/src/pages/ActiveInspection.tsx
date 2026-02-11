@@ -42,7 +42,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, resilientMutation } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -689,24 +689,29 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const dimensions = args.length && args.width
             ? { length: args.length, width: args.width, height: args.height }
             : undefined;
-          const roomHeaders = await getAuthHeaders();
-          const roomRes = await fetch(`/api/inspection/${sessionId}/rooms`, {
-            method: "POST",
-            headers: roomHeaders,
-            body: JSON.stringify({
-              name: args.name,
-              roomType: args.roomType,
-              structure: args.structure,
-              viewType: args.viewType || "interior",
-              shapeType: args.shapeType || "rectangle",
-              dimensions,
-              floor: args.floor,
-              facetLabel: args.facetLabel,
-              pitch: args.pitch || args.roofPitch,
-              phase: args.phase,
-            }),
-          });
+          const roomBody = {
+            name: args.name,
+            roomType: args.roomType,
+            structure: args.structure,
+            viewType: args.viewType || "interior",
+            shapeType: args.shapeType || "rectangle",
+            dimensions,
+            floor: args.floor,
+            facetLabel: args.facetLabel,
+            pitch: args.pitch || args.roofPitch,
+            phase: args.phase,
+          };
+          const roomRes = await resilientMutation(
+            "POST",
+            `/api/inspection/${sessionId}/rooms`,
+            roomBody,
+            { label: `Create room: ${args.name}` }
+          );
           const room = await roomRes.json();
+          if (roomRes.status === 202 && room.queued) {
+            result = { success: true, queued: true, message: "Room will be created when connected." };
+            break;
+          }
           if (!roomRes.ok) {
             result = { success: false, error: room.message || "Failed to create room" };
             break;
@@ -934,20 +939,25 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const measurements: any = {};
           if (args.extent) measurements.extent = args.extent;
           if (args.hitCount) measurements.hitCount = args.hitCount;
-          const damageHeaders = await getAuthHeaders();
-          const damageRes = await fetch(`/api/inspection/${sessionId}/damages`, {
-            method: "POST",
-            headers: damageHeaders,
-            body: JSON.stringify({
-              roomId: currentRoomId,
-              description: args.description,
-              damageType: args.damageType,
-              severity: args.severity,
-              location: args.location,
-              measurements: Object.keys(measurements).length > 0 ? measurements : undefined,
-            }),
-          });
+          const damageBody = {
+            roomId: currentRoomId,
+            description: args.description,
+            damageType: args.damageType,
+            severity: args.severity,
+            location: args.location,
+            measurements: Object.keys(measurements).length > 0 ? measurements : undefined,
+          };
+          const damageRes = await resilientMutation(
+            "POST",
+            `/api/inspection/${sessionId}/damages`,
+            damageBody,
+            { label: `Record damage: ${args.description?.substring?.(0, 40) ?? "damage"}` }
+          );
           const json = await damageRes.json();
+          if (damageRes.status === 202 && json.queued) {
+            result = { success: true, queued: true, message: "Damage will be recorded when connected." };
+            break;
+          }
           const damage = json.damage ?? json;
           await refreshRooms();
 
@@ -1032,25 +1042,30 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const qty = quantity || 1;
           const totalPrice = qty * finalUnitPrice * (1 + (finalWasteFactor || 0) / 100);
 
-          const lineHeaders = await getAuthHeaders();
-          const lineRes = await fetch(`/api/inspection/${sessionId}/line-items`, {
-            method: "POST",
-            headers: lineHeaders,
-            body: JSON.stringify({
-              roomId: currentRoomId,
-              category: category || "General",
-              action: action || null,
-              description,
-              xactCode: catalogCode || null,
-              quantity: qty,
-              unit: finalUnit,
-              unitPrice: finalUnitPrice,
-              totalPrice,
-              depreciationType: effectiveDepType,
-              wasteFactor: finalWasteFactor,
-            }),
-          });
+          const lineBody = {
+            roomId: currentRoomId,
+            category: category || "General",
+            action: action || null,
+            description,
+            xactCode: catalogCode || null,
+            quantity: qty,
+            unit: finalUnit,
+            unitPrice: finalUnitPrice,
+            totalPrice,
+            depreciationType: effectiveDepType,
+            wasteFactor: finalWasteFactor,
+          };
+          const lineRes = await resilientMutation(
+            "POST",
+            `/api/inspection/${sessionId}/line-items`,
+            lineBody,
+            { label: `Add line item: ${description?.substring?.(0, 40) ?? "line item"}` }
+          );
           const lineItem = await lineRes.json();
+          if (lineRes.status === 202 && lineItem.queued) {
+            result = { success: true, queued: true, message: "Line item will be added when connected." };
+            break;
+          }
           await refreshLineItems();
           result = {
             success: true,

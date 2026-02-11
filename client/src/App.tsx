@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,68 +8,38 @@ import NotFound from "@/pages/not-found";
 import BottomNav from "@/components/BottomNav";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/components/SettingsProvider";
-import LoginPage from "@/pages/LoginPage";
-import SupervisorDashboard from "@/pages/SupervisorDashboard";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
+
+const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const SupervisorDashboard = lazy(() => import("@/pages/SupervisorDashboard"));
+const ClaimsList = lazy(() => import("@/pages/ClaimsList"));
+const DocumentUpload = lazy(() => import("@/pages/DocumentUpload"));
+const ExtractionReview = lazy(() => import("@/pages/ExtractionReview"));
+const InspectionBriefing = lazy(() => import("@/pages/InspectionBriefing"));
+const ActiveInspection = lazy(() => import("@/pages/ActiveInspection"));
+const ReviewFinalize = lazy(() => import("@/pages/ReviewFinalize"));
+const ExportPage = lazy(() => import("@/pages/ExportPage"));
+const DocumentsHub = lazy(() => import("@/pages/DocumentsHub"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const SupplementalPage = lazy(() => import("@/pages/SupplementalPage"));
+const WorkflowBuilder = lazy(() => import("@/pages/WorkflowBuilder"));
+const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
+const PhotoGallery = lazy(() => import("@/pages/PhotoGallery"));
+const SketchGallery = lazy(() => import("@/pages/SketchGallery"));
+
 import OnboardingWizard, { isOnboardingCompleted } from "@/components/OnboardingWizard";
 
-import ClaimsList from "@/pages/ClaimsList";
-import DocumentUpload from "@/pages/DocumentUpload";
-import ExtractionReview from "@/pages/ExtractionReview";
-import InspectionBriefing from "@/pages/InspectionBriefing";
-import ActiveInspection from "@/pages/ActiveInspection";
-import ReviewFinalize from "@/pages/ReviewFinalize";
-import ExportPage from "@/pages/ExportPage";
-import DocumentsHub from "@/pages/DocumentsHub";
-import SettingsPage from "@/pages/SettingsPage";
-import SupplementalPage from "@/pages/SupplementalPage";
-import WorkflowBuilder from "@/pages/WorkflowBuilder";
-import ProfilePage from "@/pages/ProfilePage";
-import PhotoGallery from "@/pages/PhotoGallery";
-import SketchGallery from "@/pages/SketchGallery";
-
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback?: React.ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("ErrorBoundary caught:", error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        this.props.fallback || (
-          <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center" data-testid="error-boundary-fallback">
-            <div className="text-6xl mb-4">⚠</div>
-            <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
-            <p className="text-muted-foreground mb-4">
-              An unexpected error occurred. Please try refreshing the page.
-            </p>
-            <button
-              data-testid="button-reload"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-            >
-              Reload Page
-            </button>
-          </div>
-        )
-      );
-    }
-    return this.props.children;
-  }
+function PageLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
 }
 
 function ScrollToTop() {
@@ -85,6 +55,56 @@ function ScrollToTop() {
     if (main) main.scrollTop = 0;
   }, [location]);
   return null;
+}
+
+function ActiveInspectionWithBoundary({ params }: { params?: { id?: string } }) {
+  return (
+    <ErrorBoundary>
+      <ActiveInspection params={{ id: params?.id ?? "" }} />
+    </ErrorBoundary>
+  );
+}
+
+function ExportPageWithBoundary({ params }: { params?: { id?: string } }) {
+  return (
+    <ErrorBoundary>
+      <ExportPage params={{ id: params?.id ?? "" }} />
+    </ErrorBoundary>
+  );
+}
+
+function SupervisorDashboardWithBoundary() {
+  return (
+    <ErrorBoundary>
+      <SupervisorDashboard />
+    </ErrorBoundary>
+  );
+}
+
+function RouterContent() {
+  const { role } = useAuth();
+  return (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <Switch>
+        <Route path="/" component={ClaimsList} />
+        {role === "supervisor" && <Route path="/dashboard" component={SupervisorDashboardWithBoundary} />}
+        <Route path="/documents" component={DocumentsHub} />
+        <Route path="/settings" component={SettingsPage} />
+        <Route path="/settings/workflows" component={WorkflowBuilder} />
+        <Route path="/profile" component={ProfilePage} />
+        <Route path="/gallery/photos" component={PhotoGallery} />
+        <Route path="/gallery/sketches" component={SketchGallery} />
+        <Route path="/upload/:id" component={DocumentUpload} />
+        <Route path="/review/:id" component={ExtractionReview} />
+        <Route path="/briefing/:id" component={InspectionBriefing} />
+        <Route path="/inspection/:id/review" component={ReviewFinalize} />
+        <Route path="/inspection/:id/export" component={ExportPageWithBoundary} />
+        <Route path="/inspection/:id/supplemental" component={SupplementalPage} />
+        <Route path="/inspection/:id" component={ActiveInspectionWithBoundary} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
+  );
 }
 
 function ProtectedRouter() {
@@ -106,7 +126,11 @@ function ProtectedRouter() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   return (
@@ -114,28 +138,16 @@ function ProtectedRouter() {
       <ScrollToTop />
       <OnboardingWizard open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <ErrorBoundary>
-        <Switch>
-          <Route path="/" component={ClaimsList} />
-          {role === "supervisor" && <Route path="/dashboard" component={SupervisorDashboard} />}
-          <Route path="/documents" component={DocumentsHub} />
-          <Route path="/settings" component={SettingsPage} />
-          <Route path="/settings/workflows" component={WorkflowBuilder} />
-          <Route path="/profile" component={ProfilePage} />
-          <Route path="/gallery/photos" component={PhotoGallery} />
-          <Route path="/gallery/sketches" component={SketchGallery} />
-          <Route path="/upload/:id" component={DocumentUpload} />
-          <Route path="/review/:id" component={ExtractionReview} />
-          <Route path="/briefing/:id" component={InspectionBriefing} />
-          <Route path="/inspection/:id" component={ActiveInspection} />
-          <Route path="/inspection/:id/review" component={ReviewFinalize} />
-          <Route path="/inspection/:id/export" component={ExportPage} />
-          <Route path="/inspection/:id/supplemental" component={SupplementalPage} />
-          <Route component={NotFound} />
-        </Switch>
+        <RouterContent />
       </ErrorBoundary>
       <BottomNav />
     </>
   );
+}
+
+function AppWithSync() {
+  useOfflineSync();
+  return <ProtectedRouter />;
 }
 
 function App() {

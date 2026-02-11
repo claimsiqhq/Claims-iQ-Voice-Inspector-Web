@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
+import { enqueueMutation } from "./offlineQueue";
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
@@ -42,6 +43,47 @@ export async function apiRequest(
 
   await throwIfResNotOk(res);
   return res;
+}
+
+/**
+ * Wrapper around apiRequest that queues mutations when offline.
+ * Use this for non-critical mutations that can be safely retried.
+ */
+export async function resilientMutation(
+  method: string,
+  url: string,
+  data?: unknown,
+  options?: {
+    /** Human-readable label for the queue UI */
+    label?: string;
+    /** Max retries if request fails (default: 5) */
+    maxRetries?: number;
+    /** If true, never queue — always throw on failure */
+    skipQueue?: boolean;
+  }
+): Promise<Response> {
+  try {
+    return await apiRequest(method, url, data);
+  } catch (err: unknown) {
+    if (typeof navigator === "undefined" || navigator.onLine || options?.skipQueue) {
+      throw err;
+    }
+
+    const authHeaders = await getAuthHeaders();
+    await enqueueMutation({
+      method,
+      url,
+      body: data,
+      headers: authHeaders,
+      maxRetries: options?.maxRetries ?? 5,
+      label: options?.label || `${method} ${url}`,
+    });
+
+    return new Response(
+      JSON.stringify({ queued: true, message: "Saved offline — will sync when connected" }),
+      { status: 202, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
