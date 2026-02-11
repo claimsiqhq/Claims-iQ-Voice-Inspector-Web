@@ -6,6 +6,13 @@ import { profileRouter } from "./profile";
 import { adminRouter } from "./admin";
 import { claimsRouter } from "./claims";
 import { documentsRouter } from "./documents";
+import { flowsRouter } from "./flows";
+import { pricingRouter } from "./pricing";
+import { supplementalRouter } from "./supplemental";
+import { notificationsRouter } from "./notifications";
+import { realtimeRouter } from "./realtime";
+import { logsRouter } from "./logs";
+import { galleryRouter } from "./gallery";
 import { registerLegacyRoutes } from "../routes.legacy";
 
 export async function registerRoutes(
@@ -56,6 +63,13 @@ export async function registerRoutes(
   app.use("/api/admin", adminRouter());
   app.use("/api/claims", claimsRouter());
   app.use("/api/documents", documentsRouter());
+  app.use("/api/flows", flowsRouter());
+  app.use("/api/pricing", pricingRouter());
+  app.use("/api/supplemental/:id", supplementalRouter());
+  app.use("/api/notifications", notificationsRouter());
+  app.use("/api/realtime", realtimeRouter());
+  app.use("/api/logs", logsRouter());
+  app.use("/api/gallery", galleryRouter());
 
   // ─── Legacy routes (to be extracted incrementally) ─
   await registerLegacyRoutes(app);
