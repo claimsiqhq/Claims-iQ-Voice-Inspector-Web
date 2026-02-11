@@ -1,0 +1,13 @@
+node_modules
+.git
+.replit
+replit.nix
+.env
+.env.local
+*.log
+dist
+migrations/*.sql.bak
+tests
+coverage
+.vscode
+.idea
