@@ -9,8 +9,6 @@ import { generateESXFile } from "./esxGenerator";
 import { reviewEstimate } from "./aiReview";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
 import { authenticateRequest, authenticateSupabaseToken, requireRole, optionalAuth } from "./auth";
-import pdfParse from "pdf-parse";
-import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
 import { lookupCatalogItem, getRegionalPrice, calculateLineItemPrice, calculateEstimateTotals, validateEstimate, calculateDimVars, type RoomDimensions, type OpeningData } from "./estimateEngine";
 import { z } from "zod";
@@ -27,15 +25,6 @@ const sessionUpdateSchema = z.object({
 const structureUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   structureType: z.string().max(30).optional(),
-}).strict();
-
-const policyRuleUpdateSchema = z.object({
-  coverageName: z.string().optional(),
-  policyLimit: z.number().nonnegative().optional(),
-  deductible: z.number().nonnegative().optional(),
-  opRate: z.number().min(0).max(1).optional(),
-  taxRate: z.number().min(0).max(1).optional(),
-  roofSchedule: z.boolean().optional(),
 }).strict();
 
 const structureCreateSchema = z.object({
@@ -168,26 +157,6 @@ const checkRelatedItemsSchema = z.object({
   actionTaken: z.string().optional(),
 });
 
-const policyRuleSchema = z.object({
-  coverageType: z.enum(["Coverage A", "Coverage B", "Coverage C", "Coverage D"]),
-  policyLimit: z.number().positive().nullable().optional(),
-  deductible: z.number().nonnegative().nullable().optional(),
-  applyRoofSchedule: z.boolean().optional(),
-  roofScheduleAge: z.number().positive().nullable().optional(),
-  overheadPct: z.number().nonnegative().default(10),
-  profitPct: z.number().nonnegative().default(10),
-  taxRate: z.number().nonnegative().default(8),
-  opExcludedTrades: z.array(z.string()).default([]),
-});
-
-const taxRuleSchema = z.object({
-  taxLabel: z.string().min(1).max(50),
-  taxRate: z.number().nonnegative(),
-  appliesToCategories: z.array(z.string()).default([]),
-  appliesToCostType: z.enum(["material", "labor", "all"]).default("all"),
-  isDefault: z.boolean().default(false),
-});
-
 const adjacencyCreateSchema = z.object({
   roomIdA: z.number().int().positive(),
   roomIdB: z.number().int().positive(),
@@ -196,149 +165,6 @@ const adjacencyCreateSchema = z.object({
   sharedWallLengthFt: z.number().positive().nullable().optional(),
   openingId: z.number().int().positive().nullable().optional(),
 });
-
-const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-
-/** Extracts top-level claim fields from a parsed FNOL extraction so they can be synced to the claims table. */
-function claimFieldsFromFnol(data: any): Record<string, any> {
-  const fields: Record<string, any> = {};
-  if (data.insuredName) fields.insuredName = data.insuredName;
-  if (data.perilType) fields.perilType = data.perilType;
-  if (data.dateOfLoss) fields.dateOfLoss = data.dateOfLoss;
-  if (data.propertyAddress) {
-    if (typeof data.propertyAddress === "object") {
-      if (data.propertyAddress.street) fields.propertyAddress = data.propertyAddress.street;
-      if (data.propertyAddress.city) fields.city = data.propertyAddress.city;
-      if (data.propertyAddress.state) fields.state = data.propertyAddress.state;
-      if (data.propertyAddress.zip) fields.zip = data.propertyAddress.zip;
-    } else if (typeof data.propertyAddress === "string") {
-      fields.propertyAddress = data.propertyAddress;
-    }
-  }
-  return fields;
-}
-
-function decodeBase64Payload(base64Input: string, maxBytes: number): { buffer: Buffer; wasTruncated: boolean } {
-  const base64Data = base64Input.includes(",") ? base64Input.split(",")[1] : base64Input;
-  const buffer = Buffer.from(base64Data, "base64");
-  return { buffer, wasTruncated: buffer.length > maxBytes };
-}
-
-async function uploadToSupabase(
-  claimId: number,
-  documentType: string,
-  fileBuffer: Buffer,
-  fileName: string
-): Promise<string> {
-  const storagePath = `claims/${claimId}/${documentType}/${fileName}`;
-  const { error } = await supabase.storage
-    .from(DOCUMENTS_BUCKET)
-    .upload(storagePath, fileBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
-  return storagePath;
-}
-
-async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
-  const { data, error } = await supabase.storage
-    .from(DOCUMENTS_BUCKET)
-    .download(storagePath);
-  if (error) throw new Error(`Storage download failed: ${error.message}`);
-  const arrayBuffer = await data.arrayBuffer();
-  return Buffer.from(arrayBuffer);
-}
-
-/**
- * Auto-create default policy rules from briefing coverage data when none exist.
- */
-async function ensurePolicyRules(claimId: number, userId?: number) {
-  const existing = await storage.getPolicyRulesForClaim(claimId);
-  if (existing.length > 0) return existing;
-
-  // Load user settings for default O&P and tax rates
-  let defaultOverhead = 10;
-  let defaultProfit = 10;
-  let defaultTax = 8;
-  if (userId) {
-    try {
-      const userSettings = await storage.getUserSettings(userId);
-      const s = (userSettings?.settings as Record<string, any>) || {};
-      if (typeof s.defaultOverheadPercent === "number") defaultOverhead = s.defaultOverheadPercent;
-      if (typeof s.defaultProfitPercent === "number") defaultProfit = s.defaultProfitPercent;
-      if (typeof s.defaultTaxRate === "number") defaultTax = s.defaultTaxRate;
-    } catch {}
-  }
-
-  // Seed from briefing
-  const briefing = await storage.getBriefing(claimId);
-  const coverage = briefing?.coverageSnapshot as any;
-
-  const rules: Array<any> = [];
-
-  // Coverage A — Dwelling
-  rules.push({
-    claimId,
-    coverageType: "Coverage A",
-    policyLimit: coverage?.coverageA?.limit || null,
-    deductible: coverage?.deductible || 1000,
-    applyRoofSchedule: coverage?.roofSchedule?.applies || false,
-    roofScheduleAge: coverage?.roofSchedule?.ageThreshold || null,
-    overheadPct: defaultOverhead,
-    profitPct: defaultProfit,
-    taxRate: defaultTax,
-  });
-
-  // Coverage B — Other Structures (if present)
-  if (coverage?.coverageB) {
-    rules.push({
-      claimId,
-      coverageType: "Coverage B",
-      policyLimit: coverage.coverageB.limit || null,
-      deductible: coverage.coverageB.deductible || coverage?.deductible || 0,
-      applyRoofSchedule: false,
-      overheadPct: defaultOverhead,
-      profitPct: defaultProfit,
-      taxRate: defaultTax,
-    });
-  }
-
-  // Coverage C — Contents (if present)
-  if (coverage?.coverageC) {
-    rules.push({
-      claimId,
-      coverageType: "Coverage C",
-      policyLimit: coverage.coverageC.limit || null,
-      deductible: 0,
-      applyRoofSchedule: false,
-      overheadPct: defaultOverhead,
-      profitPct: defaultProfit,
-      taxRate: defaultTax,
-    });
-  }
-
-  const created = [];
-  for (const rule of rules) {
-    created.push(await storage.createPolicyRule(rule));
-  }
-
-  // Also seed a default tax rule if none exist
-  const existingTax = await storage.getTaxRulesForClaim(claimId);
-  if (existingTax.length === 0) {
-    await storage.createTaxRule({
-      claimId,
-      taxLabel: "Sales Tax",
-      taxRate: coverage?.taxRate || defaultTax,
-      appliesToCategories: [],
-      appliesToCostType: "all",
-      isDefault: true,
-    });
-  }
-
-  return created;
-}
 
 export async function registerLegacyRoutes(app: Express): Promise<void> {
   app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
