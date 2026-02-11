@@ -1,5 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, userEvent } from "@testing-library/react";
+/**
+ * @vitest-environment jsdom
+ */
+import React from "react";
+import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ErrorBoundary } from "../../../client/src/components/ErrorBoundary";
 
 const ThrowError = ({ shouldThrow }: { shouldThrow: boolean }) => {
@@ -52,23 +56,17 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
   });
 
-  it("retry button resets error boundary state", async () => {
-    const user = userEvent.setup();
-    let renderCount = 0;
-    const ThrowOnFirstRender = () => {
-      renderCount++;
-      if (renderCount === 1) throw new Error("First render error");
-      return <div data-testid="recovered">Recovered</div>;
-    };
+  it("retry button is present and clickable", () => {
     render(
       <ErrorBoundary>
-        <ThrowOnFirstRender />
+        <ThrowError shouldThrow={true} />
       </ErrorBoundary>
     );
-    expect(screen.getByText("First render error")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /try again/i }));
-    // After retry, component re-mounts; renderCount increments, ThrowOnFirstRender throws again
-    // So we still see the error - the key is the button click doesn't crash
-    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    const tryAgainBtn = screen.getByRole("button", { name: /try again/i });
+    expect(tryAgainBtn).toBeInTheDocument();
+    fireEvent.click(tryAgainBtn);
+    // After retry, child re-mounts and throws again; fallback still shown
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
   });
 });
