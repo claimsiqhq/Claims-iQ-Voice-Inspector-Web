@@ -33,6 +33,8 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+  "swagger-ui-express",
+  "yaml",
 ];
 
 async function buildAll() {

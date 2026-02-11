@@ -97,7 +97,30 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  const [sessionId, setSessionId] = useState<number | null>(null);
+  const STORAGE_KEY = `inspection-session-${claimId}`;
+  const [sessionId, setSessionId] = useState<number | null>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Date.now() - (parsed.timestamp || 0) < 86400000) {
+          return parsed.sessionId ?? null;
+        }
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
+    return null;
+  });
+  const [isResumedSession, setIsResumedSession] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return !!(parsed.sessionId && Date.now() - (parsed.timestamp || 0) < 86400000);
+      } catch {}
+    }
+    return false;
+  });
   const [voiceState, setVoiceState] = useState<VoiceState>("disconnected");
   const [isConnecting, setIsConnecting] = useState(false);
   const isConnectingRef = useRef(false);
@@ -167,10 +190,28 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
   const hasGreetedRef = useRef(false);
-  const elapsedRef = useRef(0);
+  const elapsedRef = useRef(() => {
+    const saved = localStorage.getItem(`inspection-session-${claimId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.elapsedSeconds ?? 0;
+      } catch {}
+    }
+    return 0;
+  }());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(() => {
+    const saved = localStorage.getItem(`inspection-session-${claimId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.elapsedSeconds ?? 0;
+      } catch {}
+    }
+    return 0;
+  });
 
   const { data: claimData } = useQuery({
     queryKey: [`/api/claims/${claimId}`],
@@ -191,15 +232,47 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     },
     onSuccess: (data) => {
       setSessionId(data.sessionId);
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          sessionId: data.sessionId,
+          timestamp: Date.now(),
+          elapsedSeconds: elapsedRef.current,
+        })
+      );
     },
   });
 
+  // Validate restored session (from localStorage) - skip for freshly created sessions
   useEffect(() => {
-    if (!sessionStartedRef.current && claimId) {
+    if (!sessionId || !claimId || !isResumedSession) return;
+    apiRequest("GET", `/api/inspection/${sessionId}`)
+      .then((res: Response) => res.json())
+      .then((session: any) => {
+        if (session?.status === "completed") {
+          localStorage.removeItem(STORAGE_KEY);
+          setSessionId(null);
+          setIsResumedSession(false);
+          setLocation(`/inspection/${claimId}/review`);
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem(STORAGE_KEY);
+        setSessionId(null);
+        setIsResumedSession(false);
+        if (!sessionStartedRef.current) {
+          sessionStartedRef.current = true;
+          startSessionMutation.mutate();
+        }
+      });
+  }, [sessionId, claimId, isResumedSession]);
+
+  useEffect(() => {
+    if (!sessionStartedRef.current && claimId && !sessionId) {
       sessionStartedRef.current = true;
       startSessionMutation.mutate();
     }
-  }, [claimId]);
+  }, [claimId, sessionId]);
 
   useEffect(() => {
     if (isConnected && !isPaused) {
@@ -212,6 +285,22 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isConnected, isPaused]);
+
+  // Persist session state periodically (elapsed time, etc.)
+  useEffect(() => {
+    if (!sessionId || !isConnected) return;
+    const persistInterval = setInterval(() => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          sessionId,
+          timestamp: Date.now(),
+          elapsedSeconds: elapsedRef.current,
+        })
+      );
+    }, 30000);
+    return () => clearInterval(persistInterval);
+  }, [sessionId, isConnected]);
 
   const getAuthHeaders = useCallback(async () => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -1364,6 +1453,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "complete_inspection": {
           if (!sessionId) { result = { success: false }; break; }
+          localStorage.removeItem(STORAGE_KEY);
           result = { success: true, message: "Navigating to review page. The claim remains open until you explicitly mark it complete." };
           setTimeout(() => setLocation(`/inspection/${claimId}/review`), 2000);
           break;
@@ -1896,7 +1986,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         <Button
           variant="outline"
           className="w-full border-border text-foreground hover:bg-primary/10 text-xs"
-          onClick={() => setLocation(`/inspection/${claimId}/review`)}
+          onClick={() => {
+            localStorage.removeItem(STORAGE_KEY);
+            setLocation(`/inspection/${claimId}/review`);
+          }}
           data-testid="button-finish-inspection"
         >
           <FileText className="mr-1.5 h-3.5 w-3.5" /> Review & Finalize
@@ -2152,6 +2245,23 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
         )}
 
+        {/* Resumed session banner */}
+        {isResumedSession && (
+          <div className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-3 flex items-center justify-between text-sm z-10">
+            <span className="text-blue-700 dark:text-blue-300">
+              Resumed previous inspection session. Voice connection will re-establish automatically.
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
+              onClick={() => setIsResumedSession(false)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+
         {/* Disconnected Banner */}
         {voiceState === "disconnected" && !isConnecting && (
           <div className="bg-destructive text-destructive-foreground px-4 py-2 flex items-center justify-between text-sm z-10">
@@ -2342,7 +2452,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 variant="ghost"
                 size="sm"
                 className="text-xs text-muted-foreground hover:text-foreground hidden sm:flex"
-                onClick={() => setLocation(`/inspection/${claimId}/review`)}
+                onClick={() => {
+                  localStorage.removeItem(STORAGE_KEY);
+                  setLocation(`/inspection/${claimId}/review`);
+                }}
               >
                 <FileText className="h-4 w-4 mr-1" />
                 Review

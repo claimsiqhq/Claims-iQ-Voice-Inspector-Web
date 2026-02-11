@@ -3,6 +3,10 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
+import { readFileSync } from "fs";
+import path from "path";
+import { parse } from "yaml";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -85,6 +89,10 @@ app.use(
     customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode} FAILED`,
   })
 );
+
+const openApiSpec = parse(readFileSync(path.resolve("docs/openapi.yaml"), "utf-8"));
+app.get("/docs", (_req, res) => res.redirect(301, "/api-docs/"));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec, { customCss: ".swagger-ui .topbar { display: none }" }));
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
