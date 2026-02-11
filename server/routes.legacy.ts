@@ -2418,6 +2418,7 @@ export async function registerLegacyRoutes(app: Express): Promise<void> {
       if (roomId) {
         await storage.incrementRoomPhotoCount(roomId);
       }
+      emit({ type: "inspection.photoUploaded", sessionId, userId: req.user?.id, meta: { photoId: photo.id } });
 
       res.status(201).json({ photoId: photo.id, storagePath: photo.storagePath });
     } catch (error: any) {
