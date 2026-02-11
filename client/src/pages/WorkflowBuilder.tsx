@@ -263,8 +263,8 @@ function FlowEditor({
       queryClient.invalidateQueries({ queryKey: ["/api/flows"] });
       toast({ title: "Flow saved", description: `"${name}" has been updated.` });
     },
-    onError: (err: any) => {
-      toast({ title: "Error saving flow", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Error saving flow", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -476,7 +476,7 @@ export default function WorkflowBuilder() {
       setEditingFlow(flow);
       toast({ title: "Flow created", description: `"${flow.name}" is ready to configure.` });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({ title: "Error creating flow", description: err.message, variant: "destructive" });
     },
   });
@@ -493,7 +493,7 @@ export default function WorkflowBuilder() {
       setEditingFlow(flow);
       toast({ title: "Flow cloned", description: `Created "${flow.name}". You can now customize it.` });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({ title: "Error cloning flow", description: err.message, variant: "destructive" });
     },
   });
@@ -507,7 +507,7 @@ export default function WorkflowBuilder() {
       setDeleteTarget(null);
       toast({ title: "Flow deleted" });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({ title: "Error deleting flow", description: err.message, variant: "destructive" });
     },
   });

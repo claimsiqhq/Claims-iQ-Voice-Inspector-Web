@@ -26,11 +26,11 @@ function claimsiqAuthStorage() {
   };
 }
 
-let supabase: SupabaseClient;
+let supabase: SupabaseClient | null;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   logger.warn("Auth", "Supabase URL or Anon Key not configured. Auth will not work.");
-  supabase = null as any;
+  supabase = null;
 } else {
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { storage: typeof window !== "undefined" ? claimsiqAuthStorage() : undefined },

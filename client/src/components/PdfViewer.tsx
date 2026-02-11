@@ -50,9 +50,9 @@ export default function PdfViewer({ urls, fileName, onClose }: PdfViewerProps) {
           setCurrentPage(1);
           setLoading(false);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setError(e.message || "Failed to load PDF");
+          setError(e instanceof Error ? e.message : "Failed to load PDF");
           setLoading(false);
         }
       }

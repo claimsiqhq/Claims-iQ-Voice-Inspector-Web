@@ -220,7 +220,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
       updateState(index, "complete");
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateState(index, "error", error.message);
     }
   }, [claimId]);
@@ -260,7 +260,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
       updateState(index, "complete");
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateState(index, "error", error.message);
     }
   }, [claimId]);

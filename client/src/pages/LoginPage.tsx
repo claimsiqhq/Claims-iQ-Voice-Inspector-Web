@@ -26,8 +26,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signIn(email, password, rememberMe);
-    } catch (err: any) {
-      setError(err?.message || "Sign in failed. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Sign in failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -42,7 +42,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signUp(email, password, fullName, username.trim() || undefined);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err?.message || "Sign up failed. Please try again.");
     } finally {
       setLoading(false);

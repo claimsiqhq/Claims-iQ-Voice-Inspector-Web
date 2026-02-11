@@ -239,8 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const err = await loginRes.json().catch(() => ({}));
         throw new Error(err.message || "Invalid email/username or password");
       }
-    } catch (error: any) {
-      toast({ title: "Sign in failed", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Sign in failed", description: error instanceof Error ? error.message : "Sign in failed", variant: "destructive" });
     }
   }
 
@@ -293,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const err = await registerRes.json().catch(() => ({}));
         throw new Error(err.message || "Registration failed");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
     }
   }
@@ -307,7 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setLocation("/login");
       toast({ title: "Signed out" });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({ title: "Sign out failed", description: error.message, variant: "destructive" });
     }
   }
