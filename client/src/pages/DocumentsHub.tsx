@@ -335,16 +335,18 @@ export default function DocumentsHub() {
   const { role } = useAuth();
   const claimsEndpoint = role === "supervisor" ? "/api/claims" : "/api/claims/my-claims";
 
-  const { data: claims = [], isLoading: loadingClaims } = useQuery<Claim[]>({
+  const { data: claims = [], isLoading: loadingClaims, isError: claimsError, refetch: refetchClaims } = useQuery<Claim[]>({
     queryKey: [claimsEndpoint],
   });
 
-  const { data: allDocs = [], isLoading: loadingDocs } = useQuery<DocRecord[]>({
+  const { data: allDocs = [], isLoading: loadingDocs, isError: docsError, refetch: refetchDocs } = useQuery<DocRecord[]>({
     queryKey: ["/api/documents/all"],
     enabled: claims.length > 0,
   });
 
   const isLoading = loadingClaims || (claims.length > 0 && loadingDocs);
+  const isError = claimsError || docsError;
+  const refetch = () => { refetchClaims(); refetchDocs(); };
 
   const docsByClaim = claims.reduce<Record<number, DocRecord[]>>((acc, claim) => {
     acc[claim.id] = allDocs.filter(d => d.claimId === claim.id);
@@ -361,7 +363,14 @@ export default function DocumentsHub() {
           </p>
         </div>
 
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <p className="text-destructive font-medium">Failed to load documents</p>
+            <Button variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>

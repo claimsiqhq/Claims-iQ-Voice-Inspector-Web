@@ -143,7 +143,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
       <header className="h-14 md:h-16 bg-foreground text-white flex items-center justify-between px-3 md:px-6 shadow-md z-50">
         <div className="flex items-center gap-2 md:gap-4 min-w-0">
           {showBack && (
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 shrink-0 h-8 w-8 md:h-10 md:w-10" onClick={() => window.history.back()}>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 shrink-0 h-8 w-8 md:h-10 md:w-10" onClick={() => window.history.back()} aria-label="Go back">
               <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
             </Button>
           )}

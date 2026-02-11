@@ -18,7 +18,7 @@ export default function SupplementalPage({ params }: { params: { id: string } })
   });
 
   // Get active session (use GET to avoid creating new sessions on refetch)
-  const { data: sessionData } = useQuery({
+  const { data: sessionData, isError: sessionError, refetch: refetchSession } = useQuery({
     queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
   });
@@ -26,10 +26,13 @@ export default function SupplementalPage({ params }: { params: { id: string } })
   const sessionId = (sessionData as any)?.id || (sessionData as any)?.sessionId;
 
   // Get supplementals
-  const { data: supplementals, refetch } = useQuery({
+  const { data: supplementals, isError: supplementalsError, refetch } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/supplementals`],
     enabled: !!sessionId,
   });
+
+  const isError = sessionError || supplementalsError;
+  const refetchAll = () => { refetchSession(); refetch(); };
 
   // Get original estimate
   const { data: estimateData } = useQuery({
@@ -65,6 +68,17 @@ export default function SupplementalPage({ params }: { params: { id: string } })
       refetch();
     },
   });
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 gap-4">
+        <p className="text-destructive font-medium">Failed to load supplemental data</p>
+        <Button variant="outline" onClick={() => refetchAll()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20">

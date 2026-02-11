@@ -22,19 +22,21 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const queryClient = useQueryClient();
 
   // Fetch session data first
-  const { data: claimData } = useQuery({
+  const { data: claimData, isError: claimError, refetch: refetchClaim } = useQuery({
     queryKey: [`/api/claims/${claimId}`],
     enabled: !!claimId,
   });
 
   const claim = claimData as any;
 
-  const { data: sessionData } = useQuery({
+  const { data: sessionData, isError: sessionError, refetch: refetchSession } = useQuery({
     queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
   });
 
   const sessionId = (sessionData as any)?.sessionId;
+  const hasCriticalError = claimError || sessionError;
+  const refetchCritical = () => { refetchClaim(); refetchSession(); };
 
   // Fetch data for all tabs
   const { data: estimateData } = useQuery({
@@ -79,6 +81,17 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const briefing = briefingData as any;
   const rooms = (roomsData || []) as any[];
   const estimateByRoom = estimateByRoomData as any;
+
+  if (hasCriticalError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 gap-4" data-testid="review-finalize-page">
+        <p className="text-destructive font-medium">Failed to load claim or inspection data</p>
+        <Button variant="outline" onClick={() => refetchCritical()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20" data-testid="review-finalize-page">

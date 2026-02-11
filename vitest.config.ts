@@ -24,7 +24,6 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       include: ['server/**/*.ts', 'shared/**/*.ts'],
       exclude: [
-        'server/replit_integrations/**',
         '**/*.test.ts',
         '**/node_modules/**',
       ],

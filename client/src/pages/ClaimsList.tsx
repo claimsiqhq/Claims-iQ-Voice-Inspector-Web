@@ -30,7 +30,7 @@ export default function ClaimsList() {
 
   const { user, role } = useAuth();
 
-  const { data: claims = [], isLoading } = useQuery<Claim[]>({
+  const { data: claims = [], isLoading, isError, refetch } = useQuery<Claim[]>({
     queryKey: [role === "supervisor" ? "/api/claims" : `/api/claims/my-claims`],
   });
 
@@ -108,7 +108,14 @@ export default function ClaimsList() {
           </Button>
         </div>
 
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <p className="text-destructive font-medium">Failed to load claims</p>
+            <Button variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
