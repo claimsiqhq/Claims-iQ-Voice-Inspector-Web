@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   Shield,
   Wrench,
   Eye,
+  FolderOpen,
 } from "lucide-react";
 
 interface DamageDetection {
@@ -234,7 +235,7 @@ function PhotoCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasAnalysis = photo.analysisStatus === "complete" && photo.analysis;
-  const analyzing = photo.analysisStatus === "analyzing" || isAnalyzing;
+  const analyzing = photo.analysisStatus === "analyzing" || photo.analysisStatus === "pending" || isAnalyzing;
   const annotations = photo.annotations || [];
   const score = photo.severityScore || 0;
 
@@ -385,27 +386,14 @@ function PhotoCard({
         )}
 
         <div className="flex items-center gap-1.5 pt-1 border-t">
-          {!hasAnalysis && !analyzing && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-[11px] gap-1 flex-1"
-              onClick={() => onAnalyze(photo.id)}
-              data-testid={`analyze-btn-${photo.id}`}
-            >
-              <Sparkles className="h-3 w-3" />
-              Analyze
-            </Button>
-          )}
-
           {analyzing && (
             <Button size="sm" variant="secondary" className="h-7 text-[11px] gap-1 flex-1" disabled>
               <Loader2 className="h-3 w-3 animate-spin" />
-              Analyzing...
+              AI Analyzing...
             </Button>
           )}
 
-          {photo.analysisStatus === "failed" && (
+          {!hasAnalysis && !analyzing && photo.analysisStatus === "failed" && (
             <Button
               size="sm"
               variant="destructive"
@@ -414,7 +402,7 @@ function PhotoCard({
               data-testid={`retry-btn-${photo.id}`}
             >
               <AlertTriangle className="h-3 w-3" />
-              Retry
+              Retry Analysis
             </Button>
           )}
 
@@ -474,42 +462,78 @@ function PhotoCard({
 export default function PhotoLab() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<StandalonePhoto | null>(null);
   const [attachingPhoto, setAttachingPhoto] = useState<StandalonePhoto | null>(null);
   const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; completed: number; failed: number } | null>(null);
+
+  const hasProcessingPhotos = (photos: StandalonePhoto[]) =>
+    photos.some((p) => p.analysisStatus === "pending" || p.analysisStatus === "analyzing");
 
   const { data: photos = [], isLoading } = useQuery<StandalonePhoto[]>({
     queryKey: ["/api/photolab/photos"],
+    refetchInterval: (query) => {
+      const data = query.state.data as StandalonePhoto[] | undefined;
+      if (data && hasProcessingPhotos(data)) return 3000;
+      return false;
+    },
   });
 
   const { data: claimsList = [] } = useQuery<Claim[]>({
     queryKey: ["/api/claims"],
   });
 
+  useEffect(() => {
+    if (uploadProgress && uploadProgress.completed + uploadProgress.failed >= uploadProgress.total) {
+      const timer = setTimeout(() => setUploadProgress(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [uploadProgress]);
+
+  const uploadSingleFile = async (file: File): Promise<StandalonePhoto> => {
+    return new Promise<StandalonePhoto>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await apiRequest("POST", "/api/photolab/upload", {
+            imageData: reader.result as string,
+            fileName: file.name,
+          });
+          const data = await res.json();
+          resolve(data);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      return new Promise<StandalonePhoto>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          try {
-            const res = await apiRequest("POST", "/api/photolab/upload", {
-              imageData: reader.result as string,
-              fileName: file.name,
-            });
-            const data = await res.json();
-            resolve(data);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-    },
+    mutationFn: async (file: File) => uploadSingleFile(file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/photolab/photos"] });
     },
   });
+
+  const handleBatchUpload = useCallback(async (files: File[]) => {
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+
+    setUploadProgress({ total: imageFiles.length, completed: 0, failed: 0 });
+
+    for (const file of imageFiles) {
+      try {
+        await uploadSingleFile(file);
+        setUploadProgress((prev) => prev ? { ...prev, completed: prev.completed + 1 } : null);
+      } catch {
+        setUploadProgress((prev) => prev ? { ...prev, failed: prev.failed + 1 } : null);
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/photolab/photos"] });
+  }, [queryClient]);
 
   const analyzeMutation = useMutation({
     mutationFn: async (photoId: number) => {
@@ -561,14 +585,18 @@ export default function PhotoLab() {
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
-    Array.from(files).forEach((file) => {
-      uploadMutation.mutate(file);
-    });
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+    if (fileArray.length === 1) {
+      uploadMutation.mutate(fileArray[0]);
+    } else {
+      handleBatchUpload(fileArray);
+    }
     e.target.value = "";
-  }, [uploadMutation]);
+  }, [uploadMutation, handleBatchUpload]);
 
   const analyzedCount = photos.filter((p) => p.analysisStatus === "complete").length;
+  const analyzingCount = photos.filter((p) => p.analysisStatus === "analyzing").length;
   const pendingCount = photos.filter((p) => p.analysisStatus === "pending" || p.analysisStatus === "failed").length;
 
   return (
@@ -597,9 +625,20 @@ export default function PhotoLab() {
             data-testid="input-file-upload"
           />
 
+          <input
+            ref={folderInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+            data-testid="input-folder-upload"
+            {...({ webkitdirectory: "", directory: "" } as any)}
+          />
+
           <Button
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploadMutation.isPending}
+            disabled={uploadMutation.isPending || !!uploadProgress}
             className="gap-2"
             data-testid="button-upload"
           >
@@ -609,6 +648,17 @@ export default function PhotoLab() {
               <Upload className="h-4 w-4" />
             )}
             Upload Photos
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => folderInputRef.current?.click()}
+            disabled={uploadMutation.isPending || !!uploadProgress}
+            className="gap-2"
+            data-testid="button-folder"
+          >
+            <FolderOpen className="h-4 w-4" />
+            Upload Folder
           </Button>
 
           <input
@@ -629,7 +679,7 @@ export default function PhotoLab() {
           <Button
             variant="outline"
             onClick={() => document.getElementById("camera-input")?.click()}
-            disabled={uploadMutation.isPending}
+            disabled={uploadMutation.isPending || !!uploadProgress}
             className="gap-2"
             data-testid="button-camera"
           >
@@ -647,6 +697,12 @@ export default function PhotoLab() {
                 {analyzedCount} analyzed
               </span>
             )}
+            {analyzingCount > 0 && (
+              <span className="flex items-center gap-1 text-blue-600">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {analyzingCount} analyzing
+              </span>
+            )}
             {pendingCount > 0 && (
               <span className="flex items-center gap-1 text-amber-600">
                 <AlertTriangle className="h-3 w-3" />
@@ -655,6 +711,44 @@ export default function PhotoLab() {
             )}
           </div>
         </div>
+
+        {uploadProgress && (
+          <Card className="p-4" data-testid="upload-progress">
+            <div className="flex items-center gap-3 mb-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="text-sm font-medium">
+                Uploading {uploadProgress.completed + uploadProgress.failed}/{uploadProgress.total} photos...
+              </span>
+              {uploadProgress.failed > 0 && (
+                <span className="text-xs text-red-600">{uploadProgress.failed} failed</span>
+              )}
+            </div>
+            <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-primary h-full rounded-full transition-all duration-300"
+                style={{ width: `${((uploadProgress.completed + uploadProgress.failed) / uploadProgress.total) * 100}%` }}
+              />
+            </div>
+            {uploadProgress.completed + uploadProgress.failed >= uploadProgress.total && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Upload complete! AI analysis is running automatically on each photo...
+              </p>
+            )}
+          </Card>
+        )}
+
+        {analyzingCount > 0 && !uploadProgress && (
+          <Card className="p-3 border-blue-200 bg-blue-50/50" data-testid="analyzing-banner">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-600" />
+              <span className="text-sm text-blue-700 font-medium">
+                AI is analyzing {analyzingCount} photo{analyzingCount !== 1 ? "s" : ""}...
+              </span>
+              <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+              <span className="text-xs text-blue-600/70 ml-auto">Results appear automatically</span>
+            </div>
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">

@@ -99,7 +99,42 @@ export function photolabRouter() {
         .from(PHOTOS_BUCKET)
         .createSignedUrl(storagePath, 3600);
 
-      res.json({ ...photo, signedUrl: urlData?.signedUrl || null });
+      const signedUrl = urlData?.signedUrl || null;
+
+      if (signedUrl) {
+        res.json({ ...photo, signedUrl });
+
+        (async () => {
+          try {
+            await db.update(standalonePhotos)
+              .set({ analysisStatus: "analyzing" })
+              .where(eq(standalonePhotos.id, photo.id));
+
+            const analysis = await analyzePhotoDamage(signedUrl);
+
+            await db.update(standalonePhotos)
+              .set({
+                analysisStatus: "complete",
+                analysis: analysis as any,
+                annotations: analysis.damageDetections as any,
+                severityScore: analysis.overallSeverity,
+                damageTypes: analysis.damageTypes as any,
+                suggestedRepairs: analysis.suggestedRepairs as any,
+              })
+              .where(eq(standalonePhotos.id, photo.id));
+
+            logger.info("PhotoLab", `Auto-analysis complete for photo ${photo.id}`);
+          } catch (err: any) {
+            logger.error("PhotoLab", `Auto-analysis failed for photo ${photo.id}`, err);
+            await db.update(standalonePhotos)
+              .set({ analysisStatus: "failed" })
+              .where(eq(standalonePhotos.id, photo.id))
+              .catch(() => {});
+          }
+        })();
+      } else {
+        res.json({ ...photo, signedUrl: null });
+      }
     } catch (error: any) {
       logger.apiError("POST", "/api/photolab/upload", error);
       res.status(500).json({ message: "Internal server error" });
