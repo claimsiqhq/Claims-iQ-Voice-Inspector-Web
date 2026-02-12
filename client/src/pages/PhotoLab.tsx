@@ -471,8 +471,12 @@ export default function PhotoLab() {
   const hasProcessingPhotos = (photos: StandalonePhoto[]) =>
     photos.some((p) => p.analysisStatus === "pending" || p.analysisStatus === "analyzing");
 
-  const { data: photos = [], isLoading } = useQuery<StandalonePhoto[]>({
+  const { data: photos = [], isLoading, isFetching } = useQuery<StandalonePhoto[]>({
     queryKey: ["/api/photolab/photos"],
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     refetchInterval: (query) => {
       const data = query.state.data as StandalonePhoto[] | undefined;
       if (data && hasProcessingPhotos(data)) return 3000;
@@ -750,7 +754,7 @@ export default function PhotoLab() {
           </Card>
         )}
 
-        {isLoading ? (
+        {isLoading && photos.length === 0 ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
