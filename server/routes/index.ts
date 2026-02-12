@@ -13,6 +13,7 @@ import { notificationsRouter } from "./notifications";
 import { realtimeRouter } from "./realtime";
 import { logsRouter } from "./logs";
 import { galleryRouter } from "./gallery";
+import { photolabRouter } from "./photolab";
 import { registerInspectionRoutes } from "./inspection";
 
 export async function registerRoutes(
@@ -70,6 +71,7 @@ export async function registerRoutes(
   app.use("/api/realtime", realtimeRouter());
   app.use("/api/logs", logsRouter());
   app.use("/api/gallery", galleryRouter());
+  app.use("/api/photolab", photolabRouter());
 
   // ─── Inspection routes (sessions, rooms, scope, photos, export, etc.) ─
   await registerInspectionRoutes(app);

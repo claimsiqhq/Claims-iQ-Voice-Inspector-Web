@@ -340,3 +340,97 @@ Endorsements: ${JSON.stringify(endorsementsData)}`,
     };
   }
 }
+
+export async function analyzePhotoDamage(imageUrl: string): Promise<{
+  summary: string;
+  damageDetections: Array<{
+    damageType: string;
+    description: string;
+    severity: "none" | "minor" | "moderate" | "severe" | "critical";
+    confidence: number;
+    bbox: { x: number; y: number; width: number; height: number };
+    repairSuggestion: string;
+  }>;
+  overallSeverity: number;
+  damageTypes: string[];
+  suggestedRepairs: string[];
+  propertyContext: string;
+}> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert insurance property damage analyst. Analyze the provided photo for any property damage.
+
+For each damage area you detect, provide:
+1. The type of damage (e.g., "hail damage", "water stain", "wind uplift", "cracking", "missing shingles", "mold", "fire damage", "structural damage", "rot/decay")
+2. A detailed description of what you see
+3. Severity rating: none, minor, moderate, severe, or critical
+4. Confidence score 0-1 of your detection
+5. A bounding box (normalized 0-1 coordinates relative to image dimensions) indicating WHERE in the image the damage is located: { x, y, width, height } where x,y is the top-left corner
+6. A specific repair suggestion
+
+Also provide:
+- An overall severity score (1-10, where 1 = no damage, 10 = catastrophic)
+- Property context (what type of surface/material/area you're looking at)
+- A summary of all findings
+
+Return JSON:
+{
+  "summary": "Brief overview of damage found",
+  "damageDetections": [
+    {
+      "damageType": "type",
+      "description": "detailed description",
+      "severity": "minor|moderate|severe|critical",
+      "confidence": 0.85,
+      "bbox": { "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.25 },
+      "repairSuggestion": "specific repair action"
+    }
+  ],
+  "overallSeverity": 5,
+  "damageTypes": ["hail damage", "missing shingles"],
+  "suggestedRepairs": ["Replace damaged shingles", "Apply sealant"],
+  "propertyContext": "Asphalt shingle roof, approximately 15 years old"
+}
+
+If no damage is detected, return an empty damageDetections array with overallSeverity of 1 and a summary indicating no visible damage.`,
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Analyze this property photo for damage. Identify all visible damage areas with precise bounding box locations.",
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+                detail: "high",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || "{}";
+    const result = parseJsonResponse(text);
+
+    return {
+      summary: result.summary || "Analysis complete",
+      damageDetections: result.damageDetections || [],
+      overallSeverity: result.overallSeverity || 1,
+      damageTypes: result.damageTypes || [],
+      suggestedRepairs: result.suggestedRepairs || [],
+      propertyContext: result.propertyContext || "Unknown",
+    };
+  } catch (error) {
+    logger.error("OpenAI", "Error analyzing photo damage", error);
+    throw new Error("Failed to analyze photo for damage");
+  }
+}

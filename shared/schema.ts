@@ -687,3 +687,33 @@ export type ScopeLineItem = typeof scopeLineItems.$inferSelect;
 export type InsertScopeLineItem = z.infer<typeof insertScopeLineItemSchema>;
 export type RegionalPriceSet = typeof regionalPriceSets.$inferSelect;
 export type InsertRegionalPriceSet = z.infer<typeof insertRegionalPriceSetSchema>;
+
+// ── Standalone Photos (Photo Lab) ─────────────────────────────
+export const standalonePhotos = pgTable("standalone_photos", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  claimId: integer("claim_id").references(() => claims.id, { onDelete: "set null" }),
+  storagePath: text("storage_path").notNull(),
+  fileName: text("file_name").notNull(),
+  fileSize: integer("file_size"),
+  source: varchar("source", { length: 30 }).default("upload"),
+  analysisStatus: varchar("analysis_status", { length: 20 }).default("pending"),
+  analysis: jsonb("analysis"),
+  annotations: jsonb("annotations"),
+  severityScore: real("severity_score"),
+  damageTypes: jsonb("damage_types").default([]),
+  suggestedRepairs: jsonb("suggested_repairs").default([]),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("standalone_photos_user_id_idx").on(table.userId),
+  claimIdx: index("standalone_photos_claim_id_idx").on(table.claimId),
+}));
+
+export const insertStandalonePhotoSchema = createInsertSchema(standalonePhotos).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type StandalonePhoto = typeof standalonePhotos.$inferSelect;
+export type InsertStandalonePhoto = z.infer<typeof insertStandalonePhotoSchema>;

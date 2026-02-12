@@ -54,8 +54,8 @@ function getNavItems(): NavItem[] {
     {
       icon: Camera,
       label: "Photos",
-      getPath: () => "/gallery/photos",
-      matchPaths: ["/gallery/photos"],
+      getPath: () => "/photo-lab",
+      matchPaths: ["/photo-lab", "/gallery/photos"],
     },
     {
       icon: PenTool,

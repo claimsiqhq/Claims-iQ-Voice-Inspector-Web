@@ -28,6 +28,7 @@ const WorkflowBuilder = lazy(() => import("@/pages/WorkflowBuilder"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const PhotoGallery = lazy(() => import("@/pages/PhotoGallery"));
 const SketchGallery = lazy(() => import("@/pages/SketchGallery"));
+const PhotoLab = lazy(() => import("@/pages/PhotoLab"));
 
 import OnboardingWizard, { isOnboardingCompleted } from "@/components/OnboardingWizard";
 
@@ -94,6 +95,7 @@ function RouterContent() {
         <Route path="/profile" component={ProfilePage} />
         <Route path="/gallery/photos" component={PhotoGallery} />
         <Route path="/gallery/sketches" component={SketchGallery} />
+        <Route path="/photo-lab" component={PhotoLab} />
         <Route path="/upload/:id" component={DocumentUpload} />
         <Route path="/review/:id" component={ExtractionReview} />
         <Route path="/briefing/:id" component={InspectionBriefing} />
