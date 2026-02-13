@@ -13,6 +13,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
 import { seedInspectionFlows } from "./seed-flows";
+import { seedCatalog } from "./seed-catalog";
 import pinoInstance, { logger as appLogger } from "./logger";
 
 const app = express();
@@ -142,6 +143,7 @@ export function log(message: string, source = "express") {
 (async () => {
   await ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
   await seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
+  await seedCatalog().catch((e) => appLogger.error("ERROR", "Catalog seed", e));
   registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 

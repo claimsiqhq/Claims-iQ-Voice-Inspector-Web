@@ -246,6 +246,11 @@ const STATUS_STYLES: Record<string, { fill: string; stroke: string; text: string
   not_started: { fill: "rgba(31,41,55,0.04)", stroke: "#94A3B8", text: "#64748B" },
 };
 
+export interface RoomCostData {
+  total: number;
+  count: number;
+}
+
 export interface SketchRendererProps {
   layouts: LayoutRect[];
   openings: OpeningData[];
@@ -253,6 +258,7 @@ export interface SketchRendererProps {
   selection: SelectionState;
   viewBox: { x: number; y: number; w: number; h: number };
   ghostPreview?: GhostPreview | null;
+  roomCosts?: Map<number, RoomCostData>;
   onRoomPointerDown?: (roomId: number, e: React.PointerEvent) => void;
   onOpeningPointerDown?: (openingId: number, e: React.PointerEvent) => void;
   onAnnotationPointerDown?: (annotationId: number, e: React.PointerEvent) => void;
@@ -267,6 +273,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
   selection,
   viewBox,
   ghostPreview,
+  roomCosts,
   onRoomPointerDown,
   onOpeningPointerDown,
   onAnnotationPointerDown,
@@ -370,6 +377,27 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                 {dims.length}'×{dims.width}'
               </text>
             )}
+
+            {/* Cost badge */}
+            {roomCosts?.get(roomId) && roomCosts.get(roomId)!.total > 0 && (() => {
+              const cost = roomCosts.get(roomId)!;
+              const label = cost.total >= 1000
+                ? `$${(cost.total / 1000).toFixed(1)}k`
+                : `$${Math.round(cost.total)}`;
+              const badgeW = Math.max(label.length * 3.5 + 6, 22);
+              const badgeH = 9;
+              const bx = x + w - badgeW - 3;
+              const by = y + 3;
+              return (
+                <g data-testid={`cost-badge-${roomId}`}>
+                  <rect x={bx} y={by} width={badgeW} height={badgeH} rx={2} fill="#059669" opacity={0.9} />
+                  <text x={bx + badgeW / 2} y={by + badgeH / 2} textAnchor="middle" dominantBaseline="central"
+                    fontSize="5" fontFamily={MONO} fontWeight="700" fill="#FFFFFF">
+                    {label}
+                  </text>
+                </g>
+              );
+            })()}
 
             {/* Openings */}
             {roomOpenings.map((op) => {

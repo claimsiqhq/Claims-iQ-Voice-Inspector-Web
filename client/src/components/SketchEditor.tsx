@@ -6,9 +6,9 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers } from "lucide-react";
+import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers, DollarSign, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview } from "./SketchRenderer";
+import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview, type RoomCostData } from "./SketchRenderer";
 import PropertySketch from "./PropertySketch";
 import { bfsLayout, hitTestWall, type Adjacency } from "@/lib/sketchLayout";
 
@@ -180,6 +180,55 @@ export default function SketchEditor({
     enabled: !!sessionId,
     refetchInterval: 10000,
   });
+
+  const { data: lineItemsByRoom, refetch: refetchLineItems } = useQuery<{
+    byRoom: Record<string, { items: any[]; total: number; count: number }>;
+    grandTotal: number;
+  }>({
+    queryKey: [`/api/inspection/${sessionId}/line-items/by-room`],
+    enabled: !!sessionId,
+    refetchInterval: 15000,
+  });
+
+  const [showEstimatePanel, setShowEstimatePanel] = useState(false);
+  const [autoScopeLoading, setAutoScopeLoading] = useState(false);
+
+  const roomCosts = useMemo(() => {
+    const map = new Map<number, RoomCostData>();
+    if (!lineItemsByRoom?.byRoom) return map;
+    for (const [roomIdStr, data] of Object.entries(lineItemsByRoom.byRoom)) {
+      map.set(parseInt(roomIdStr), { total: data.total, count: data.count });
+    }
+    return map;
+  }, [lineItemsByRoom]);
+
+  const handleAutoScopeRoom = useCallback(async (roomId: number) => {
+    setAutoScopeLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/scope/auto-scope-room`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/line-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/line-items/by-room`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/scope/items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/estimate-summary`] });
+        onRoomUpdate?.();
+        logger.info("SketchEditor", `Auto-scope created ${result.created} items for room ${roomId}`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        logger.error("SketchEditor", "Auto-scope failed", err);
+      }
+    } catch (e) {
+      logger.error("SketchEditor", "Auto-scope error", e);
+    } finally {
+      setAutoScopeLoading(false);
+    }
+  }, [sessionId, getAuthHeaders, queryClient, onRoomUpdate]);
 
   const interiorRooms = useMemo(() => categorizeInterior(rooms), [rooms]);
   const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(rooms), [rooms]);
@@ -1519,6 +1568,25 @@ export default function SketchEditor({
           >
             Save
           </button>
+          {(() => {
+            const cost = roomCosts.get(roomInspector.roomId);
+            return cost && cost.total > 0 ? (
+              <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                <DollarSign className="w-3 h-3" />
+                <span className="font-semibold">${cost.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="text-emerald-500">({cost.count} items)</span>
+              </div>
+            ) : null;
+          })()}
+          <button
+            onClick={() => handleAutoScopeRoom(roomInspector.roomId)}
+            disabled={autoScopeLoading}
+            className="w-full mt-2 px-2 py-1.5 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1"
+            data-testid="button-auto-scope"
+          >
+            {autoScopeLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+            Auto-Scope Room
+          </button>
         </div>
       )}
 
@@ -1651,6 +1719,7 @@ export default function SketchEditor({
                 }}
                 viewBox={viewBox}
                 ghostPreview={ghostPreview}
+                roomCosts={roomCosts}
                 onRoomPointerDown={handleRoomPointerDown}
                 onOpeningPointerDown={handleOpeningPointerDown}
                 onAnnotationPointerDown={handleAnnotationPointerDown}

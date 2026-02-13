@@ -9,6 +9,7 @@ import { authenticateRequest } from "../auth";
 import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensions, type OpeningData } from "../estimateEngine";
 import { z } from "zod";
 import { logger } from "../logger";
+import { assembleScope } from "../scopeAssemblyService";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
@@ -1421,6 +1422,117 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const { validateScopeCompleteness } = await import("../scopeValidation");
       const validation = await validateScopeCompleteness(storage, sessionId, scopeItems, rooms, damages);
       res.json(validation);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/scope/auto-scope-room", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { roomId } = req.body;
+      if (!roomId || typeof roomId !== "number") {
+        return res.status(400).json({ message: "roomId is required and must be a number" });
+      }
+
+      const room = await storage.getRoom(roomId);
+      if (!room) return res.status(404).json({ message: "Room not found" });
+
+      let damages = (await storage.getDamagesForSession(sessionId)).filter(d => d.roomId === roomId);
+
+      if (damages.length === 0) {
+        const genericDamage = await storage.createDamage({
+          sessionId,
+          roomId,
+          damageType: "general_damage",
+          severity: "moderate",
+          description: "Auto-scope: general room assessment",
+          location: null,
+        });
+        damages = [genericDamage];
+      }
+
+      const openings = await storage.getOpeningsForRoom(roomId);
+      const netWallDeduction = openings.reduce((sum, o) => {
+        const w = o.widthFt || 0;
+        const h = o.heightFt || 0;
+        return sum + (w * h);
+      }, 0);
+
+      let totalCreated = 0;
+      const allWarnings: string[] = [];
+      const createdLineItems: any[] = [];
+
+      for (const damage of damages) {
+        const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+        totalCreated += result.created.length + result.companionItems.length;
+        allWarnings.push(...result.warnings);
+
+        const allScopeItems = [...result.created, ...result.companionItems];
+        for (const scopeItem of allScopeItems) {
+          const price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
+          const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
+          const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
+          const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;
+          const unitPrice = materialCost + laborCost + equipmentCost;
+          const totalPrice = unitPrice * scopeItem.quantity;
+
+          const lineItem = await storage.createLineItem({
+            sessionId,
+            roomId: scopeItem.roomId,
+            damageId: scopeItem.damageId,
+            category: scopeItem.tradeCode,
+            action: scopeItem.activityType || "replace",
+            description: scopeItem.description,
+            xactCode: scopeItem.catalogCode,
+            quantity: String(scopeItem.quantity),
+            unit: scopeItem.unit,
+            unitPrice: String(unitPrice),
+            totalPrice: String(totalPrice),
+            tradeCode: scopeItem.tradeCode,
+            coverageType: scopeItem.coverageType || "A",
+            provenance: "auto_scope",
+            wasteFactor: scopeItem.wasteFactor ? Math.round(scopeItem.wasteFactor) : null,
+            applyOAndP: false,
+          });
+          createdLineItems.push(lineItem);
+        }
+      }
+
+      res.json({ created: totalCreated, warnings: allWarnings, lineItems: createdLineItems });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/line-items/by-room", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const allLineItems = await storage.getLineItems(sessionId);
+
+      const byRoom: Record<string, { items: any[]; total: number; count: number }> = {};
+      let grandTotal = 0;
+
+      for (const item of allLineItems) {
+        const key = String(item.roomId || "unassigned");
+        if (!byRoom[key]) {
+          byRoom[key] = { items: [], total: 0, count: 0 };
+        }
+        byRoom[key].items.push(item);
+        byRoom[key].count += 1;
+        const itemTotal = parseFloat(item.totalPrice as string || "0");
+        byRoom[key].total += itemTotal;
+        grandTotal += itemTotal;
+      }
+
+      for (const key of Object.keys(byRoom)) {
+        byRoom[key].total = Math.round(byRoom[key].total * 100) / 100;
+      }
+      grandTotal = Math.round(grandTotal * 100) / 100;
+
+      res.json({ byRoom, grandTotal });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
