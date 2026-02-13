@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, varchar, real, numeric, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -443,24 +443,48 @@ export const scopeLineItems = pgTable("scope_line_items", {
   companionRules: jsonb("companion_rules"),
   xactCategoryCode: varchar("xact_category_code", { length: 10 }),
   xactSelector: varchar("xact_selector", { length: 20 }),
+  xactItemId: varchar("xact_item_id", { length: 20 }),
+  xactDescription: text("xact_description"),
+  xactIncludes: text("xact_includes"),
+  xactExcludes: text("xact_excludes"),
+  xactQualitySpec: text("xact_quality_spec"),
+  xactNotes: text("xact_notes"),
+  isTaxable: boolean("is_taxable").default(true),
+  xactPhase: varchar("xact_phase", { length: 10 }),
+  xactMinimumId: varchar("xact_minimum_id", { length: 10 }),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
-  // ── Financial behavior flags ──
   opEligibleDefault: boolean("op_eligible_default").default(true),
   isCodeUpgrade: boolean("is_code_upgrade").default(false),
   isActive: boolean("is_active").default(true),
+}, (table) => [
+  uniqueIndex("scope_line_items_xact_cat_sel_unique").on(table.xactCategoryCode, table.xactSelector),
+]);
+
+export const xactPriceLists = pgTable("xact_price_lists", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  xactName: varchar("xact_name", { length: 50 }).notNull().unique(),
+  regionDescription: text("region_description"),
+  effectiveDate: varchar("effective_date", { length: 30 }),
+  xactVersion: integer("xact_version"),
+  itemCount: integer("item_count"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const regionalPriceSets = pgTable("regional_price_sets", {
   id: serial("id").primaryKey(),
-  regionId: varchar("region_id", { length: 20 }).notNull(),
+  regionId: varchar("region_id", { length: 50 }).notNull(),
   regionName: text("region_name").notNull(),
-  lineItemCode: varchar("line_item_code", { length: 30 }).notNull().references(() => scopeLineItems.code),
+  lineItemCode: varchar("line_item_code", { length: 30 }).notNull(),
   materialCost: numeric("material_cost", { precision: 12, scale: 2 }).default("0"),
   laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).default("0"),
   equipmentCost: numeric("equipment_cost", { precision: 12, scale: 2 }).default("0"),
   effectiveDate: varchar("effective_date", { length: 20 }),
   priceListVersion: varchar("price_list_version", { length: 20 }),
+  activityType: varchar("activity_type", { length: 20 }),
+  laborFormula: text("labor_formula"),
+  materialFormula: text("material_formula"),
+  equipmentFormula: text("equipment_formula"),
 });
 
 // ── Scope Trades (trade categories with O&P eligibility) ─────
