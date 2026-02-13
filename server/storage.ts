@@ -191,7 +191,8 @@ export interface IStorage {
   getScopeLineItems(): Promise<ScopeLineItem[]>;
   getScopeLineItemByCode(code: string): Promise<ScopeLineItem | undefined>;
   getScopeLineItemsByTrade(tradeCode: string): Promise<ScopeLineItem[]>;
-  getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined>;
+  getRegionalPrice(lineItemCode: string, regionId: string, activityType?: string): Promise<RegionalPriceSet | undefined>;
+  getRegionalPricesForCode(lineItemCode: string, regionId: string): Promise<RegionalPriceSet[]>;
   getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]>;
 
   // ── Scope Trades ─────────────────────────────────
@@ -1004,11 +1005,27 @@ export class DatabaseStorage implements IStorage {
       .orderBy(scopeLineItems.sortOrder);
   }
 
-  async getRegionalPrice(lineItemCode: string, regionId: string): Promise<RegionalPriceSet | undefined> {
-    const [price] = await db.select().from(regionalPriceSets)
-      .where(and(eq(regionalPriceSets.lineItemCode, lineItemCode), eq(regionalPriceSets.regionId, regionId)))
-      .limit(1);
-    return price;
+  async getRegionalPrice(lineItemCode: string, regionId: string, activityType?: string): Promise<RegionalPriceSet | undefined> {
+    const rows = await db.select().from(regionalPriceSets)
+      .where(and(eq(regionalPriceSets.lineItemCode, lineItemCode), eq(regionalPriceSets.regionId, regionId)));
+
+    if (rows.length === 0) return undefined;
+    if (rows.length === 1) return rows[0];
+
+    if (activityType) {
+      const match = rows.find(r => r.activityType === activityType);
+      if (match) return match;
+    }
+
+    const install = rows.find(r => r.activityType === "install");
+    if (install) return install;
+
+    return rows[0];
+  }
+
+  async getRegionalPricesForCode(lineItemCode: string, regionId: string): Promise<RegionalPriceSet[]> {
+    return db.select().from(regionalPriceSets)
+      .where(and(eq(regionalPriceSets.lineItemCode, lineItemCode), eq(regionalPriceSets.regionId, regionId)));
   }
 
   async getRegionalPricesForRegion(regionId: string): Promise<RegionalPriceSet[]> {

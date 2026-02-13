@@ -81,7 +81,7 @@ export function pricingRouter() {
         if (!catalogItem) {
           return res.status(404).json({ message: `Catalog item ${item.code} not found` });
         }
-        const regionalPrice = await storage.getRegionalPrice(item.code, effectiveRegion);
+        const regionalPrice = await storage.getRegionalPrice(item.code, effectiveRegion, "install");
         if (!regionalPrice) {
           return res.status(404).json({ message: `Regional price for ${item.code} in region ${effectiveRegion} not found` });
         }

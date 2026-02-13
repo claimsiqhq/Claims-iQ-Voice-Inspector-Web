@@ -13,7 +13,10 @@ import {
   FileSearch,
   ClipboardList,
   FilePlus,
-  X
+  X,
+  LogOut,
+  User,
+  Settings
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -61,9 +64,11 @@ interface LayoutProps {
 
 export default function Layout({ children, title = "Claims IQ", showBack = false }: LayoutProps) {
   const [location, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem("claimsiq_dismissed_notifs");
@@ -100,12 +105,15 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
       }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
     }
-    if (showNotifications) {
+    if (showNotifications || showProfileMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showNotifications]);
+  }, [showNotifications, showProfileMenu]);
 
   function dismissNotification(id: string) {
     setDismissedIds(prev => {
@@ -243,21 +251,60 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             )}
           </div>
           
-          <button
-            data-testid="button-profile-header"
-            onClick={() => setLocation("/profile")}
-            className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10 cursor-pointer hover:bg-white/5 rounded-lg py-1.5 px-2 transition-colors"
-            aria-label={`Profile: ${displayName}`}
-          >
-            <div className="text-right hidden md:block">
-              <p className="text-sm font-medium leading-none" data-testid="text-header-name">{displayName}</p>
-              <p className="text-xs text-white/60 mt-1" data-testid="text-header-title">{displayTitle}</p>
-            </div>
-            <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-white/20" data-testid="img-header-avatar">
-              <AvatarImage src={user?.avatarUrl || undefined} />
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-          </button>
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              data-testid="button-profile-header"
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10 cursor-pointer hover:bg-white/5 rounded-lg py-1.5 px-2 transition-colors"
+              aria-label={`Profile menu: ${displayName}`}
+            >
+              <div className="text-right hidden md:block">
+                <p className="text-sm font-medium leading-none" data-testid="text-header-name">{displayName}</p>
+                <p className="text-xs text-white/60 mt-1" data-testid="text-header-title">{displayTitle}</p>
+              </div>
+              <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-white/20" data-testid="img-header-avatar">
+                <AvatarImage src={user?.avatarUrl || undefined} />
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+            </button>
+
+            {showProfileMenu && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-[100]" data-testid="panel-profile-menu">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-900">{displayName}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
+                </div>
+                <div className="py-1">
+                  <button
+                    data-testid="button-menu-profile"
+                    onClick={() => { setShowProfileMenu(false); setLocation("/profile"); }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <User className="h-4 w-4 text-gray-400" />
+                    Profile
+                  </button>
+                  <button
+                    data-testid="button-menu-settings"
+                    onClick={() => { setShowProfileMenu(false); setLocation("/settings"); }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings className="h-4 w-4 text-gray-400" />
+                    Settings
+                  </button>
+                </div>
+                <div className="border-t border-gray-100 py-1">
+                  <button
+                    data-testid="button-logout"
+                    onClick={() => { setShowProfileMenu(false); signOut(); }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

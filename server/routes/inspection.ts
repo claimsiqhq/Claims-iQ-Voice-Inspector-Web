@@ -799,8 +799,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           const items: Array<{ code: string; description: string; quantity: number; unit: string; unitPrice?: number; totalPrice?: number; source: string }> = [];
 
           async function lookupPrice(catalogCode: string, activityType: string | null): Promise<number> {
-            let rp = await storage.getRegionalPrice(catalogCode, "FLFM8X_NOV22");
-            if (!rp) rp = await storage.getRegionalPrice(catalogCode, "US_NATIONAL");
+            const act = activityType || "install";
+            let rp = await storage.getRegionalPrice(catalogCode, "FLFM8X_NOV22", act);
+            if (!rp) rp = await storage.getRegionalPrice(catalogCode, "US_NATIONAL", act);
             if (!rp) return 0;
             return (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0);
           }
@@ -891,8 +892,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           finalUnit = unit || catalogItem.unit;
           wf = wasteFactor ?? Math.round((catalogItem.defaultWasteFactor ?? 0));
 
-          let regionalPrice = await storage.getRegionalPrice(xactCode, "FLFM8X_NOV22");
-          if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL");
+          let regionalPrice = await storage.getRegionalPrice(xactCode, "FLFM8X_NOV22", "install");
+          if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL", "install");
           if (regionalPrice) {
             const baseCost =
               (Number(regionalPrice.materialCost) || 0) +
@@ -1060,8 +1061,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         let totalPrice = 0;
         const catalogItem = await lookupCatalogItem(template.xactCode);
         if (catalogItem) {
-          let regionalPrice = await getRegionalPrice(template.xactCode, "FLFM8X_NOV22");
-          if (!regionalPrice) regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL");
+          let regionalPrice = await getRegionalPrice(template.xactCode, "FLFM8X_NOV22", "install");
+          if (!regionalPrice) regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL", "install");
           if (regionalPrice) {
             const materialCost = regionalPrice.materialCost || 0;
             const laborCost = regionalPrice.laborCost || 0;
@@ -1479,8 +1480,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
         const allScopeItems = [...result.created, ...result.companionItems];
         for (const scopeItem of allScopeItems) {
-          let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22");
-          if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
+          const scopeActType = scopeItem.activityType || "install";
+          let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22", scopeActType);
+          if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL", scopeActType);
           const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
           const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
           const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;
@@ -1552,8 +1554,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
           const allScopeItems = [...result.created, ...result.companionItems];
           for (const scopeItem of allScopeItems) {
-            let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22");
-            if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
+            const actType = scopeItem.activityType || "install";
+            let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22", actType);
+            if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL", actType);
             const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
             const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
             const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;

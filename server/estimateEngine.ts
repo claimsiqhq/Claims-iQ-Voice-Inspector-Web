@@ -854,15 +854,26 @@ export async function lookupCatalogItem(code: string) {
 /**
  * Gets the regional price for a line item in a specific region
  */
-export async function getRegionalPrice(code: string, regionId: string) {
-  const prices = await db
+export async function getRegionalPrice(code: string, regionId: string, activityType?: string) {
+  const rows = await db
     .select()
     .from(regionalPriceSets)
     .where(
       and(eq(regionalPriceSets.lineItemCode, code), eq(regionalPriceSets.regionId, regionId))
-    )
-    .limit(1);
-  return prices[0] || null;
+    );
+
+  if (rows.length === 0) return null;
+  if (rows.length === 1) return rows[0];
+
+  if (activityType) {
+    const match = rows.find(r => r.activityType === activityType);
+    if (match) return match;
+  }
+
+  const install = rows.find(r => r.activityType === "install");
+  if (install) return install;
+
+  return rows[0];
 }
 
 /**
