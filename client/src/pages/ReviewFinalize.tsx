@@ -246,7 +246,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
   const companionCount = allItems.filter((i: any) => i.provenance === "companion").length;
   const autoTotal = allItems
     .filter((i: any) => i.provenance === "auto_scope" || i.provenance === "companion")
-    .reduce((sum: number, i: any) => sum + (i.totalPrice || 0), 0);
+    .reduce((sum: number, i: any) => sum + Number(i.totalPrice || 0), 0);
 
   return (
     <div className="pb-4">

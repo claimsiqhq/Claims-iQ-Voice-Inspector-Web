@@ -983,7 +983,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             autoScope: autoScope ? {
               itemsCreated: autoScope.itemsCreated,
               summary: autoScope.items?.map((i: any) =>
-                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${(i.unitPrice ?? 0).toFixed(2)} = $${(i.totalPrice ?? 0).toFixed(2)} [${i.source}]`
+                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${Number(i.unitPrice ?? 0).toFixed(2)} = $${Number(i.totalPrice ?? 0).toFixed(2)} [${i.source}]`
               ).join("\n") || "No items matched",
               warnings: autoScope.warnings,
             } : undefined,
@@ -1293,7 +1293,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             autoScope: autoScope ? {
               itemsCreated: autoScope.itemsCreated,
               summary: autoScope.items?.map((i: any) =>
-                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${(i.unitPrice ?? 0).toFixed(2)}`
+                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${Number(i.unitPrice ?? 0).toFixed(2)}`
               ).join("\n") || "No items matched",
               warnings: autoScope.warnings,
             } : undefined,
