@@ -388,7 +388,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                                         </div>
                                         <div className="flex gap-3 mt-0.5 text-[10px] text-muted-foreground">
                                           <span>{item.quantity} {item.unit}</span>
-                                          <span>@ ${item.unitPrice?.toFixed(2)}</span>
+                                          <span>@ ${Number(item.unitPrice || 0).toFixed(2)}</span>
                                           <span>{item.depreciationType || "Recoverable"}</span>
                                           {item.provenance === "auto_scope" ? (
                                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#22C55E]/10 text-[#22C55E] font-medium">
@@ -405,7 +405,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                                       </div>
                                       <div className="flex items-center gap-2 shrink-0">
                                         <span className="text-sm font-mono font-semibold text-foreground">
-                                          ${(item.totalPrice || 0).toFixed(2)}
+                                          ${Number(item.totalPrice || 0).toFixed(2)}
                                         </span>
                                         <button
                                           onClick={() => startEdit(item)}

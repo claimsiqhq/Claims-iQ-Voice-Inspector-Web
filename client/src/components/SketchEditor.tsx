@@ -1918,7 +1918,7 @@ export default function SketchEditor({
                         <div key={item.id || idx} className="flex items-center justify-between text-[11px] text-slate-500">
                           <span className="truncate mr-2">{item.description || item.catalogCode || "Line Item"}</span>
                           <span className="flex-shrink-0 tabular-nums">
-                            {item.quantity?.toFixed(2)} {item.unit || "SF"} × ${item.unitPrice?.toFixed(2)} = ${(item.quantity * item.unitPrice).toFixed(2)}
+                            {Number(item.quantity || 0).toFixed(2)} {item.unit || "SF"} × ${Number(item.unitPrice || 0).toFixed(2)} = ${(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
                           </span>
                         </div>
                       ))}

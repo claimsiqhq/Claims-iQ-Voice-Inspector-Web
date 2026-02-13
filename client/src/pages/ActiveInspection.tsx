@@ -2062,7 +2062,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     <span className="ml-1 text-[#9D8BBF]">(companion)</span>
                   )}
                 </span>
-                <span className="font-mono whitespace-nowrap">${(item.totalPrice ?? 0).toFixed(2)}</span>
+                <span className="font-mono whitespace-nowrap">${Number(item.totalPrice || 0).toFixed(2)}</span>
               </div>
             ))}
             {autoScopeNotification.items.length > 3 && (
@@ -2125,7 +2125,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   <p className="text-xs font-medium truncate">{item.description}</p>
                 </div>
                 <span className="text-xs text-accent font-mono whitespace-nowrap">
-                  ${(item.totalPrice || 0).toFixed(2)}
+                  ${Number(item.totalPrice || 0).toFixed(2)}
                 </span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">
