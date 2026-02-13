@@ -285,7 +285,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                 <span className="font-display font-semibold text-sm text-foreground">{cat.category}</span>
               </div>
               <span className="text-sm font-mono font-semibold text-[#C6A54E]">
-                ${cat.subtotal?.toFixed(2)}
+                ${Number(cat.subtotal || 0).toFixed(2)}
               </span>
             </button>
 
@@ -305,7 +305,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                             {expandedRooms.has(roomKey) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             <span className="text-sm text-foreground">{roomGroup.roomName}</span>
                           </div>
-                          <span className="text-xs font-mono text-muted-foreground">${roomGroup.subtotal?.toFixed(2)}</span>
+                          <span className="text-xs font-mono text-muted-foreground">${Number(roomGroup.subtotal || 0).toFixed(2)}</span>
                         </button>
 
                         <AnimatePresence>
