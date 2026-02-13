@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { MousePointer2, DoorOpen, Square, AlertTriangle, RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2 } from "lucide-react";
+import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview } from "./SketchRenderer";
 import PropertySketch from "./PropertySketch";
@@ -137,6 +137,20 @@ export default function SketchEditor({
   const [annotationEditor, setAnnotationEditor] = useState<{ annotation: AnnotationData; x: number; y: number } | null>(null);
   const [annotationEditorForm, setAnnotationEditorForm] = useState({ label: "Damage", value: "moderate" });
 
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markSaving = useCallback(() => {
+    setSaveStatus("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
+
+  const markSaved = useCallback(() => {
+    setSaveStatus("saved");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2500);
+  }, []);
+
   const { data: adjacencyData } = useQuery<Adjacency[]>({
     queryKey: [`/api/sessions/${sessionId}/adjacencies`],
     enabled: !!sessionId,
@@ -263,6 +277,7 @@ export default function SketchEditor({
     if (!entry) return;
     setHistory((prev) => prev.slice(0, -1));
     setRedoStack((prev) => [...prev, entry]);
+    markSaving();
     try {
       const headers = await getAuthHeaders();
       if (entry.type === "resize") {
@@ -335,16 +350,19 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
       onRoomUpdate?.();
+      markSaved();
     } catch (e) {
       logger.error("SketchEditor", "Undo failed", e);
+      setSaveStatus("idle");
     }
-  }, [history, sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate]);
+  }, [history, sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]);
 
   const performRedo = useCallback(async () => {
     const entry = redoStack[redoStack.length - 1];
     if (!entry) return;
     setRedoStack((prev) => prev.slice(0, -1));
     setHistory((prev) => [...prev, entry]);
+    markSaving();
     try {
       const headers = await getAuthHeaders();
       if (entry.type === "resize" && entry.newLength != null && entry.newWidth != null) {
@@ -381,15 +399,18 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
       onRoomUpdate?.();
+      markSaved();
     } catch (e) {
       logger.error("SketchEditor", "Redo failed", e);
+      setSaveStatus("idle");
     }
-  }, [redoStack, sessionId, allOpenings, layoutByRoomId, getAuthHeaders, queryClient, onRoomUpdate]);
+  }, [redoStack, sessionId, allOpenings, layoutByRoomId, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]);
 
   const persistRoomDimensions = useCallback(
     async (roomId: number, length: number, width: number) => {
       const room = interiorRooms.find((r) => r.id === roomId);
       const height = room?.dimensions?.height || 8;
+      markSaving();
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(`/api/rooms/${roomId}/dimensions`, {
@@ -400,12 +421,14 @@ export default function SketchEditor({
         if (res.ok) {
           queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
           onRoomUpdate?.();
+          markSaved();
         }
       } catch (e) {
         logger.error("SketchEditor", "Failed to persist room dimensions", e);
+        setSaveStatus("idle");
       }
     },
-    [interiorRooms, sessionId, getAuthHeaders, queryClient, onRoomUpdate]
+    [interiorRooms, sessionId, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]
   );
 
   const confirmAddRoom = useCallback(async () => {
@@ -416,6 +439,7 @@ export default function SketchEditor({
     const name = addRoomForm.name.trim() || "New Room";
     setAddRoomPopover(null);
     setGhostPreview(null);
+    markSaving();
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/rooms`, {
@@ -444,15 +468,18 @@ export default function SketchEditor({
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
       queryClient.invalidateQueries({ queryKey: [`/api/sessions/${sessionId}/adjacencies`] });
       onRoomUpdate?.();
+      markSaved();
     } catch (e) {
       logger.error("SketchEditor", "Add room error", e);
+      setSaveStatus("idle");
     }
-  }, [addRoomPopover, addRoomForm, sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, pushHistory]);
+  }, [addRoomPopover, addRoomForm, sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, pushHistory, markSaving, markSaved]);
 
   const persistOpeningPosition = useCallback(
     async (openingId: number, positionOnWall: number) => {
       const op = allOpenings.find((o) => o.id === openingId);
       if (!op) return;
+      markSaving();
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(`/api/inspection/${sessionId}/rooms/${op.roomId}/openings/${openingId}`, {
@@ -463,12 +490,14 @@ export default function SketchEditor({
         if (res.ok) {
           queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
           onRoomUpdate?.();
+          markSaved();
         }
       } catch (e) {
         logger.error("SketchEditor", "Failed to persist opening position", e);
+        setSaveStatus("idle");
       }
     },
-    [sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate]
+    [sessionId, allOpenings, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]
   );
 
   const handleSvgPointerDown = useCallback(
@@ -509,6 +538,7 @@ export default function SketchEditor({
             const roomId = layout.roomId;
             const openingType = tool === "add_door" ? "door" : "window";
             (async () => {
+              markSaving();
               try {
                 const headers = await getAuthHeaders();
                 const res = await fetch(`/api/inspection/${sessionId}/rooms/${roomId}/openings`, {
@@ -531,9 +561,11 @@ export default function SketchEditor({
                   });
                   queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
                   onRoomUpdate?.();
+                  markSaved();
                 }
               } catch (err) {
                 logger.error("SketchEditor", "Create opening error", err);
+                setSaveStatus("idle");
               }
             })();
             return;
@@ -548,6 +580,7 @@ export default function SketchEditor({
             const roomId = layout.roomId;
             const pos = { x: (svgPt.x - layout.x) / layout.w, y: (svgPt.y - layout.y) / layout.h };
             (async () => {
+              markSaving();
               try {
                 const headers = await getAuthHeaders();
                 const res = await fetch(`/api/inspection/${sessionId}/rooms/${roomId}/annotations`, {
@@ -580,10 +613,12 @@ export default function SketchEditor({
                     return { ...prev, [roomId]: [...list, ann] };
                   });
                   queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+                  markSaved();
                   onRoomUpdate?.();
                 }
               } catch (err) {
                 logger.error("SketchEditor", "Create annotation error", err);
+                setSaveStatus("idle");
               }
             })();
             return;
@@ -738,6 +773,8 @@ export default function SketchEditor({
       queryClient,
       onRoomUpdate,
       onRoomSelect,
+      markSaving,
+      markSaved,
     ]
   );
 
@@ -1046,7 +1083,7 @@ export default function SketchEditor({
             title="Undo"
             data-testid="undo"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <Undo2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={performRedo}
@@ -1055,11 +1092,29 @@ export default function SketchEditor({
             title="Redo"
             data-testid="redo"
           >
-            <RotateCw className="w-3.5 h-3.5" />
+            <Redo2 className="w-3.5 h-3.5" />
           </button>
           <button onClick={fitToContent} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit" data-testid="fit-content">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
+          <div className="w-px h-4 bg-slate-200 mx-1" />
+          <div className="flex items-center gap-1 text-[10px] min-w-[70px]" data-testid="autosave-status">
+            {saveStatus === "saving" && (
+              <>
+                <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />
+                <span className="text-amber-600">Saving...</span>
+              </>
+            )}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="w-3 h-3 text-green-500" />
+                <span className="text-green-600">Autosaved</span>
+              </>
+            )}
+            {saveStatus === "idle" && (
+              <span className="text-slate-400">Autosave on</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1205,6 +1260,7 @@ export default function SketchEditor({
                 const headers = await getAuthHeaders();
                 const prev = openingEditor.opening;
                 pushHistory({ type: "edit_opening", openingId: prev.id, prev: { widthFt: prev.widthFt ?? prev.width ?? 3, heightFt: prev.heightFt ?? prev.height ?? 6.8, openingType: prev.openingType || "door" } });
+                markSaving();
                 await fetch(`/api/inspection/${sessionId}/rooms/${prev.roomId}/openings/${prev.id}`, {
                   method: "PATCH",
                   headers: { ...headers, "Content-Type": "application/json" },
@@ -1213,6 +1269,7 @@ export default function SketchEditor({
                 queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
                 setOpeningEditor(null);
                 onRoomUpdate?.();
+                markSaved();
               }}
               className="flex-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
             >
@@ -1223,11 +1280,13 @@ export default function SketchEditor({
                 const op = openingEditor.opening;
                 const create = { roomId: op.roomId, openingType: op.openingType || "door", wallDirection: op.wallDirection || "north", positionOnWall: op.positionOnWall ?? 0.5, widthFt: op.widthFt ?? 3, heightFt: op.heightFt ?? 6.8 };
                 pushHistory({ type: "delete_opening", openingId: op.id, create });
+                markSaving();
                 await fetch(`/api/inspection/${sessionId}/rooms/${op.roomId}/openings/${op.id}`, { method: "DELETE", headers: await getAuthHeaders() });
                 queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
                 setOpeningEditor(null);
                 setSelectedOpeningId(null);
                 onRoomUpdate?.();
+                markSaved();
               }}
               className="p-1 text-red-600 hover:bg-red-50 rounded"
               title="Delete"
@@ -1250,6 +1309,7 @@ export default function SketchEditor({
                 const ann = annotationEditor.annotation;
                 const prev = { label: ann.label, value: ann.value ?? null };
                 pushHistory({ type: "edit_annotation", annotationId: ann.id, prev });
+                markSaving();
                 await fetch(`/api/inspection/${sessionId}/annotations/${ann.id}`, {
                   method: "PATCH",
                   headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
@@ -1261,6 +1321,7 @@ export default function SketchEditor({
                 });
                 setAnnotationEditor(null);
                 onRoomUpdate?.();
+                markSaved();
               }}
               className="flex-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
             >
@@ -1270,11 +1331,13 @@ export default function SketchEditor({
               onClick={async () => {
                 const ann = annotationEditor.annotation;
                 pushHistory({ type: "delete_annotation", annotationId: ann.id, roomId: ann.roomId, prev: ann });
+                markSaving();
                 await fetch(`/api/inspection/${sessionId}/annotations/${ann.id}`, { method: "DELETE", headers: await getAuthHeaders() });
                 setAnnotationsByRoom((p) => ({ ...p, [ann.roomId]: (p[ann.roomId] || []).filter((a) => a.id !== ann.id) }));
                 setAnnotationEditor(null);
                 setSelectedAnnotationId(null);
                 onRoomUpdate?.();
+                markSaved();
               }}
               className="p-1 text-red-600 hover:bg-red-50 rounded"
               title="Delete"
