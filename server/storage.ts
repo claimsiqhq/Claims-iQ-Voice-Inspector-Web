@@ -163,6 +163,7 @@ export interface IStorage {
   getDamagesForSession(sessionId: number): Promise<DamageObservation[]>;
 
   createLineItem(data: InsertLineItem): Promise<LineItem>;
+  getLineItemById(id: number): Promise<LineItem | undefined>;
   getLineItems(sessionId: number): Promise<LineItem[]>;
   getLineItemsForRoom(roomId: number): Promise<LineItem[]>;
   getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number }>;
@@ -877,6 +878,11 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async getLineItemById(id: number): Promise<LineItem | undefined> {
+    const [item] = await db.select().from(lineItems).where(eq(lineItems.id, id)).limit(1);
+    return item;
+  }
+
   async getLineItems(sessionId: number): Promise<LineItem[]> {
     return db.select().from(lineItems).where(eq(lineItems.sessionId, sessionId)).orderBy(lineItems.createdAt);
   }
@@ -885,37 +891,19 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(lineItems).where(eq(lineItems.roomId, roomId));
   }
 
-  async getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number }> {
+  async getEstimateSummary(sessionId: number): Promise<{ totalRCV: number; totalDepreciation: number; totalACV: number; itemCount: number; subtotalMaterial: number; subtotalLabor: number; subtotalEquipment: number }> {
     const items = await this.getLineItems(sessionId);
     const totalRCV = items.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0);
 
-    const categoryDepreciationRates: Record<string, number> = {
-      roofing: 0.20,
-      siding: 0.15,
-      gutters: 0.12,
-      interior: 0.10,
-      painting: 0.08,
-      flooring: 0.15,
-      plumbing: 0.12,
-      electrical: 0.10,
-      drywall: 0.08,
-      windows: 0.18,
-      fencing: 0.15,
-    };
-    const defaultCategoryRate = 0.12;
-
     let totalDepreciation = 0;
     for (const item of items) {
-      const price = Number(item.totalPrice) || 0;
-      // Use per-item depreciationRate if set, otherwise fall back to category-based rate
-      const itemRate = item.depreciationRate != null
-        ? Number(item.depreciationRate) / 100
-        : categoryDepreciationRates[(item.category || "").toLowerCase()] ?? defaultCategoryRate;
-      totalDepreciation += price * itemRate;
+      if (item.depreciationAmount != null && Number(item.depreciationAmount) > 0) {
+        totalDepreciation += Number(item.depreciationAmount);
+      }
     }
 
     const totalACV = totalRCV - totalDepreciation;
-    return { totalRCV, totalDepreciation, totalACV, itemCount: items.length };
+    return { totalRCV, totalDepreciation, totalACV, itemCount: items.length, subtotalMaterial: 0, subtotalLabor: 0, subtotalEquipment: 0 };
   }
 
   async updateLineItem(id: number, updates: Partial<LineItem>): Promise<LineItem | undefined> {

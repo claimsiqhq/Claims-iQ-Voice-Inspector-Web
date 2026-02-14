@@ -182,7 +182,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
 function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
   const [editingItem, setEditingItem] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0 });
+  const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0, age: null as number | null, lifeExpectancy: null as number | null });
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   const { data: estimateByRoomData } = useQuery({
@@ -236,7 +236,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
 
   const startEdit = (item: any) => {
     setEditingItem(item.id);
-    setEditForm({ quantity: item.quantity || 0, unitPrice: item.unitPrice || 0 });
+    setEditForm({ quantity: item.quantity || 0, unitPrice: item.unitPrice || 0, age: item.age ?? null, lifeExpectancy: item.lifeExpectancy ?? null });
   };
 
   const fmt = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -314,10 +314,38 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                             className="w-28 border border-border rounded px-2 py-1 text-sm"
                           />
                         </div>
+                        <div>
+                          <label className="text-[10px] uppercase text-muted-foreground">Age (yrs)</label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={editForm.age ?? ""}
+                            placeholder="—"
+                            onChange={(e) => setEditForm({ ...editForm, age: e.target.value ? parseFloat(e.target.value) : null })}
+                            className="w-20 border border-border rounded px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase text-muted-foreground">Life Exp. (yrs)</label>
+                          <input
+                            type="number"
+                            step="1"
+                            value={editForm.lifeExpectancy ?? ""}
+                            placeholder="auto"
+                            onChange={(e) => setEditForm({ ...editForm, lifeExpectancy: e.target.value ? parseFloat(e.target.value) : null })}
+                            className="w-20 border border-border rounded px-2 py-1 text-sm"
+                          />
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" className="bg-primary text-primary-foreground text-xs"
-                          onClick={() => updateMutation.mutate({ id: item.id, updates: { quantity: editForm.quantity, unitPrice: editForm.unitPrice } })}
+                          onClick={() => updateMutation.mutate({ id: item.id, updates: {
+                            quantity: editForm.quantity,
+                            unitPrice: editForm.unitPrice,
+                            totalPrice: Math.round(editForm.quantity * editForm.unitPrice * 100) / 100,
+                            age: editForm.age,
+                            lifeExpectancy: editForm.lifeExpectancy,
+                          } })}
                           disabled={updateMutation.isPending}>
                           Save
                         </Button>
@@ -355,7 +383,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                         <div className="px-2 py-2 text-xs text-right font-mono">{fmt(item.unitPrice)}</div>
                         <div className="px-2 py-2 text-xs text-right font-mono text-muted-foreground">{fmt(item.taxAmount)}</div>
                         <div className="px-2 py-2 text-xs text-right font-mono font-semibold">{fmt(item.totalPrice)}</div>
-                        <div className="px-2 py-2 text-xs text-right font-mono text-red-500/80">({fmt(item.depreciationAmount)})</div>
+                        <div className="px-2 py-2 text-xs text-right font-mono text-red-500/80" title={item.age != null ? `Age: ${item.age}yr / Life: ${item.lifeExpectancy ?? '?'}yr = ${item.depreciationPercentage?.toFixed(1) ?? 0}%` : ''}>({fmt(item.depreciationAmount)})</div>
                         <div className="px-2 py-2 text-xs text-right font-mono font-semibold">{fmt(item.acv)}</div>
                         <div className="px-1 py-2 flex items-center justify-center">
                           <button onClick={() => startEdit(item)} className="opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground">

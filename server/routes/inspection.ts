@@ -10,6 +10,7 @@ import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensi
 import { z } from "zod";
 import { logger } from "../logger";
 import { assembleScope } from "../scopeAssemblyService";
+import { calculateDepreciation } from "../depreciationEngine";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
@@ -962,6 +963,15 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         totalPrice = Math.round(totalPrice * 1.20 * 100) / 100; // 10% overhead + 10% profit (additive)
       }
 
+      const depreciation = calculateDepreciation({
+        totalPrice,
+        age: age || null,
+        lifeExpectancy: lifeExpectancy || null,
+        category,
+        description: finalDescription,
+        depreciationType: depreciationType || "Recoverable",
+      });
+
       const item = await storage.createLineItem({
         sessionId,
         roomId: roomId || null,
@@ -980,10 +990,10 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         qualityGrade: qualityGrade || null,
         applyOAndP: applyOAndP || false,
         macroSource: macroSource || null,
-        // ── Financial / Depreciation fields ──
         age: age || null,
-        lifeExpectancy: lifeExpectancy || null,
-        depreciationPercentage: depreciationPercentage || null,
+        lifeExpectancy: depreciation.lifeExpectancy || null,
+        depreciationPercentage: depreciationPercentage ?? depreciation.depreciationPercentage,
+        depreciationAmount: depreciation.depreciationAmount,
       } as any);
       emit({ type: "inspection.lineItemAdded", sessionId, userId: req.user?.id, meta: { lineItemId: item.id } });
       res.status(201).json({ ...item, catalogMatch });
@@ -1033,12 +1043,35 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         qualityGrade: z.string().optional(),
         applyOAndP: z.boolean().optional(),
         macroSource: z.string().optional(),
+        age: z.number().nullable().optional(),
+        lifeExpectancy: z.number().nullable().optional(),
       }).strict();
       const parsed = allowedFields.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid update fields", errors: parsed.error.flatten() });
       }
-      const item = await storage.updateLineItem(id, parsed.data);
+
+      const updates: any = { ...parsed.data };
+
+      if (updates.age !== undefined || updates.lifeExpectancy !== undefined || updates.quantity !== undefined || updates.unitPrice !== undefined) {
+        const existing = await storage.getLineItemById(id);
+        if (existing) {
+          const effectivePrice = updates.totalPrice ?? Number(existing.totalPrice) ?? 0;
+          const depreciation = calculateDepreciation({
+            totalPrice: effectivePrice,
+            age: updates.age !== undefined ? updates.age : (existing.age ?? null),
+            lifeExpectancy: updates.lifeExpectancy !== undefined ? updates.lifeExpectancy : (existing.lifeExpectancy ?? null),
+            category: updates.category || existing.category,
+            description: updates.description || existing.description,
+            depreciationType: updates.depreciationType || existing.depreciationType || "Recoverable",
+          });
+          updates.lifeExpectancy = depreciation.lifeExpectancy || updates.lifeExpectancy || existing.lifeExpectancy;
+          updates.depreciationPercentage = depreciation.depreciationPercentage;
+          updates.depreciationAmount = depreciation.depreciationAmount;
+        }
+      }
+
+      const item = await storage.updateLineItem(id, updates);
       if (item?.sessionId) emit({ type: "inspection.lineItemUpdated", sessionId: item.sessionId, userId: req.user?.id, meta: { lineItemId: id } });
       res.json(item);
     } catch (error: any) {
@@ -2198,7 +2231,10 @@ Respond in JSON format:
               taxAmount: tax,
               depreciationAmount: deprec,
               depreciationType: item.depreciationType || "Recoverable",
+              depreciationPercentage: Number(item.depreciationPercentage) || 0,
               acv: parseFloat(acv.toFixed(2)),
+              age: item.age != null ? Number(item.age) : null,
+              lifeExpectancy: item.lifeExpectancy != null ? Number(item.lifeExpectancy) : null,
               provenance: item.provenance,
             };
           }),
