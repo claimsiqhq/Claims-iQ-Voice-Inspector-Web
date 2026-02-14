@@ -36,7 +36,8 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Wall Openings & Deductions:** CRUD for various opening types, deducting area from wall SF calculations and generating `MISS_WALL` entries in ESX export.
 - **Peril-Specific Investigation Protocols:** Structured forensic workflows for Hail, Wind, and Water claims, including mandatory steps, prompts, and photo requirements.
 - **Property Sketch (PropertySketch):** SVG architectural sketches with Interior (floor plan), Roof Plan, Elevations, and Other Exterior rendering modes.
-- **Review & Finalize:** Multi-tab review for estimate details, photos, completeness, notes, and expanded sketches.
+- **Weather Correlation:** Visual Crossing API integration for historical weather data. Correlates claim date/location with actual weather conditions. Peril-specific analysis (hail, wind, water, fire), fraud indicators, risk scoring (0-100), 5-day timeline. Compact/expanded views on briefing page and Review Weather tab.
+- **Review & Finalize:** Multi-tab review for estimate details, photos, completeness, notes, sketches, and weather correlation.
 - **Export:** ESX/Xactimate XML, configurable PDF reports, Xactimate-style Photo Reports (PDF and Word).
 - **Supplemental Claims:** Management of supplemental line items with provenance tracking and delta ESX export.
 - **Photo Capture & Analysis:** Camera overlay with photos saved to Supabase Storage and analyzed by GPT-4o Vision for damage detection, quality scoring, and label matching.
@@ -68,6 +69,7 @@ Uses `gpt-4o-realtime-preview` via WebRTC with configurable voice, server-side V
 - **Drizzle ORM:** Database schema management
 - **Framer Motion:** UI animations
 - **Vite PWA:** Progressive Web App features
+- **Visual Crossing Weather API:** Historical weather data for claim validation (VISUAL_CROSSING_API_KEY secret)
 - **express-rate-limit:** API rate limiting
 - **recharts:** Dashboard charts
 - **pdfjs-dist:** Client-side PDF viewing
