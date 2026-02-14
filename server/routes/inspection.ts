@@ -2179,18 +2179,33 @@ Respond in JSON format:
           structure: room.structure || "Main Dwelling",
           dimensions: { length, width, height },
           measurements,
-          items: roomItems.map((item, idx) => ({
-            lineNumber: idx + 1,
-            id: item.id,
-            description: item.description,
-            quantity: Number(item.quantity) || 0,
-            unit: item.unit,
-            action: item.action,
-            xactCode: item.xactCode,
-            unitPrice: Number(item.unitPrice) || 0,
-            totalPrice: Number(item.totalPrice) || 0,
-          })),
+          items: roomItems.map((item, idx) => {
+            const rcv = Number(item.totalPrice) || 0;
+            const tax = Number(item.taxAmount) || 0;
+            const deprec = Number(item.depreciationAmount) || 0;
+            const acv = rcv - deprec;
+            return {
+              lineNumber: idx + 1,
+              id: item.id,
+              description: item.description,
+              category: item.category,
+              quantity: Number(item.quantity) || 0,
+              unit: item.unit,
+              action: item.action,
+              xactCode: item.xactCode,
+              unitPrice: Number(item.unitPrice) || 0,
+              totalPrice: rcv,
+              taxAmount: tax,
+              depreciationAmount: deprec,
+              depreciationType: item.depreciationType || "Recoverable",
+              acv: parseFloat(acv.toFixed(2)),
+              provenance: item.provenance,
+            };
+          }),
           subtotal: parseFloat(roomTotal.toFixed(2)),
+          totalTax: parseFloat(roomItems.reduce((s, i) => s + (Number(i.taxAmount) || 0), 0).toFixed(2)),
+          totalDepreciation: parseFloat(roomItems.reduce((s, i) => s + (Number(i.depreciationAmount) || 0), 0).toFixed(2)),
+          totalACV: parseFloat((roomTotal - roomItems.reduce((s, i) => s + (Number(i.depreciationAmount) || 0), 0)).toFixed(2)),
           status: room.status,
           damageCount: room.damageCount || 0,
           photoCount: room.photoCount || 0,
@@ -2198,10 +2213,16 @@ Respond in JSON format:
       });
 
       const grandTotal = roomSections.reduce((s, r) => s + r.subtotal, 0);
+      const grandTax = roomSections.reduce((s, r) => s + (r.totalTax || 0), 0);
+      const grandDepreciation = roomSections.reduce((s, r) => s + (r.totalDepreciation || 0), 0);
+      const grandACV = grandTotal - grandDepreciation;
 
       res.json({
         rooms: roomSections,
         grandTotal: parseFloat(grandTotal.toFixed(2)),
+        grandTax: parseFloat(grandTax.toFixed(2)),
+        grandDepreciation: parseFloat(grandDepreciation.toFixed(2)),
+        grandACV: parseFloat(grandACV.toFixed(2)),
         totalLineItems: items.length,
       });
     } catch (error: any) {
