@@ -12,6 +12,9 @@
       "bundleIdentifier": "com.johnshoust2.restexpress"
     },
     "owner": "claimsiq",
-    "slug": "claims-iq-voice-inspect"
+    "slug": "claims-iq-voice-inspect",
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
