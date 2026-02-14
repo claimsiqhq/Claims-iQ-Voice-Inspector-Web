@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, FileText, Mic, ClipboardCheck, Camera, PenTool } from "lucide-react";
+import { Home, FileText, Mic, ClipboardCheck, Camera, PenTool, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,9 +28,15 @@ function getNavItems(): NavItem[] {
     },
     {
       icon: FileText,
-      label: "Documents",
+      label: "Docs",
       getPath: () => "/documents",
       matchPaths: ["/documents", "/upload", "/review"],
+    },
+    {
+      icon: List,
+      label: "Scope",
+      getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
+      matchPaths: ["/inspection/*/review"],
     },
     {
       icon: Mic,
@@ -49,7 +55,7 @@ function getNavItems(): NavItem[] {
       icon: ClipboardCheck,
       label: "Reports",
       getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
-      matchPaths: ["/inspection/*/review", "/inspection/*/export"],
+      matchPaths: ["/inspection/*/export"],
     },
     {
       icon: Camera,
