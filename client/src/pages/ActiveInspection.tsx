@@ -2018,7 +2018,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   );
 
   const rightPanelContent = (
-    <div className="flex-1 overflow-y-auto p-3 space-y-4">
+    <div className="flex-1 flex flex-col p-3 space-y-4 overflow-hidden">
       <div className="bg-primary/5 rounded-lg p-3 border border-border">
         <div className="flex items-center gap-1.5 mb-2">
           <DollarSign size={14} className="text-accent" />
@@ -2081,67 +2081,69 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         )}
       </AnimatePresence>
 
-      <PropertySketch
-        sessionId={sessionId}
-        rooms={rooms}
-        currentRoomId={currentRoomId}
-        onRoomClick={(roomId) => {
-          setCurrentRoomId(roomId);
-          setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
-        }}
-        onEditRoom={(roomId) => setEditingRoomId(roomId)}
-        onAddRoom={() => setShowAddRoom(true)}
-        onStructureChange={(name) => setCurrentStructure(name)}
-      />
-
-      <div>
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Recent Line Items</p>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Scope Items</p>
+          <button
+            onClick={() => setLocation(`/inspection/${claimId}/review`)}
+            className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 font-medium transition-colors"
+            data-testid="link-view-full-scope"
+          >
+            <FileText size={10} />
+            View Full Scope
+            <ChevronRight size={10} />
+          </button>
+        </div>
         {recentLineItems.length === 0 && (
           <p className="text-xs text-muted-foreground">No items yet</p>
         )}
-        <AnimatePresence>
-          {recentLineItems.map((item: any) => (
-            <motion.div
-              key={item.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={cn(
-                "rounded-lg px-2.5 py-2 mb-1.5 border",
-                item.provenance === "auto_scope"
-                  ? "bg-[#22C55E]/5 border-[#22C55E]/20"
-                  : item.provenance === "companion"
-                  ? "bg-[#9D8BBF]/5 border-[#9D8BBF]/20"
-                  : "bg-primary/5 border-border"
-              )}
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-2">
-                  {item.provenance === "auto_scope" && (
-                    <Zap size={10} className="text-[#22C55E] shrink-0" />
-                  )}
-                  {item.provenance === "companion" && (
-                    <Link2 size={10} className="text-[#9D8BBF] shrink-0" />
-                  )}
-                  <p className="text-xs font-medium truncate">{item.description}</p>
-                </div>
-                <span className="text-xs text-accent font-mono whitespace-nowrap">
-                  ${Number(item.totalPrice || 0).toFixed(2)}
-                </span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {item.category} · {item.action} · {item.quantity} {item.unit}
-                {item.provenance && item.provenance !== "voice" && (
-                  <span className={cn(
-                    "ml-1",
-                    item.provenance === "auto_scope" ? "text-[#22C55E]" : "text-[#9D8BBF]"
-                  )}>
-                    · {item.provenance === "auto_scope" ? "auto-scoped" : item.provenance}
-                  </span>
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5">
+          <AnimatePresence>
+            {recentLineItems.map((item: any) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                onClick={() => setLocation(`/inspection/${claimId}/review`)}
+                className={cn(
+                  "rounded-lg px-2.5 py-2 border cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all",
+                  item.provenance === "auto_scope"
+                    ? "bg-[#22C55E]/5 border-[#22C55E]/20"
+                    : item.provenance === "companion"
+                    ? "bg-[#9D8BBF]/5 border-[#9D8BBF]/20"
+                    : "bg-primary/5 border-border"
                 )}
-              </p>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+                data-testid={`scope-item-${item.id}`}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-2">
+                    {item.provenance === "auto_scope" && (
+                      <Zap size={10} className="text-[#22C55E] shrink-0" />
+                    )}
+                    {item.provenance === "companion" && (
+                      <Link2 size={10} className="text-[#9D8BBF] shrink-0" />
+                    )}
+                    <p className="text-xs font-medium truncate">{item.description}</p>
+                  </div>
+                  <span className="text-xs text-accent font-mono whitespace-nowrap">
+                    ${Number(item.totalPrice || 0).toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {item.category} · {item.action} · {item.quantity} {item.unit}
+                  {item.provenance && item.provenance !== "voice" && (
+                    <span className={cn(
+                      "ml-1",
+                      item.provenance === "auto_scope" ? "text-[#22C55E]" : "text-[#9D8BBF]"
+                    )}>
+                      · {item.provenance === "auto_scope" ? "auto-scoped" : item.provenance}
+                    </span>
+                  )}
+                </p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
 
       <PhotoGallery
