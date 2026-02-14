@@ -175,12 +175,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [isPaused, setIsPaused] = useState(false);
   const [showProgressMap, setShowProgressMap] = useState(false);
   const [showProgressTracker, setShowProgressTracker] = useState(false);
-  const [sketchCollapsed, setSketchCollapsed] = useState(false);
+  const [sketchCollapsed, setSketchCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
   const [sketchExpanded, setSketchExpanded] = useState(false);
   const [sketchEditMode, setSketchEditMode] = useState(false);
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
+  const [mobileTranscriptExpanded, setMobileTranscriptExpanded] = useState(false);
   const isMobile = useIsMobile();
+  useEffect(() => { if (isMobile) setSketchCollapsed(true); }, [isMobile]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -2259,10 +2261,46 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
         </div>
 
-        {/* Mobile current area indicator */}
-        {isMobile && currentArea && (
-          <div className="bg-primary/5 px-3 py-1.5 border-b border-border sm:hidden">
-            <span className="text-[11px] text-muted-foreground">{currentStructure} &rsaquo; {currentArea}</span>
+        {/* Mobile: Quick Stats Strip + Current Area */}
+        {isMobile && (
+          <div className="border-b border-border sm:hidden">
+            {currentArea && (
+              <div className="bg-primary/5 px-3 py-1 border-b border-border/50">
+                <span className="text-[11px] text-muted-foreground">{currentStructure} &rsaquo; {currentArea}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto">
+              <button
+                onClick={() => setLocation(`/inspection/${claimId}/review`)}
+                className="flex items-center gap-1.5 bg-accent/10 border border-accent/20 rounded-full px-3 py-1.5 shrink-0"
+                data-testid="pill-estimate"
+              >
+                <DollarSign size={12} className="text-accent" />
+                <span className="text-xs font-bold text-accent">
+                  ${estimateSummary.totalRCV.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+              </button>
+              <button
+                onClick={() => setMobileRightOpen(true)}
+                className="flex items-center gap-1.5 bg-primary/5 border border-border rounded-full px-3 py-1.5 shrink-0"
+                data-testid="pill-scope"
+              >
+                <FileText size={12} className="text-primary" />
+                <span className="text-xs font-medium">{estimateSummary.itemCount} items</span>
+              </button>
+              <button
+                onClick={() => setMobileRightOpen(true)}
+                className="flex items-center gap-1.5 bg-primary/5 border border-border rounded-full px-3 py-1.5 shrink-0"
+                data-testid="pill-photos"
+              >
+                <Camera size={12} className="text-primary" />
+                <span className="text-xs font-medium">{recentPhotos.length} photos</span>
+              </button>
+              <div className="flex items-center gap-1.5 bg-primary/5 border border-border rounded-full px-3 py-1.5 shrink-0">
+                <Activity size={12} className="text-primary" />
+                <span className="text-xs font-medium">Phase {currentPhase}/{PHASES.length}</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2310,7 +2348,86 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         {/* Main Content Area */}
         <div className="flex-1 relative flex flex-col bg-gradient-to-b from-background via-background to-muted/30 overflow-hidden">
-          {/* Transcript Log - top half */}
+          {/* Mobile: Compact Transcript (last message + tap to expand) */}
+          {isMobile && (
+            <div className="flex flex-col min-h-0" style={{ flex: mobileTranscriptExpanded ? "1 1 100%" : "0 0 auto" }}>
+              {mobileTranscriptExpanded ? (
+                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                  <button
+                    onClick={() => setMobileTranscriptExpanded(false)}
+                    className="flex items-center gap-1 text-[10px] text-primary mb-1"
+                    data-testid="button-collapse-transcript"
+                  >
+                    <ChevronDown size={10} />
+                    Collapse transcript
+                  </button>
+                  <AnimatePresence>
+                    {transcript.map((entry, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "rounded-xl px-3 py-2",
+                          entry.role === "agent"
+                            ? "bg-primary/15 border border-primary/20 mr-auto"
+                            : "bg-primary/10 border border-primary/25 ml-auto"
+                        )}
+                      >
+                        <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">
+                          {entry.role === "agent" ? "Claims IQ" : "You"}
+                        </p>
+                        <p className="text-sm leading-relaxed text-foreground">{entry.text}</p>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {agentPartialText && (
+                    <div className="rounded-xl px-3 py-2 bg-primary/15 border border-primary/20 mr-auto">
+                      <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">Claims IQ</p>
+                      <p className="text-sm leading-relaxed text-foreground">{agentPartialText}<span className="animate-pulse">|</span></p>
+                    </div>
+                  )}
+                  <div ref={transcriptEndRef} />
+                </div>
+              ) : (
+                <div
+                  onClick={() => { if (transcript.length > 0 || agentPartialText) setMobileTranscriptExpanded(true); }}
+                  className={cn("px-3 py-2 border-b border-border/50", (transcript.length > 0 || agentPartialText) && "cursor-pointer hover:bg-primary/5")}
+                  data-testid="mobile-compact-transcript"
+                >
+                  {transcript.length === 0 && !agentPartialText ? (
+                    <div className="flex items-center gap-2 py-1 text-muted-foreground/60">
+                      <Mic size={16} className="opacity-50" />
+                      <p className="text-xs">
+                        {isConnected ? "Listening... speak to begin." : "Tap the mic to start."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                          {agentPartialText ? "Claims IQ" : transcript[transcript.length - 1]?.role === "agent" ? "Claims IQ" : "You"}
+                        </p>
+                        <p className="text-xs leading-snug text-foreground line-clamp-2">
+                          {agentPartialText || transcript[transcript.length - 1]?.text}
+                          {agentPartialText && <span className="animate-pulse">|</span>}
+                        </p>
+                      </div>
+                      {transcript.length > 1 && (
+                        <button className="flex items-center gap-0.5 text-[9px] text-primary shrink-0 mt-1">
+                          <ChevronUp size={10} />
+                          {transcript.length}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Desktop: Full Transcript Log */}
+          {!isMobile && (
           <div className={cn("overflow-y-auto px-3 md:px-6 py-4 space-y-3", sketchCollapsed ? "flex-1" : "flex-1 min-h-0")} style={!sketchCollapsed && rooms.length > 0 ? { flex: "1 1 55%" } : undefined}>
             {transcript.length === 0 && !agentPartialText && (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground/60">
@@ -2353,6 +2470,70 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             )}
             <div ref={transcriptEndRef} />
           </div>
+          )}
+
+          {/* Mobile: Inspection Step Progress Card */}
+          {isMobile && !mobileTranscriptExpanded && (
+            <div className="flex-1 flex flex-col items-center justify-center px-4 py-3 min-h-0">
+              <div className="w-full max-w-sm space-y-3">
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">{currentPhase}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{PHASES.find(p => p.id === currentPhase)?.name || "Inspection"}</p>
+                        <p className="text-[10px] text-muted-foreground">Phase {currentPhase} of {PHASES.length}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowProgressTracker(true)}
+                      className="text-[10px] text-primary font-medium"
+                      data-testid="button-view-checklist"
+                    >
+                      View All
+                    </button>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5 mb-3">
+                    <div
+                      className="bg-primary h-1.5 rounded-full transition-all"
+                      style={{ width: `${(currentPhase / PHASES.length) * 100}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-muted/50 rounded-lg px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-foreground">{rooms.filter(r => r.status === "complete").length}/{rooms.length}</p>
+                      <p className="text-[10px] text-muted-foreground">Rooms Done</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-foreground">{rooms.reduce((sum, r) => sum + r.damageCount, 0)}</p>
+                      <p className="text-[10px] text-muted-foreground">Damages Found</p>
+                    </div>
+                  </div>
+                </div>
+
+                {currentArea && (
+                  <div className="bg-primary/5 rounded-xl border border-primary/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} className="text-primary" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">Currently in: {currentArea}</p>
+                        {(() => {
+                          const room = rooms.find(r => r.id === currentRoomId);
+                          return room ? (
+                            <p className="text-[10px] text-muted-foreground">
+                              {room.damageCount} damage{room.damageCount !== 1 ? "s" : ""} · {room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}
+                            </p>
+                          ) : null;
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Inline Floor Plan Sketch - bottom panel */}
           {(rooms.length > 0 || isConnected) && (
@@ -2361,12 +2542,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 "border-t border-border bg-card/60 backdrop-blur-sm transition-all",
                 sketchCollapsed ? "h-9" : "min-h-0"
               )}
-              style={!sketchCollapsed ? { flex: "0 0 auto", maxHeight: "40%" } : undefined}
+              style={!sketchCollapsed ? { flex: "0 0 auto", maxHeight: isMobile ? "30%" : "40%" } : undefined}
               data-testid="sketch-inline-panel"
             >
               <div
                 className="h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-primary/5"
-                onClick={() => setSketchCollapsed(!sketchCollapsed)}
+                onClick={() => {
+                  if (isMobile && sketchCollapsed) {
+                    setSketchExpanded(true);
+                  } else {
+                    setSketchCollapsed(!sketchCollapsed);
+                  }
+                }}
               >
                 <div className="flex items-center gap-2">
                   {sketchCollapsed ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
@@ -2388,7 +2575,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   </Button>
                 )}
               </div>
-              {!sketchCollapsed && (
+              {!sketchCollapsed && !isMobile && (
                 <div className="overflow-y-auto px-2 pb-2" style={{ maxHeight: "calc(100% - 36px)" }}>
                   <PropertySketch
                     sessionId={sessionId}
@@ -2413,7 +2600,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           )}
 
           {/* Voice Status + Controls */}
-          <div className="h-24 md:h-28 bg-card/80 backdrop-blur-xl border-t border-border flex items-center justify-between px-4 md:px-8">
+          <div className="h-20 md:h-28 bg-card/80 backdrop-blur-xl border-t border-border flex items-center justify-between px-4 md:px-8">
             <Button
               size="lg"
               variant="outline"
