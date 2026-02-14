@@ -21,9 +21,12 @@
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
+    "@expo/ui": "~0.2.0-beta.9",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^1.0.2",
@@ -69,6 +72,9 @@
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.1",
     "embla-carousel-react": "^8.6.0",
+    "expo": "^54.0.33",
+    "expo-location": "~19.0.8",
+    "expo-updates": "~29.0.16",
     "express": "^5.0.1",
     "express-rate-limit": "^8.2.1",
     "express-session": "^1.18.1",
@@ -97,6 +103,7 @@
     "react-day-picker": "^9.11.1",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.66.0",
+    "react-native": "^0.84.0",
     "react-resizable-panels": "^2.1.9",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
