@@ -38,7 +38,7 @@ export function photolabRouter() {
       const photosWithUrls = await Promise.all(
         photos.map(async (photo) => {
           let signedUrl = null;
-          if (photo.storagePath) {
+          if (photo.storagePath && supabase) {
             const { data } = await supabase.storage
               .from(PHOTOS_BUCKET)
               .createSignedUrl(photo.storagePath, 3600);
@@ -73,6 +73,10 @@ export function photolabRouter() {
       const buffer = Buffer.from(base64Match[2], "base64");
       const contentType = `image/${base64Match[1]}`;
       const storagePath = `standalone/${userId}/${Date.now()}.${ext}`;
+
+      if (!supabase) {
+        return res.status(503).json({ message: "File storage not configured (Supabase required)" });
+      }
 
       const { error: uploadError } = await supabase.storage
         .from(PHOTOS_BUCKET)
@@ -157,9 +161,9 @@ export function photolabRouter() {
         .set({ analysisStatus: "analyzing" })
         .where(eq(standalonePhotos.id, photoId));
 
-      const { data: urlData } = await supabase.storage
-        .from(PHOTOS_BUCKET)
-        .createSignedUrl(photo.storagePath, 3600);
+      const { data: urlData } = supabase
+        ? await supabase.storage.from(PHOTOS_BUCKET).createSignedUrl(photo.storagePath, 3600)
+        : { data: null };
 
       if (!urlData?.signedUrl) {
         await db.update(standalonePhotos)
@@ -264,7 +268,7 @@ export function photolabRouter() {
         return res.status(404).json({ message: "Photo not found" });
       }
 
-      if (photo.storagePath) {
+      if (photo.storagePath && supabase) {
         await supabase.storage.from(PHOTOS_BUCKET).remove([photo.storagePath]);
       }
 

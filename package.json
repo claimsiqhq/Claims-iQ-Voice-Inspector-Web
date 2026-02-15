@@ -9,8 +9,11 @@
     "start": "node ./dist/index.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
+    "db:push": "echo 'STOP! Run: DANGER_PUSH=1 npm run db:push to overwrite DB. See DB_SCHEMA_WARNING.md' && exit 1",
+    "db:push:force": "drizzle-kit push",
+    "db:pull": "drizzle-kit introspect",
     "db:studio": "drizzle-kit studio",
+    "mobile:build": "npm run build --workspace=packages/mobile",
     "android": "npm run start --workspace=packages/mobile -- --android",
     "ios": "npm run start --workspace=packages/mobile -- --ios",
     "mobile": "npm run start --workspace=packages/mobile"
