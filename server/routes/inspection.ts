@@ -300,6 +300,114 @@ export function inspectionRouter() {
     }
   });
 
+  // Estimate summary with depreciation and settlement
+  router.get("/inspection/:sessionId/estimate-summary", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(String(req.params.sessionId));
+      const items = await db.select().from(lineItems).where(eq(lineItems.sessionId, sessionId));
+      const rooms = await db.select().from(inspectionRooms).where(eq(inspectionRooms.sessionId, sessionId));
+
+      if (items.length === 0) return res.json({ totalRCV: 0, totalACV: 0, itemCount: 0, rooms: [] });
+
+      // Get claim to find policy data
+      const [session] = await db.select().from(inspectionSessions).where(eq(inspectionSessions.id, sessionId)).limit(1);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      // Try to get policy extraction for depreciation rules
+      const { pgTable, serial, integer, varchar, jsonb, boolean, timestamp } = await import("drizzle-orm/pg-core");
+      const extractions = pgTable("extractions", {
+        id: serial("id").primaryKey(),
+        claimId: integer("claim_id").notNull(),
+        documentType: varchar("document_type", { length: 30 }).notNull(),
+        extractedData: jsonb("extracted_data"),
+        confidence: jsonb("confidence"),
+        confirmedByUser: boolean("confirmed_by_user").default(false),
+        createdAt: timestamp("created_at").defaultNow(),
+      });
+
+      const policyExtractions = await db.select().from(extractions)
+        .where(and(eq(extractions.claimId, session.claimId), eq(extractions.documentType, "policy"))).limit(1);
+      const policyData = (policyExtractions[0]?.extractedData as any) || {};
+
+      const deductible = policyData.deductible || 1000;
+      const applyRoofSchedule = policyData.applyRoofSchedule || false;
+      const taxRate = (policyData.taxRate || 8) / 100;
+      const coverageALimit = policyData.coverage?.coverageA?.limit || null;
+
+      // Calculate per-item depreciation
+      const { calculateItemDepreciation, deriveCoverageBucket } = await import("../estimateEngine");
+
+      let totalRCV = 0;
+      let totalDepreciation = 0;
+      let totalACV = 0;
+      const trades = new Set<string>();
+      const depreciatedItems = [];
+
+      for (const item of items) {
+        const rcv = (item.totalPrice || 0) * (1 + taxRate);
+        const isRoofing = (item.category || "").toLowerCase().includes("roof");
+        const room = rooms.find(r => r.id === item.roomId);
+        const structure = (room as any)?.structure || "Main Dwelling";
+        const coverageBucket = deriveCoverageBucket(structure, null);
+
+        const dep = calculateItemDepreciation(
+          rcv,
+          null,  // age from policy data if available
+          null,  // life expectancy
+          null,  // manual override
+          "Recoverable",
+          applyRoofSchedule,
+          isRoofing,
+        );
+
+        totalRCV += rcv;
+        totalDepreciation += dep.depreciationAmount;
+        totalACV += dep.acv;
+        trades.add(item.category || "General");
+
+        depreciatedItems.push({
+          id: item.id,
+          description: item.description,
+          category: item.category,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          rcv: Math.round(rcv * 100) / 100,
+          depreciationPct: dep.depreciationPercentage,
+          depreciationAmount: dep.depreciationAmount,
+          acv: dep.acv,
+          depreciationType: dep.effectiveDepType,
+          coverageBucket,
+        });
+      }
+
+      const qualifiesForOP = trades.size >= 3;
+      const overhead = qualifiesForOP ? totalRCV * 0.1 : 0;
+      const profit = qualifiesForOP ? totalRCV * 0.1 : 0;
+      const grandTotalRCV = totalRCV + overhead + profit;
+      const netClaim = Math.max(0, totalACV - deductible);
+
+      res.json({
+        totalRCV: Math.round(grandTotalRCV * 100) / 100,
+        totalDepreciation: Math.round(totalDepreciation * 100) / 100,
+        totalACV: Math.round(totalACV * 100) / 100,
+        deductible,
+        netClaim: Math.round(netClaim * 100) / 100,
+        overhead: Math.round(overhead * 100) / 100,
+        profit: Math.round(profit * 100) / 100,
+        qualifiesForOP,
+        tradesInvolved: Array.from(trades),
+        itemCount: items.length,
+        roomCount: rooms.length,
+        coverageALimit,
+        overLimit: coverageALimit ? Math.max(0, grandTotalRCV - coverageALimit) : 0,
+        items: depreciatedItems,
+      });
+    } catch (err) {
+      console.error("estimate summary error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Profile update
   router.patch("/profile", authenticateRequest, async (req, res) => {
     try {

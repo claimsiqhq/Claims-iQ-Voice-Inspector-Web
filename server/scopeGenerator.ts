@@ -98,6 +98,8 @@ export interface GeneratedLineItem {
   totalPrice: number;
   xactCode: string | null;
   tradeCode: string | null;
+  depreciationType: string;
+  wasteFactor: number;
 }
 
 /**
@@ -155,6 +157,10 @@ export async function generateScopeFromDamage(
       }
     }
 
+    // Roofing items default to Recoverable unless roof schedule applies
+    const isRoofing = tmpl.category === "Roofing";
+    const depreciationType = isRoofing ? "Recoverable" : "Recoverable";
+
     results.push({
       description: tmpl.description,
       category: tmpl.category,
@@ -165,6 +171,8 @@ export async function generateScopeFromDamage(
       totalPrice: Math.round(unitPrice * quantity * 100) / 100,
       xactCode,
       tradeCode,
+      depreciationType,
+      wasteFactor: tmpl.category === "Roofing" ? 12 : tmpl.category === "Flooring" ? 10 : 0,
     });
   }
 

@@ -101,6 +101,75 @@ export function claimsRouter() {
         status: "uploaded",
       }).returning();
 
+      // Auto-parse PDF if it's fnol, policy, or endorsements
+      if (["fnol", "policy", "endorsements"].includes(documentType) && ext === "pdf") {
+        // Parse in background, don't block response
+        (async () => {
+          try {
+            const { parsePdfBuffer } = await import("../documentParser");
+            const { extractedData, confidence } = await parsePdfBuffer(buffer, documentType);
+
+            // Import extractions table from extraction router's definition
+            const { pgTable, serial, integer, varchar, jsonb, boolean, timestamp } = await import("drizzle-orm/pg-core");
+            const extractions = pgTable("extractions", {
+              id: serial("id").primaryKey(),
+              claimId: integer("claim_id").notNull(),
+              documentType: varchar("document_type", { length: 30 }).notNull(),
+              extractedData: jsonb("extracted_data"),
+              confidence: jsonb("confidence"),
+              confirmedByUser: boolean("confirmed_by_user").default(false),
+              createdAt: timestamp("created_at").defaultNow(),
+            });
+
+            // Upsert extraction
+            const [existing] = await db.select().from(extractions)
+              .where(and(eq(extractions.claimId, claimId), eq(extractions.documentType, documentType))).limit(1);
+
+            if (existing) {
+              await db.update(extractions)
+                .set({ extractedData: extractedData as any, confidence: confidence as any })
+                .where(eq(extractions.id, existing.id));
+            } else {
+              await db.insert(extractions).values({
+                claimId, documentType,
+                extractedData: extractedData as any,
+                confidence: confidence as any,
+              });
+            }
+
+            // Update document status
+            await db.update(documents).set({ status: "parsed" }).where(eq(documents.id, doc.id));
+
+            // Update claim status if all three docs are uploaded
+            const allExtractions = await db.select().from(extractions).where(eq(extractions.claimId, claimId));
+            if (allExtractions.length >= 1) {
+              await db.update(claims).set({ status: "documents_uploaded" }).where(eq(claims.id, claimId));
+            }
+
+            // If FNOL parsed, auto-populate claim fields
+            if (documentType === "fnol" && extractedData) {
+              const fnol = extractedData as any;
+              const updates: any = {};
+              if (fnol.insuredName && !claim.insuredName) updates.insuredName = fnol.insuredName;
+              if (fnol.propertyAddress && !claim.propertyAddress) updates.propertyAddress = fnol.propertyAddress;
+              if (fnol.city && !claim.city) updates.city = fnol.city;
+              if (fnol.state && !claim.state) updates.state = fnol.state;
+              if (fnol.zip && !claim.zip) updates.zip = fnol.zip;
+              if (fnol.dateOfLoss && !claim.dateOfLoss) updates.dateOfLoss = fnol.dateOfLoss;
+              if (fnol.perilType && !claim.perilType) updates.perilType = fnol.perilType;
+              if (Object.keys(updates).length > 0) {
+                await db.update(claims).set(updates).where(eq(claims.id, claimId));
+              }
+            }
+
+            console.log(`Parsed ${documentType} for claim ${claimId}`);
+          } catch (err) {
+            console.error(`PDF parse error for ${documentType}:`, err);
+            await db.update(documents).set({ status: "parse_failed" }).where(eq(documents.id, doc.id));
+          }
+        })();
+      }
+
       res.json(doc);
     } catch (err) {
       console.error("document upload error:", err);

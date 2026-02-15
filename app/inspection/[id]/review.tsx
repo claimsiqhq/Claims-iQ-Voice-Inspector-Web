@@ -20,12 +20,23 @@ export default function ReviewScreen() {
   const { data: rooms = [] } = useQuery<Room[]>({ queryKey: [`/api/inspection/${session?.id}/rooms`], enabled: !!session?.id });
   const { data: lineItems = [] } = useQuery<LineItem[]>({ queryKey: [`/api/inspection/${session?.id}/line-items`], enabled: !!session?.id });
 
-  const totalEstimate = lineItems.reduce((s, li) => s + (li.totalPrice || 0), 0);
+  interface EstimateSummary {
+    totalRCV: number; totalDepreciation: number; totalACV: number;
+    deductible: number; netClaim: number; overhead: number; profit: number;
+    qualifiesForOP: boolean; tradesInvolved: string[]; itemCount: number;
+    coverageALimit: number | null; overLimit: number;
+  }
+  const { data: settlement } = useQuery<EstimateSummary>({
+    queryKey: [`/api/inspection/${session?.id}/estimate-summary`],
+    enabled: !!session?.id,
+  });
+
+  const totalEstimate = settlement?.totalRCV || lineItems.reduce((s, li) => s + (li.totalPrice || 0), 0);
   const totalDamages = rooms.reduce((s, r) => s + (r.damageCount || 0), 0);
   const totalPhotos = rooms.reduce((s, r) => s + (r.photoCount || 0), 0);
 
-  const trades = [...new Set(lineItems.map((li) => li.category).filter(Boolean))];
-  const qualifiesOP = trades.length >= 3;
+  const trades = settlement?.tradesInvolved || [...new Set(lineItems.map((li) => li.category).filter(Boolean))];
+  const qualifiesOP = settlement?.qualifiesForOP || trades.length >= 3;
 
   const groupedByRoom = rooms.map((room) => ({
     room,
@@ -68,14 +79,28 @@ export default function ReviewScreen() {
             {/* Property sketch */}
             <PropertySketch rooms={rooms} title="Property sketch" />
 
-            {/* Total */}
+            {/* Settlement */}
             <View style={s.totalCard}>
-              <View>
-                <Text style={s.totalLabel}>Estimate total</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.totalLabel}>RCV Total</Text>
                 <Text style={s.totalMeta}>{trades.length} trades • {qualifiesOP ? "O&P eligible" : "O&P not eligible"}</Text>
               </View>
               <Text style={s.totalValue}>${totalEstimate.toFixed(2)}</Text>
             </View>
+            {settlement && (
+              <View style={s.settlementCard}>
+                <View style={s.settlementRow}><Text style={s.settlementLabel}>RCV</Text><Text style={s.settlementVal}>${settlement.totalRCV.toFixed(2)}</Text></View>
+                {qualifiesOP && <View style={s.settlementRow}><Text style={s.settlementLabel}>O&P (10%+10%)</Text><Text style={s.settlementVal}>${(settlement.overhead + settlement.profit).toFixed(2)}</Text></View>}
+                <View style={s.settlementRow}><Text style={s.settlementLabel}>Depreciation</Text><Text style={[s.settlementVal, { color: "#dc2626" }]}>-${settlement.totalDepreciation.toFixed(2)}</Text></View>
+                <View style={s.settlementRow}><Text style={s.settlementLabel}>ACV</Text><Text style={s.settlementVal}>${settlement.totalACV.toFixed(2)}</Text></View>
+                <View style={s.settlementRow}><Text style={s.settlementLabel}>Deductible</Text><Text style={[s.settlementVal, { color: "#dc2626" }]}>-${settlement.deductible.toFixed(2)}</Text></View>
+                {settlement.overLimit > 0 && <View style={s.settlementRow}><Text style={s.settlementLabel}>Over limit</Text><Text style={[s.settlementVal, { color: "#dc2626" }]}>-${settlement.overLimit.toFixed(2)}</Text></View>}
+                <View style={[s.settlementRow, { borderTopWidth: 2, borderTopColor: "#C6A54E", paddingTop: 8, marginTop: 4 }]}>
+                  <Text style={[s.settlementLabel, { fontWeight: "700", fontSize: 16 }]}>Net Claim (check amount)</Text>
+                  <Text style={[s.settlementVal, { color: "#C6A54E", fontSize: 20, fontWeight: "700" }]}>${settlement.netClaim.toFixed(2)}</Text>
+                </View>
+              </View>
+            )}
 
             {/* Room-by-room scope */}
             {groupedByRoom.map(({ room, items, subtotal }) => (
@@ -163,6 +188,10 @@ const s = StyleSheet.create({
   liRight: { alignItems: "flex-end" },
   liQty: { fontSize: 12, color: "#6b7280" },
   liPrice: { fontSize: 14, fontWeight: "600", color: "#342A4F" },
+  settlementCard: { backgroundColor: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  settlementRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
+  settlementLabel: { fontSize: 14, color: "#6b7280" },
+  settlementVal: { fontSize: 14, fontWeight: "600", color: "#342A4F" },
   actionsRow: { marginTop: 16 },
   actionBtn: { backgroundColor: "#7763B7", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 },
   actionBtnSecondary: { backgroundColor: "#fff", borderWidth: 2, borderColor: "#7763B7" },
