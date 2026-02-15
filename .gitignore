@@ -7,3 +7,4 @@ vite.config.ts.*
 .env
 .env.local
 ios/certs/*
+credentials.json
