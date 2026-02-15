@@ -4,7 +4,3 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
-.env
-.env.local
-ios/certs/*
-credentials.json
