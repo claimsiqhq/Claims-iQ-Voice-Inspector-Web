@@ -110,8 +110,17 @@ export default function ReviewScreen() {
 
             {/* Actions */}
             <View style={s.actionsRow}>
-              <Pressable style={s.actionBtn} onPress={() => router.push({ pathname: "/inspection/[id]", params: { id: String(id) } })}>
-                <Text style={s.actionBtnText}>Back to inspection</Text>
+              <Pressable style={s.actionBtn} onPress={async () => {
+                try {
+                  const headers = await getAuthHeaders();
+                  const url = `${API_BASE}/api/claims/${id}/export/pdf`;
+                  await WebBrowser.openBrowserAsync(`${url}?token=${encodeURIComponent(Object.values(headers)[0] || "")}`);
+                } catch {}
+              }}>
+                <Text style={s.actionBtnText}>Export PDF report</Text>
+              </Pressable>
+              <Pressable style={[s.actionBtn, s.actionBtnSecondary]} onPress={() => router.push({ pathname: "/inspection/[id]", params: { id: String(id) } })}>
+                <Text style={[s.actionBtnText, s.actionBtnTextSecondary]}>Back to inspection</Text>
               </Pressable>
             </View>
           </>
@@ -155,6 +164,8 @@ const s = StyleSheet.create({
   liQty: { fontSize: 12, color: "#6b7280" },
   liPrice: { fontSize: 14, fontWeight: "600", color: "#342A4F" },
   actionsRow: { marginTop: 16 },
-  actionBtn: { backgroundColor: "#7763B7", padding: 16, borderRadius: 12, alignItems: "center" },
+  actionBtn: { backgroundColor: "#7763B7", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 },
+  actionBtnSecondary: { backgroundColor: "#fff", borderWidth: 2, borderColor: "#7763B7" },
   actionBtnText: { fontSize: 16, fontWeight: "600", color: "#fff" },
+  actionBtnTextSecondary: { color: "#7763B7" },
 });
