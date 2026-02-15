@@ -216,7 +216,39 @@ export function inspectionRouter() {
         await db.update(inspectionRooms).set({ damageCount: (room.damageCount || 0) + 1 }).where(eq(inspectionRooms.id, roomId));
       }
 
-      res.json(damage);
+      // Auto-generate scope line items from damage
+      let generatedItems: any[] = [];
+      try {
+        const { generateScopeFromDamage } = await import("../scopeGenerator");
+        const roomDims = room?.dimensions as any;
+        const generated = await generateScopeFromDamage(
+          parsed.data.damageType || "other",
+          parsed.data.severity || "moderate",
+          roomDims ? { length: roomDims.length || 12, width: roomDims.width || 10, height: roomDims.height || 8 } : null,
+        );
+
+        for (const li of generated) {
+          const [inserted] = await db.insert(lineItems).values({
+            sessionId,
+            roomId,
+            damageId: damage.id,
+            description: li.description,
+            category: li.category,
+            action: li.action,
+            xactCode: li.xactCode,
+            quantity: li.quantity,
+            unit: li.unit,
+            unitPrice: li.unitPrice,
+            totalPrice: li.totalPrice,
+            provenance: "auto",
+          }).returning();
+          generatedItems.push(inserted);
+        }
+      } catch (err) {
+        console.error("auto-scope generation error (non-fatal):", err);
+      }
+
+      res.json({ damage, generatedLineItems: generatedItems });
     } catch (err) {
       console.error("create damage error:", err);
       res.status(500).json({ message: "Internal server error" });
