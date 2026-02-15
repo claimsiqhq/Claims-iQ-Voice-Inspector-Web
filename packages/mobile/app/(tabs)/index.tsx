@@ -43,10 +43,16 @@ export default function ClaimsListScreen() {
                 style={styles.card}
                 onPress={() => {
                 const s = (item.status || "").toLowerCase().replace(/\s+/g, "_");
-                if (s === "briefing_ready" || s === "inspecting" || s === "in_progress") {
+                if (s === "inspecting" || s === "in_progress" || s === "inspection_in_progress") {
                   router.push({ pathname: "/inspection/[id]", params: { id: String(item.id) } });
+                } else if (s === "briefing_ready") {
+                  router.push({ pathname: "/briefing/[id]", params: { id: String(item.id) } });
+                } else if (s === "documents_uploaded") {
+                  router.push({ pathname: "/extraction/[claimId]", params: { claimId: String(item.id) } });
                 } else if (s === "extractions_confirmed") {
                   router.push({ pathname: "/briefing/[id]", params: { id: String(item.id) } });
+                } else if (s === "inspection_complete" || s === "estimate_ready" || s === "completed" || s === "exported") {
+                  router.push({ pathname: "/inspection/[id]/review", params: { id: String(item.id) } });
                 } else {
                   router.push({ pathname: "/documents/[claimId]", params: { claimId: String(item.id) } });
                 }

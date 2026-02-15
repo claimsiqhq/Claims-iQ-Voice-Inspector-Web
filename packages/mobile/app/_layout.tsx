@@ -44,6 +44,8 @@ export default function RootLayout() {
             <Stack.Screen name="inspection/[id]" />
             <Stack.Screen name="inspection/[id]/review" />
             <Stack.Screen name="documents/[claimId]" />
+            <Stack.Screen name="extraction/[claimId]" />
+            <Stack.Screen name="profile" />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>
