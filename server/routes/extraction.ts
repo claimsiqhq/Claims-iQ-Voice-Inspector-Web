@@ -92,7 +92,7 @@ export function extractionRouter() {
     }
   });
 
-  // Generate briefing from confirmed extractions
+  // Generate briefing from confirmed extractions using OpenAI
   router.post("/:claimId/briefing/generate", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(String(req.params.claimId));
@@ -101,34 +101,48 @@ export function extractionRouter() {
       const policy = exts.find((e) => e.documentType === "policy");
       const endorsements = exts.find((e) => e.documentType === "endorsements");
 
-      const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
+      let briefingData: any;
 
-      const briefingData = {
-        claimId,
-        propertyProfile: {
-          address: claim?.propertyAddress,
-          city: claim?.city,
-          state: claim?.state,
-          zip: claim?.zip,
-          ...(fnol?.extractedData as any)?.propertyProfile,
-        },
-        coverageSnapshot: (policy?.extractedData as any)?.coverage || {
-          coverageA: { limit: "Unknown" },
-          deductible: "Unknown",
-        },
-        perilAnalysis: {
-          perilType: claim?.perilType,
-          dateOfLoss: claim?.dateOfLoss,
-          ...(fnol?.extractedData as any)?.perilAnalysis,
-        },
-        endorsementImpacts: (endorsements?.extractedData as any)?.impacts || [],
-        inspectionChecklist: {
-          exterior: ["Roof", "Siding", "Gutters", "Windows", "Doors"],
-          interior: ["Ceilings", "Walls", "Floors", "Fixtures"],
-        },
-        dutiesAfterLoss: ["Protect property from further damage", "Document all damage with photos", "Keep receipts for emergency repairs"],
-        redFlags: [],
-      };
+      // Use OpenAI to generate briefing if we have extraction data
+      if (fnol?.extractedData || policy?.extractedData) {
+        try {
+          const { generateBriefing } = await import("../documentParser");
+          briefingData = await generateBriefing(
+            fnol?.extractedData || {},
+            policy?.extractedData || {},
+            endorsements?.extractedData || {}
+          );
+          briefingData.claimId = claimId;
+        } catch (err) {
+          console.error("AI briefing generation failed, using fallback:", err);
+          briefingData = null;
+        }
+      }
+
+      // Fallback if OpenAI fails or no data
+      if (!briefingData) {
+        const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
+        briefingData = {
+          claimId,
+          propertyProfile: {
+            address: claim?.propertyAddress,
+            city: claim?.city, state: claim?.state, zip: claim?.zip,
+            ...(fnol?.extractedData as any),
+          },
+          coverageSnapshot: (policy?.extractedData as any) || { deductible: "Unknown" },
+          perilAnalysis: { perilType: claim?.perilType, dateOfLoss: claim?.dateOfLoss },
+          endorsementImpacts: (endorsements?.extractedData as any)?.endorsements || [],
+          inspectionChecklist: {
+            exterior: ["Roof", "Siding", "Gutters", "Windows", "Doors"],
+            roof: ["Shingles", "Flashing", "Ridge cap", "Vents", "Drip edge"],
+            interior: ["Ceilings", "Walls", "Floors", "Fixtures"],
+            systems: ["HVAC", "Plumbing", "Electrical"],
+            documentation: ["Overview photos", "Damage details", "Test squares", "Measurements"],
+          },
+          dutiesAfterLoss: ["Protect property from further damage", "Document all damage with photos", "Keep receipts for emergency repairs"],
+          redFlags: [],
+        };
+      }
 
       // Upsert briefing
       const [existing] = await db.select().from(briefings).where(eq(briefings.claimId, claimId)).limit(1);

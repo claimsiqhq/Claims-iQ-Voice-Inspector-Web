@@ -1,138 +1,216 @@
+import OpenAI from "openai";
 import pdfParse from "pdf-parse";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
-async function callOpenAI(prompt: string, pdfText: string): Promise<any> {
-  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
+function parseJsonResponse(text: string): any {
+  try {
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    throw new Error("Failed to parse AI response as JSON");
+  }
+}
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: pdfText.substring(0, 30000) },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    }),
+export async function extractFNOL(rawText: string): Promise<{ extractedData: any; confidence: any }> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a claims document parser for an insurance inspection platform.
+Extract structured data from this First Notice of Loss (FNOL) document.
+
+Return a JSON object with these fields:
+{
+  "claimNumber": string,
+  "insuredName": string,
+  "propertyAddress": { "street": string, "city": string, "state": string, "zip": string },
+  "dateOfLoss": string (ISO date),
+  "perilType": "hail" | "wind" | "water" | "fire" | "freeze" | "multi",
+  "reportedDamage": string,
+  "propertyType": "single_family" | "townhouse" | "condo" | "multi_family",
+  "yearBuilt": number | null,
+  "stories": number | null,
+  "squareFootage": number | null,
+  "confidence": {
+    [field]: "high" | "medium" | "low"
+  }
+}
+If a field cannot be determined, set to null with confidence "low".
+Return ONLY valid JSON.`,
+      },
+      { role: "user", content: rawText },
+    ],
+    temperature: 0.1,
+    max_tokens: 2000,
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI API error: ${err}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty OpenAI response");
-  return JSON.parse(content);
+  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+  const confidence = parsed.confidence || {};
+  delete parsed.confidence;
+  return { extractedData: parsed, confidence };
 }
 
-export async function extractFNOL(pdfBuffer: Buffer): Promise<{ extractedData: any; confidence: any }> {
-  const { text } = await pdfParse(pdfBuffer);
+export async function extractPolicy(rawText: string): Promise<{ extractedData: any; confidence: any }> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a claims document parser for an insurance inspection platform.
+Extract structured data from this Homeowner Insurance Policy (HO 80 03 or similar).
 
-  const extractedData = await callOpenAI(
-    `You are an insurance document parser. Extract the following fields from this FNOL (First Notice of Loss) document. Return a JSON object with these fields and a separate "confidence" object with "high", "medium", or "low" for each field.
+Return a JSON object with these fields:
+{
+  "policyNumber": string,
+  "policyType": string,
+  "coverageA": number,
+  "coverageB": number,
+  "coverageC": number,
+  "coverageD": number,
+  "coverageE": number | null,
+  "coverageF": number | null,
+  "deductible": { "amount": number, "type": "flat" | "percentage" | "wind_hail_specific", "windHailDeductible": number | null },
+  "lossSettlement": "replacement_cost" | "actual_cash_value" | "functional_replacement",
+  "constructionType": string,
+  "roofType": string | null,
+  "yearBuilt": number | null,
+  "specialConditions": string[] | null,
+  "confidence": { [field]: "high" | "medium" | "low" }
+}
+Return ONLY valid JSON.`,
+      },
+      { role: "user", content: rawText },
+    ],
+    temperature: 0.1,
+    max_tokens: 2000,
+  });
 
-Fields to extract:
-- claimNumber: The claim/loss number
-- dateOfLoss: Date the loss occurred (YYYY-MM-DD)
-- dateReported: Date the loss was reported
-- insuredName: Full name of the insured
-- propertyAddress: Full street address
-- city, state, zip: Location components
-- lossDescription: Description of what happened
-- perilType: Type of peril (hail, wind, water, fire, etc.)
-- reportedBy: Who reported the claim
-- contactPhone: Contact phone number
-- contactEmail: Contact email
-- propertyType: Type of property (single family, condo, etc.)
-- yearBuilt: Year the property was built
-- numberOfStories: Number of stories
-- roofType: Roof material type
-- estimatedDamage: Estimated damage amount if mentioned
-
-Return format: { "data": { ...fields }, "confidence": { ...fieldName: "high"|"medium"|"low" } }`,
-    text
-  );
-
-  return {
-    extractedData: extractedData.data || extractedData,
-    confidence: extractedData.confidence || {},
-  };
+  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+  const confidence = parsed.confidence || {};
+  delete parsed.confidence;
+  return { extractedData: parsed, confidence };
 }
 
-export async function extractPolicy(pdfBuffer: Buffer): Promise<{ extractedData: any; confidence: any }> {
-  const { text } = await pdfParse(pdfBuffer);
+export async function extractEndorsements(rawText: string): Promise<{ extractedData: any; confidence: any }> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are a claims document parser for an insurance inspection platform.
+Extract all endorsements from this insurance policy endorsements document.
 
-  const extractedData = await callOpenAI(
-    `You are an insurance policy parser. Extract coverage and policy details from this insurance policy document. Return JSON.
-
-Fields to extract:
-- policyNumber: Policy number
-- effectiveDate: Policy start date
-- expirationDate: Policy end date
-- insuredName: Named insured
-- propertyAddress: Insured property address
-- coverage: Object with:
-  - coverageA: { limit: number, description: "Dwelling" }
-  - coverageB: { limit: number, description: "Other Structures" }
-  - coverageC: { limit: number, description: "Personal Property" }
-  - coverageD: { limit: number, description: "Loss of Use" }
-- deductible: Dollar amount of deductible
-- windHailDeductible: Separate wind/hail deductible if any
-- roofSchedule: Whether actual cash value (ACV) or replacement cost applies to roof
-- applyRoofSchedule: true if roof has ACV schedule (depreciation is non-recoverable)
-- overheadAndProfit: Whether O&P is allowed
-- taxRate: Applicable tax rate percentage
-- mortgagee: Name of mortgage company if listed
-- agent: Insurance agent name/agency
-
-Return format: { "data": { ...fields }, "confidence": { ...fieldName: "high"|"medium"|"low" } }`,
-    text
-  );
-
-  return {
-    extractedData: extractedData.data || extractedData,
-    confidence: extractedData.confidence || {},
-  };
+Return a JSON object:
+{
+  "endorsements": [
+    {
+      "endorsementId": string (e.g., "HO 88 02"),
+      "title": string,
+      "whatItModifies": string,
+      "effectiveDate": string | null,
+      "keyProvisions": string[],
+      "sublimits": [{ "description": string, "amount": number }] | null,
+      "claimImpact": string
+    }
+  ],
+  "totalEndorsements": number,
+  "confidence": "high" | "medium" | "low"
 }
 
-export async function extractEndorsements(pdfBuffer: Buffer): Promise<{ extractedData: any; confidence: any }> {
-  const { text } = await pdfParse(pdfBuffer);
+Common endorsements: HO 88 02 (Roof Surfaces), HO 81 17 (Water Back-Up), HO 86 05 (Ordinance/Law), HO 82 33 (Mine Subsidence), HO 84 19 (Personal Property RCV).
+Return ONLY valid JSON.`,
+      },
+      { role: "user", content: rawText },
+    ],
+    temperature: 0.1,
+    max_tokens: 3000,
+  });
 
-  const extractedData = await callOpenAI(
-    `You are an insurance endorsement parser. Extract all endorsements and their impacts from this document. Return JSON.
+  const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
+  const confidence = parsed.confidence || "medium";
+  delete parsed.confidence;
+  return { extractedData: parsed, confidence: { overall: confidence } };
+}
 
-For each endorsement found, extract:
-- endorsementNumber: The form number
-- title: Endorsement title
-- description: What it does
-- impact: How it affects coverage (increases limit, excludes coverage, adds coverage, modifies deductible, etc.)
-- affectedCoverage: Which coverage it modifies (A, B, C, D, or "all")
-- limitChange: Any dollar amount change to limits
-- deductibleChange: Any change to deductible
+export async function generateBriefing(
+  fnolData: any,
+  policyData: any,
+  endorsementsData: any
+): Promise<any> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert insurance claims analyst preparing an inspection briefing for a field adjuster.
+Synthesize the FNOL, Policy, and Endorsements data into a comprehensive pre-inspection briefing.
 
-Return format: { "data": { "endorsements": [...], "impacts": [...summary impacts] }, "confidence": { "overall": "high"|"medium"|"low" } }`,
-    text
-  );
+Return a JSON object:
+{
+  "propertyProfile": {
+    "address": string, "propertyType": string, "yearBuilt": number,
+    "stories": number, "constructionType": string, "roofType": string,
+    "squareFootage": number | null, "summary": string
+  },
+  "coverageSnapshot": {
+    "coverageA": { "label": "Dwelling", "limit": number },
+    "coverageB": { "label": "Other Structures", "limit": number },
+    "coverageC": { "label": "Personal Property", "limit": number },
+    "coverageD": { "label": "Loss of Use", "limit": number },
+    "deductible": number, "deductibleType": string,
+    "lossSettlement": string, "summary": string
+  },
+  "perilAnalysis": {
+    "perilType": string,
+    "whatToLookFor": string[],
+    "inspectionPriorities": string[],
+    "typicalDamagePatterns": string,
+    "commonMistakes": string[]
+  },
+  "endorsementImpacts": [
+    { "endorsementId": string, "title": string, "adjusterGuidance": string }
+  ],
+  "inspectionChecklist": {
+    "exterior": string[], "roof": string[],
+    "interior": string[], "systems": string[],
+    "documentation": string[]
+  },
+  "dutiesAfterLoss": string[],
+  "redFlags": string[]
+}
+Return ONLY valid JSON.`,
+      },
+      {
+        role: "user",
+        content: `Generate an inspection briefing from this claim data:
 
-  return {
-    extractedData: extractedData.data || extractedData,
-    confidence: extractedData.confidence || {},
-  };
+FNOL: ${JSON.stringify(fnolData)}
+Policy: ${JSON.stringify(policyData)}
+Endorsements: ${JSON.stringify(endorsementsData)}`,
+      },
+    ],
+    temperature: 0.2,
+    max_tokens: 4000,
+  });
+
+  return parseJsonResponse(response.choices[0].message.content || "{}");
 }
 
 export async function parsePdfBuffer(pdfBuffer: Buffer, documentType: string): Promise<{ extractedData: any; confidence: any }> {
+  const { text } = await pdfParse(pdfBuffer);
   switch (documentType) {
-    case "fnol": return extractFNOL(pdfBuffer);
-    case "policy": return extractPolicy(pdfBuffer);
-    case "endorsements": return extractEndorsements(pdfBuffer);
+    case "fnol": return extractFNOL(text);
+    case "policy": return extractPolicy(text);
+    case "endorsements": return extractEndorsements(text);
     default: throw new Error(`Unknown document type: ${documentType}`);
   }
 }
