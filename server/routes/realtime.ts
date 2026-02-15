@@ -140,6 +140,54 @@ const realtimeTools = [
   },
   {
     type: "function",
+    name: "add_opening",
+    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) in the current room. Creates a MISS_WALL entry for sketch and ESX export.",
+    parameters: {
+      type: "object",
+      properties: {
+        openingType: { type: "string", enum: ["window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening"] },
+        wallDirection: { type: "string", enum: ["north", "south", "east", "west"] },
+        widthFt: { type: "number", description: "Opening width in feet" },
+        heightFt: { type: "number", description: "Opening height in feet" },
+        quantity: { type: "integer", description: "Number of identical openings. Default 1." },
+        opensInto: { type: "string", description: "Room name or E for exterior" },
+      },
+      required: ["openingType", "widthFt", "heightFt"],
+    },
+  },
+  {
+    type: "function",
+    name: "set_room_adjacency",
+    description: "Records that two rooms share a wall. Used for sketch rendering and ESX export.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomNameA: { type: "string", description: "First room name" },
+        roomNameB: { type: "string", description: "Second room name" },
+        wallDirectionA: { type: "string", enum: ["north", "south", "east", "west"], description: "Which wall of room A faces room B" },
+        sharedWallLengthFt: { type: "number", description: "Length of shared wall in feet" },
+      },
+      required: ["roomNameA", "roomNameB"],
+    },
+  },
+  {
+    type: "function",
+    name: "update_room_dimensions",
+    description: "Updates a room's dimensions (length, width, height, ceiling type). Call when the adjuster provides or corrects measurements.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string" },
+        length: { type: "number" },
+        width: { type: "number" },
+        height: { type: "number" },
+        ceilingType: { type: "string", enum: ["flat", "cathedral", "tray", "vaulted"] },
+      },
+      required: ["roomName"],
+    },
+  },
+  {
+    type: "function",
     name: "complete_inspection",
     description: "Finalizes the inspection.",
     parameters: {

@@ -9,6 +9,7 @@ import * as ImagePicker from "expo-image-picker";
 import { AuthGate } from "@/components/AuthGate";
 import { API_BASE, getAuthHeaders, apiRequest } from "@/lib/api";
 import type { VoiceState, TranscriptEntry } from "@/lib/voiceSession";
+import SketchEditor from "@/components/SketchEditor";
 
 interface Claim { id: number; claimNumber: string; insuredName: string | null; propertyAddress: string | null; status: string; }
 interface Room { id: number; name: string; roomType: string | null; status: string; damageCount: number; photoCount: number; dimensions: any; }
@@ -27,7 +28,7 @@ const VOICE_LABELS: Record<VoiceState, string> = {
 export default function InspectionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"voice" | "rooms" | "scope">("voice");
+  const [activeTab, setActiveTab] = useState<"voice" | "rooms" | "sketch" | "scope">("voice");
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddDamage, setShowAddDamage] = useState(false);
   const [showAddLineItem, setShowAddLineItem] = useState(false);
@@ -146,6 +147,25 @@ export default function InspectionScreen() {
       case "get_estimate_summary": {
         const total = lineItems.reduce((s, li) => s + (li.totalPrice || 0), 0);
         return { totalRCV: total, itemCount: lineItems.length, roomCount: rooms.length };
+      }
+      case "add_opening":
+        return { success: true, openingType: args.openingType, wall: args.wallDirection };
+      case "set_room_adjacency":
+        return { success: true, roomA: args.roomNameA, roomB: args.roomNameB };
+      case "update_room_dimensions": {
+        const rm = rooms.find((r) => r.name.toLowerCase().includes((args.roomName || "").toLowerCase()));
+        if (rm) {
+          await patch(`/api/inspection/${session.id}/rooms/${rm.id}`, {
+            dimensions: {
+              length: args.length || rm.dimensions?.length || 12,
+              width: args.width || rm.dimensions?.width || 10,
+              height: args.height || rm.dimensions?.height || 8,
+              ceilingType: args.ceilingType,
+            },
+          });
+          invalidateAll();
+        }
+        return { success: true, roomName: args.roomName };
       }
       case "complete_inspection":
         return { success: true, notes: args.notes };
@@ -277,10 +297,10 @@ export default function InspectionScreen() {
           <>
             {/* Tabs */}
             <View style={s.tabs}>
-              {(["voice", "rooms", "scope"] as const).map((tab) => (
+              {(["voice", "rooms", "sketch", "scope"] as const).map((tab) => (
                 <Pressable key={tab} style={[s.tab, activeTab === tab && s.tabActive]} onPress={() => setActiveTab(tab)}>
                   <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
-                    {tab === "voice" ? "🎙 Voice" : tab === "rooms" ? `Rooms (${rooms.length})` : `Scope (${lineItems.length})`}
+                    {tab === "voice" ? "🎙 Voice" : tab === "rooms" ? `Rooms (${rooms.length})` : tab === "sketch" ? "✏️ Sketch" : `Scope (${lineItems.length})`}
                   </Text>
                 </Pressable>
               ))}
@@ -332,6 +352,27 @@ export default function InspectionScreen() {
                   </View>
                 ))}
                 <Pressable style={s.addBtn} onPress={() => setShowAddRoom(true)}><Text style={s.addBtnText}>+ Add room</Text></Pressable>
+              </ScrollView>
+            )}
+
+            {/* Sketch tab */}
+            {activeTab === "sketch" && (
+              <ScrollView style={s.content} contentContainerStyle={s.contentInner}>
+                <SketchEditor
+                  rooms={rooms.map((r) => ({ id: r.id, name: r.name, dimensions: r.dimensions || { length: 12, width: 10 } }))}
+                  openings={[]}
+                  adjacencies={[]}
+                  selectedRoomId={selectedRoomId}
+                  onSelectRoom={(id) => setSelectedRoomId(id)}
+                  onAddRoom={(name, length, width, height) => {
+                    apiRequest("POST", `/api/inspection/${session!.id}/rooms`, {
+                      name, roomType: "interior", dimensions: { length, width, height },
+                    }).then(() => invalidateAll());
+                  }}
+                  onMoveRoom={() => {}}
+                  onAddOpening={() => {}}
+                  onAddAdjacency={() => {}}
+                />
               </ScrollView>
             )}
 
