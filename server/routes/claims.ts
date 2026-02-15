@@ -1,223 +1,308 @@
 import { Router } from "express";
-import { db } from "../db";
-import { claims, documents } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { storage } from "../storage";
 import { authenticateRequest } from "../auth";
+import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "../documentParser";
+import pdfParse from "pdf-parse";
 import { supabase, DOCUMENTS_BUCKET } from "../supabase";
-import { z } from "zod";
-
-const uploadDocSchema = z.object({
-  fileData: z.string().min(1),
-  fileName: z.string().min(1),
-  documentType: z.string().default("fnol"),
-});
 
 export function claimsRouter() {
   const router = Router();
 
+  router.get("/", authenticateRequest, async (req, res) => {
+    try {
+      const claims = await storage.getClaims();
+      res.json(claims);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   router.get("/my-claims", authenticateRequest, async (req, res) => {
     try {
+      const claims = await storage.getClaims();
       const userId = req.user!.id;
-      const list = await db
-        .select()
-        .from(claims)
-        .where(eq(claims.assignedTo, userId))
-        .orderBy(desc(claims.createdAt));
-      res.json(list);
-    } catch (err) {
-      console.error("my-claims error:", err);
-      res.status(500).json({ message: "Internal server error" });
+      const role = req.user!.role;
+      const filtered = role === "supervisor" || role === "admin"
+        ? claims
+        : claims.filter(c => c.assignedTo === userId || !c.assignedTo);
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  router.post("/", authenticateRequest, async (req, res) => {
+    try {
+      const claim = await storage.createClaim({ ...req.body, assignedTo: req.user!.id });
+      res.status(201).json(claim);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
   router.get("/:id", authenticateRequest, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const claimId = parseInt(String(req.params.id));
-      if (isNaN(claimId)) return res.status(400).json({ message: "Invalid claim ID" });
-      const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
+      const id = parseInt(req.params.id);
+      const claim = await storage.getClaim(id);
       if (!claim) return res.status(404).json({ message: "Claim not found" });
-      if (claim.assignedTo !== userId && req.user!.role !== "supervisor" && req.user!.role !== "admin") {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      res.json(claim);
-    } catch (err) {
-      console.error("claim get error:", err);
-      res.status(500).json({ message: "Internal server error" });
+      const docs = await storage.getDocuments(id);
+      const exts = await storage.getExtractions(id);
+      const briefing = await storage.getBriefing(id);
+      res.json({ ...claim, documents: docs, extractions: exts, briefing });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
-  router.get("/", authenticateRequest, async (req, res) => {
+  router.delete("/:id", authenticateRequest, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const role = req.user!.role;
-      const list = role === "supervisor" || role === "admin"
-        ? await db.select().from(claims).orderBy(desc(claims.createdAt))
-        : await db.select().from(claims).where(eq(claims.assignedTo, userId)).orderBy(desc(claims.createdAt));
-      res.json(list);
-    } catch (err) {
-      console.error("claims list error:", err);
-      res.status(500).json({ message: "Internal server error" });
+      const id = parseInt(req.params.id);
+      await storage.updateClaimStatus(id, "deleted");
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
-  router.post("/:claimId/documents/upload", authenticateRequest, async (req, res) => {
+  // Documents
+  router.get("/:id/documents", authenticateRequest, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const claimId = parseInt(String(req.params.claimId));
-      if (isNaN(claimId)) return res.status(400).json({ message: "Invalid claim ID" });
-      const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
-      if (!claim) return res.status(404).json({ message: "Claim not found" });
-      if (claim.assignedTo !== userId && req.user!.role !== "supervisor" && req.user!.role !== "admin") {
-        return res.status(403).json({ message: "Not authorized" });
+      const claimId = parseInt(req.params.id);
+      const docs = await storage.getDocuments(claimId);
+      res.json(docs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Upload document (base64 from mobile)
+  router.post("/:id/documents/upload", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const { fileData, fileName, documentType } = req.body;
+
+      if (!fileData || !documentType) {
+        return res.status(400).json({ message: "fileData and documentType are required" });
       }
-      if (!supabase) return res.status(503).json({ message: "File storage not configured" });
 
-      const parsed = uploadDocSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "fileData and fileName required" });
-      const { fileData, fileName, documentType } = parsed.data;
-
+      // Decode base64
       const base64Match = fileData.match(/^data:(.+);base64,(.+)$/);
       if (!base64Match) return res.status(400).json({ message: "Invalid file data format" });
       const buffer = Buffer.from(base64Match[2], "base64");
-      const ext = fileName.split(".").pop() || "pdf";
-      const storagePath = `claims/${claimId}/${documentType}/${Date.now()}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(DOCUMENTS_BUCKET)
-        .upload(storagePath, buffer, { contentType: "application/pdf", upsert: false });
-
-      if (uploadError) {
-        console.error("Document upload error:", uploadError);
-        return res.status(500).json({ message: "Failed to upload document" });
+      // Upload to Supabase Storage if available
+      let storagePath: string | null = null;
+      if (supabase) {
+        const ext = fileName?.split(".").pop() || "pdf";
+        storagePath = `claims/${claimId}/${documentType}/${Date.now()}.${ext}`;
+        await supabase.storage.from(DOCUMENTS_BUCKET).upload(storagePath, buffer, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
       }
 
-      const [doc] = await db.insert(documents).values({
-        claimId,
-        documentType,
-        fileName,
-        storagePath,
-        fileSize: buffer.length,
-        status: "uploaded",
-      }).returning();
+      // Check for existing document of this type
+      const existing = await storage.getDocument(claimId, documentType);
+      let doc;
+      if (existing) {
+        await storage.updateDocumentStatus(existing.id, "uploaded");
+        doc = existing;
+      } else {
+        doc = await storage.createDocument({
+          claimId,
+          documentType,
+          fileName: fileName || `${documentType}.pdf`,
+          fileSize: buffer.length,
+          storagePath,
+          status: "uploaded",
+        });
+      }
 
-      // Auto-parse PDF if it's fnol, policy, or endorsements
-      if (["fnol", "policy", "endorsements"].includes(documentType) && ext === "pdf") {
-        // Parse in background, don't block response
+      // Auto-parse in background for fnol, policy, endorsements
+      if (["fnol", "policy", "endorsements"].includes(documentType)) {
         (async () => {
           try {
-            const { parsePdfBuffer } = await import("../documentParser");
-            const { extractedData, confidence } = await parsePdfBuffer(buffer, documentType);
+            await storage.updateDocumentStatus(doc.id, "processing");
 
-            // Import extractions table from extraction router's definition
-            const { pgTable, serial, integer, varchar, jsonb, boolean, timestamp } = await import("drizzle-orm/pg-core");
-            const extractions = pgTable("extractions", {
-              id: serial("id").primaryKey(),
-              claimId: integer("claim_id").notNull(),
-              documentType: varchar("document_type", { length: 30 }).notNull(),
-              extractedData: jsonb("extracted_data"),
-              confidence: jsonb("confidence"),
-              confirmedByUser: boolean("confirmed_by_user").default(false),
-              createdAt: timestamp("created_at").defaultNow(),
-            });
+            const pdfData = await pdfParse(buffer);
+            const rawText = pdfData.text;
+            await storage.updateDocumentStatus(doc.id, "processing", rawText);
 
-            // Upsert extraction
-            const [existing] = await db.select().from(extractions)
-              .where(and(eq(extractions.claimId, claimId), eq(extractions.documentType, documentType))).limit(1);
-
-            if (existing) {
-              await db.update(extractions)
-                .set({ extractedData: extractedData as any, confidence: confidence as any })
-                .where(eq(extractions.id, existing.id));
+            let extractResult: { extractedData: any; confidence: any };
+            if (documentType === "fnol") {
+              extractResult = await extractFNOL(rawText);
+            } else if (documentType === "policy") {
+              extractResult = await extractPolicy(rawText);
             } else {
-              await db.insert(extractions).values({
-                claimId, documentType,
-                extractedData: extractedData as any,
-                confidence: confidence as any,
+              extractResult = await extractEndorsements(rawText);
+            }
+
+            const existingExt = await storage.getExtraction(claimId, documentType);
+            if (existingExt) {
+              await storage.updateExtraction(existingExt.id, extractResult.extractedData);
+            } else {
+              await storage.createExtraction({
+                claimId,
+                documentType,
+                extractedData: extractResult.extractedData,
+                confidence: extractResult.confidence,
               });
             }
 
-            // Update document status
-            await db.update(documents).set({ status: "parsed" }).where(eq(documents.id, doc.id));
+            await storage.updateDocumentStatus(doc.id, "parsed");
 
-            // Update claim status if all three docs are uploaded
-            const allExtractions = await db.select().from(extractions).where(eq(extractions.claimId, claimId));
-            if (allExtractions.length >= 1) {
-              await db.update(claims).set({ status: "documents_uploaded" }).where(eq(claims.id, claimId));
-            }
-
-            // If FNOL parsed, auto-populate claim fields
-            if (documentType === "fnol" && extractedData) {
-              const fnol = extractedData as any;
-              const updates: any = {};
-              if (fnol.insuredName && !claim.insuredName) updates.insuredName = fnol.insuredName;
-              if (fnol.propertyAddress && !claim.propertyAddress) updates.propertyAddress = fnol.propertyAddress;
-              if (fnol.city && !claim.city) updates.city = fnol.city;
-              if (fnol.state && !claim.state) updates.state = fnol.state;
-              if (fnol.zip && !claim.zip) updates.zip = fnol.zip;
-              if (fnol.dateOfLoss && !claim.dateOfLoss) updates.dateOfLoss = fnol.dateOfLoss;
-              if (fnol.perilType && !claim.perilType) updates.perilType = fnol.perilType;
-              if (Object.keys(updates).length > 0) {
-                await db.update(claims).set(updates).where(eq(claims.id, claimId));
-              }
+            // Update claim status
+            const allDocs = await storage.getDocuments(claimId);
+            if (allDocs.some(d => d.status === "parsed")) {
+              await storage.updateClaimStatus(claimId, "documents_uploaded");
             }
 
             console.log(`Parsed ${documentType} for claim ${claimId}`);
           } catch (err) {
-            console.error(`PDF parse error for ${documentType}:`, err);
-            await db.update(documents).set({ status: "parse_failed" }).where(eq(documents.id, doc.id));
+            console.error(`Parse error for ${documentType}:`, err);
+            await storage.updateDocumentError(doc.id, String(err));
           }
         })();
       }
 
-      res.json(doc);
-    } catch (err) {
-      console.error("document upload error:", err);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(201).json({ documentId: doc.id, status: "uploaded" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
-  router.get("/:claimId/documents/:docId/url", authenticateRequest, async (req, res) => {
+  // Parse document (manual trigger)
+  router.post("/:id/documents/:type/parse", authenticateRequest, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const claimId = parseInt(String(req.params.claimId));
-      const docId = parseInt(String(req.params.docId));
-      if (isNaN(claimId) || isNaN(docId)) return res.status(400).json({ message: "Invalid ID" });
-      const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
-      if (!claim) return res.status(404).json({ message: "Claim not found" });
-      if (claim.assignedTo !== userId && req.user!.role !== "supervisor" && req.user!.role !== "admin") {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      const [doc] = await db.select().from(documents).where(and(eq(documents.id, docId), eq(documents.claimId, claimId))).limit(1);
-      if (!doc || !doc.storagePath) return res.status(404).json({ message: "Document not found" });
-      if (!supabase) return res.status(503).json({ message: "Storage not configured" });
+      const claimId = parseInt(req.params.id);
+      const documentType = req.params.type;
 
-      const { data } = await supabase.storage.from(DOCUMENTS_BUCKET).createSignedUrl(doc.storagePath, 3600);
-      if (!data?.signedUrl) return res.status(500).json({ message: "Could not generate URL" });
-      res.json({ url: data.signedUrl });
-    } catch (err) {
-      console.error("document url error:", err);
-      res.status(500).json({ message: "Internal server error" });
+      const doc = await storage.getDocument(claimId, documentType);
+      if (!doc) return res.status(404).json({ message: "Document not found. Upload first." });
+      if (!doc.rawText) return res.status(400).json({ message: "Document has no text. Re-upload." });
+
+      await storage.updateDocumentStatus(doc.id, "processing");
+
+      let extractResult: { extractedData: any; confidence: any };
+      if (documentType === "fnol") {
+        extractResult = await extractFNOL(doc.rawText);
+      } else if (documentType === "policy") {
+        extractResult = await extractPolicy(doc.rawText);
+      } else if (documentType === "endorsements") {
+        extractResult = await extractEndorsements(doc.rawText);
+      } else {
+        return res.status(400).json({ message: "Invalid document type" });
+      }
+
+      const existingExt = await storage.getExtraction(claimId, documentType);
+      let extraction;
+      if (existingExt) {
+        extraction = await storage.updateExtraction(existingExt.id, extractResult.extractedData);
+      } else {
+        extraction = await storage.createExtraction({
+          claimId,
+          documentType,
+          extractedData: extractResult.extractedData,
+          confidence: extractResult.confidence,
+        });
+      }
+
+      await storage.updateDocumentStatus(doc.id, "parsed");
+      res.json({ extraction, confidence: extractResult.confidence });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
-  router.get("/:claimId/documents", authenticateRequest, async (req, res) => {
+  // Extractions
+  router.get("/:id/extractions", authenticateRequest, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const claimId = parseInt(String(req.params.claimId));
-      if (isNaN(claimId)) {
-        return res.status(400).json({ message: "Invalid claim ID" });
+      const claimId = parseInt(req.params.id);
+      res.json(await storage.getExtractions(claimId));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  router.put("/:id/extractions/:type", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const ext = await storage.getExtraction(claimId, req.params.type);
+      if (!ext) return res.status(404).json({ message: "Extraction not found" });
+      const updated = await storage.updateExtraction(ext.id, req.body.extractedData);
+      await storage.confirmExtraction(ext.id);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  router.post("/:id/extractions/confirm-all", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const exts = await storage.getExtractions(claimId);
+      for (const ext of exts) {
+        await storage.confirmExtraction(ext.id);
       }
-      const [claim] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
-      if (!claim) return res.status(404).json({ message: "Claim not found" });
-      if (claim.assignedTo !== userId && req.user!.role !== "supervisor" && req.user!.role !== "admin") {
-        return res.status(403).json({ message: "Not authorized" });
+      await storage.updateClaimStatus(claimId, "extractions_confirmed");
+      res.json({ confirmed: exts.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Briefing
+  router.post("/:id/briefing/generate", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const exts = await storage.getExtractions(claimId);
+
+      const fnolExt = exts.find(e => e.documentType === "fnol");
+      const policyExt = exts.find(e => e.documentType === "policy");
+      const endorsementsExt = exts.find(e => e.documentType === "endorsements");
+
+      if (!fnolExt) {
+        return res.status(400).json({ message: "FNOL extraction required before generating briefing" });
       }
-      const list = await db.select().from(documents).where(eq(documents.claimId, claimId)).orderBy(desc(documents.createdAt));
-      res.json(list);
-    } catch (err) {
-      console.error("documents error:", err);
-      res.status(500).json({ message: "Internal server error" });
+
+      const briefingData = await generateBriefing(
+        fnolExt.extractedData,
+        policyExt?.extractedData || {},
+        endorsementsExt?.extractedData || {}
+      );
+
+      const existing = await storage.getBriefing(claimId);
+      let briefing;
+      if (existing) {
+        briefing = existing;
+      } else {
+        briefing = await storage.createBriefing({
+          claimId,
+          propertyProfile: briefingData.propertyProfile,
+          coverageSnapshot: briefingData.coverageSnapshot,
+          perilAnalysis: briefingData.perilAnalysis,
+          endorsementImpacts: briefingData.endorsementImpacts,
+          inspectionChecklist: briefingData.inspectionChecklist,
+          dutiesAfterLoss: briefingData.dutiesAfterLoss,
+          redFlags: briefingData.redFlags,
+        });
+      }
+
+      await storage.updateClaimStatus(claimId, "briefing_ready");
+      res.json(briefing);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  router.get("/:id/briefing", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseInt(req.params.id);
+      const briefing = await storage.getBriefing(claimId);
+      if (!briefing) return res.status(404).json({ message: "Briefing not found" });
+      res.json(briefing);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
