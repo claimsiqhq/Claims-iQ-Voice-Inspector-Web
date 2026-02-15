@@ -260,7 +260,7 @@
 					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.johnshoust2.restexpress";
-				PRODUCT_NAME = "restexpress";
+				PRODUCT_NAME = "claimsiq";
 				SWIFT_OBJC_BRIDGING_HEADER = "restexpress/restexpress-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -289,7 +289,7 @@
 					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.johnshoust2.restexpress";
-				PRODUCT_NAME = "restexpress";
+				PRODUCT_NAME = "claimsiq";
 				SWIFT_OBJC_BRIDGING_HEADER = "restexpress/restexpress-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
