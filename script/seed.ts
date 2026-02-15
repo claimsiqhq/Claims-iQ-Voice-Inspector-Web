@@ -1,9 +1,10 @@
 import "dotenv/config";
+import { eq } from "drizzle-orm";
 import { db } from "../server/db";
 import { users, claims } from "../shared/schema";
 
 async function seed() {
-  const [existing] = await db.select().from(users).where(users.username.eq("demo")).limit(1);
+  const [existing] = await db.select().from(users).where(eq(users.username, "demo")).limit(1);
   if (existing) {
     console.log("Demo user already exists");
     return;

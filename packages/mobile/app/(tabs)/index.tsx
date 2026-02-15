@@ -41,7 +41,16 @@ export default function ClaimsListScreen() {
             renderItem={({ item }) => (
               <Pressable
                 style={styles.card}
-                onPress={() => router.push({ pathname: "/inspection/[id]", params: { id: String(item.id) } })}
+                onPress={() => {
+                const s = (item.status || "").toLowerCase().replace(/\s+/g, "_");
+                if (s === "briefing_ready" || s === "inspecting" || s === "in_progress") {
+                  router.push({ pathname: "/inspection/[id]", params: { id: String(item.id) } });
+                } else if (s === "extractions_confirmed") {
+                  router.push({ pathname: "/briefing/[id]", params: { id: String(item.id) } });
+                } else {
+                  router.push({ pathname: "/documents/[claimId]", params: { claimId: String(item.id) } });
+                }
+              }}
               >
                 <Text style={styles.claimNumber}>{item.claimNumber}</Text>
                 {(item.insuredName || item.propertyAddress) && (
