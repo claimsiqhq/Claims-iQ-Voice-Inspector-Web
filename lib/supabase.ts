@@ -1,23 +1,41 @@
-import { createClient } from "@supabase/supabase-js";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Platform } from "react-native";
 
 const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  (Constants.expoConfig?.extra as any)?.supabaseUrl ||
   "https://hjxruhvnswtleqpuhkgb.supabase.co";
 
 const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  (Constants.expoConfig?.extra as any)?.supabaseAnonKey ||
-  "";
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+let _supabase: SupabaseClient | null = null;
+
+export function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase;
+
+  // Only use AsyncStorage on native/web runtime, not during SSR
+  let storage: any = undefined;
+  if (typeof window !== "undefined") {
+    try {
+      const AsyncStorage = require("@react-native-async-storage/async-storage").default;
+      storage = AsyncStorage;
+    } catch {}
+  }
+
+  _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage,
+      autoRefreshToken: true,
+      persistSession: typeof window !== "undefined",
+      detectSessionInUrl: false,
+    },
+  });
+  return _supabase;
+}
+
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabase() as any)[prop];
   },
 });
 
