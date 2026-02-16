@@ -2534,7 +2534,7 @@ Respond in JSON format:
       }
       const categories = Array.from(categoryMap.entries()).map(([category, catItems]) => ({
         category,
-        subtotal: catItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0),
+        subtotal: catItems.reduce((sum, i) => sum + (Number(i.totalPrice) || 0), 0),
         items: catItems,
       }));
 
@@ -2548,9 +2548,16 @@ Respond in JSON format:
         photos,
         moistureReadings: moisture,
         estimate: {
-          totalRCV: estimate?.totalRCV || 0,
-          totalDepreciation: estimate?.totalDepreciation || 0,
-          totalACV: estimate?.totalACV || 0,
+          totalRCV: Number(estimate?.totalRCV) || 0,
+          totalDepreciation: Number(estimate?.totalDepreciation) || 0,
+          totalACV: Number(estimate?.totalACV) || 0,
+          recoverableDepreciation: Number(estimate?.recoverableDepreciation) || 0,
+          nonRecoverableDepreciation: Number(estimate?.nonRecoverableDepreciation) || 0,
+          overheadAmount: Number(estimate?.overheadAmount) || 0,
+          profitAmount: Number(estimate?.profitAmount) || 0,
+          qualifiesForOP: estimate?.qualifiesForOP || false,
+          deductible: Number(estimate?.deductible) || 0,
+          netClaim: Number(estimate?.netClaim) || 0,
           itemCount: items.length,
           categories,
         },

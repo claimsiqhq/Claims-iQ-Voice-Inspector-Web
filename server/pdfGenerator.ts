@@ -248,7 +248,9 @@ function renderRoomDetail(
     yPos += 14;
 
     for (const item of items) {
-      const totalPrice = (item.quantity || 0) * (item.unitPrice || 0);
+      const qty = Number(item.quantity) || 0;
+      const uPrice = Number(item.unitPrice) || 0;
+      const totalPrice = qty * uPrice;
       doc.font(FONTS.normal, 9)
         .fill(COLORS.darkGray)
         .text(`${item.description}`, 50, yPos, { width: 350 });
@@ -257,7 +259,7 @@ function renderRoomDetail(
       doc.font(FONTS.mono, 8)
         .fill("#9CA3AF")
         .text(
-          `${item.quantity} ${item.unit} @ $${(item.unitPrice || 0).toFixed(2)} = $${totalPrice.toFixed(2)}`,
+          `${qty} ${item.unit} @ $${uPrice.toFixed(2)} = $${totalPrice.toFixed(2)}`,
           50,
           yPos
         );
@@ -310,7 +312,7 @@ function renderEstimateSummary(doc: InstanceType<typeof PDFDocument>, data: PDFR
     yPos += 16;
 
     for (const item of cat.items) {
-      const totalPrice = (item.quantity || 0) * (item.unitPrice || 0);
+      const totalPrice = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
       doc.font(FONTS.normal, 9)
         .fill(COLORS.darkGray)
         .text(item.description, 50, yPos, { width: 300 });

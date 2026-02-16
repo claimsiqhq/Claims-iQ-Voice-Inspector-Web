@@ -65,8 +65,8 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
   const { getRegionalPrice } = await import("./estimateEngine");
 
   for (const item of lineItems) {
-    const qty = item.quantity || 0;
-    const rcvTotal = item.totalPrice || 0;
+    const qty = Number(item.quantity) || 0;
+    const rcvTotal = Number(item.totalPrice) || 0;
     let laborTotal: number;
     let material: number;
     let tax: number;
@@ -76,7 +76,7 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       let regionalPrice = await getRegionalPrice(item.xactCode, "FLFM8X_NOV22", "install");
       if (!regionalPrice) regionalPrice = await getRegionalPrice(item.xactCode, "US_NATIONAL", "install");
       if (regionalPrice) {
-        const wasteFactor = item.wasteFactor || 0;
+        const wasteFactor = Number(item.wasteFactor) || 0;
         const matCost = Number(regionalPrice.materialCost || 0) * (1 + wasteFactor / 100) * qty;
         const labCost = Number(regionalPrice.laborCost || 0) * qty;
         const equipCost = Number(regionalPrice.equipmentCost || 0) * qty;
@@ -106,7 +106,7 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       action: item.action || "R",
       quantity: qty,
       unit: item.unit || "EA",
-      unitPrice: item.unitPrice || 0,
+      unitPrice: Number(item.unitPrice) || 0,
       laborTotal,
       laborHours,
       material,
