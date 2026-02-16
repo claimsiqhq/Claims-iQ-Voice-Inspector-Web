@@ -21,6 +21,12 @@ interface LineItem {
   xactCode: string | null;
   unitPrice: number;
   totalPrice: number;
+  depreciationAmount: number;
+  depreciationType: string;
+  depreciationPercentage: number;
+  acv: number;
+  age: number | null;
+  lifeExpectancy: number | null;
 }
 
 interface RoomSection {
@@ -32,6 +38,8 @@ interface RoomSection {
   measurements: RoomMeasurements | null;
   items: LineItem[];
   subtotal: number;
+  totalDepreciation: number;
+  totalACV: number;
   status: string;
   damageCount: number;
   photoCount: number;
@@ -41,6 +49,8 @@ interface XactimateEstimateViewProps {
   data: {
     rooms: RoomSection[];
     grandTotal: number;
+    grandDepreciation: number;
+    grandACV: number;
     totalLineItems: number;
   } | null;
   claimNumber?: string;
@@ -173,7 +183,25 @@ function MeasurementsBlock({ m }: { m: RoomMeasurements }) {
   );
 }
 
-function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; roomName: string; subtotal: number }) {
+function DepreciationBadge({ type }: { type: string }) {
+  if (type === "Non-Recoverable") {
+    return (
+      <span className="inline-block px-1 py-0.5 text-[9px] font-semibold rounded bg-red-100 text-red-700" data-testid="badge-non-recoverable">
+        NR
+      </span>
+    );
+  }
+  if (type === "Paid When Incurred") {
+    return (
+      <span className="inline-block px-1 py-0.5 text-[9px] font-semibold rounded bg-amber-100 text-amber-700" data-testid="badge-paid-when-incurred">
+        PWI
+      </span>
+    );
+  }
+  return null;
+}
+
+function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalACV }: { items: LineItem[]; roomName: string; subtotal: number; totalDepreciation: number; totalACV: number }) {
   if (items.length === 0) return null;
 
   return (
@@ -181,13 +209,15 @@ function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; room
       <table className="w-full text-[11px] border-collapse">
         <thead>
           <tr className="border-b border-slate-300">
-            <th className="text-left py-1.5 pr-2 font-semibold text-slate-600 w-[40%]">DESCRIPTION</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[12%]">QTY</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">RESET</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">REMOVE</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">REPLACE</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">TAX</th>
-            <th className="text-right py-1.5 pl-1 font-semibold text-slate-600 w-[10%]">TOTAL</th>
+            <th className="text-left py-1.5 pr-2 font-semibold text-slate-600 w-[30%]">DESCRIPTION</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">QTY</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">RESET</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">REMOVE</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">REPLACE</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[7%]">TAX</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">RCV</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">DEPREC.</th>
+            <th className="text-right py-1.5 pl-1 font-semibold text-slate-600 w-[9%]">ACV</th>
           </tr>
         </thead>
         <tbody>
@@ -201,6 +231,12 @@ function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; room
             const tax = Math.max(0, item.totalPrice - extendedCost);
             const removeCol = isRemove ? up : 0;
             const replaceCol = isRemove ? 0 : (isReset ? 0 : up);
+            const depAmt = item.depreciationAmount || 0;
+            const depPct = item.depreciationPercentage || 0;
+            const depType = item.depreciationType || "Recoverable";
+            const acv = item.acv != null ? item.acv : (item.totalPrice - depAmt);
+            const isNonRecoverable = depType === "Non-Recoverable";
+            const isPWI = depType === "Paid When Incurred";
 
             return (
               <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/50">
@@ -223,8 +259,24 @@ function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; room
                 <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
                   {tax > 0.005 ? fmtNum(tax) : "0.00"}
                 </td>
-                <td className="text-right py-1.5 pl-1 font-mono font-semibold text-slate-800">
+                <td className="text-right py-1.5 px-1 font-mono text-slate-800">
                   {fmtNum(item.totalPrice)}
+                </td>
+                <td className={cn("text-right py-1.5 px-1 font-mono whitespace-nowrap", isNonRecoverable ? "text-red-700" : isPWI ? "text-amber-700" : "text-slate-600")} data-testid={`depreciation-${item.id}`}>
+                  {depAmt > 0.005 || isPWI ? (
+                    <span className="flex items-center justify-end gap-1">
+                      <span>
+                        ({fmtNum(depAmt)})
+                        {depPct > 0 && <span className="text-[9px] ml-0.5">{depPct.toFixed(1)}%</span>}
+                      </span>
+                      <DepreciationBadge type={depType} />
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+                <td className="text-right py-1.5 pl-1 font-mono font-semibold text-slate-800" data-testid={`acv-${item.id}`}>
+                  {fmtNum(acv)}
                 </td>
               </tr>
             );
@@ -235,8 +287,14 @@ function LineItemsTable({ items, roomName, subtotal }: { items: LineItem[]; room
             <td colSpan={6} className="py-2 pr-2 font-semibold text-slate-700">
               Totals: {roomName}
             </td>
-            <td className="text-right py-2 pl-1 font-mono font-bold text-slate-900">
+            <td className="text-right py-2 px-1 font-mono font-bold text-slate-900">
               {fmtNum(subtotal)}
+            </td>
+            <td className="text-right py-2 px-1 font-mono font-bold text-red-700">
+              {totalDepreciation > 0.005 ? `(${fmtNum(totalDepreciation)})` : "—"}
+            </td>
+            <td className="text-right py-2 pl-1 font-mono font-bold text-slate-900">
+              {fmtNum(totalACV)}
             </td>
           </tr>
         </tfoot>
@@ -290,7 +348,7 @@ function RoomSectionView({ room }: { room: RoomSection }) {
         </div>
       )}
 
-      <LineItemsTable items={room.items} roomName={room.name} subtotal={room.subtotal} />
+      <LineItemsTable items={room.items} roomName={room.name} subtotal={room.subtotal} totalDepreciation={room.totalDepreciation || 0} totalACV={room.totalACV || 0} />
 
       {room.items.length === 0 && (
         <div className="mt-2 text-[11px] text-slate-400 italic">No line items recorded for this area.</div>
@@ -365,9 +423,21 @@ export default function XactimateEstimateView({ data, claimNumber, insuredName }
       </div>
 
       {data.grandTotal > 0 && (
-        <div className="border-t-2 border-slate-400 mx-4 py-3 flex justify-between items-center">
-          <span className="text-sm font-bold text-slate-800 font-mono">GRAND TOTAL</span>
-          <span className="text-lg font-bold text-slate-900 font-mono">${fmtNum(data.grandTotal)}</span>
+        <div className="border-t-2 border-slate-400 mx-4 py-3 space-y-1">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-semibold text-slate-600 font-mono">RCV (Replacement Cost)</span>
+            <span className="text-sm font-bold text-slate-900 font-mono">${fmtNum(data.grandTotal)}</span>
+          </div>
+          {(data.grandDepreciation || 0) > 0.005 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-semibold text-red-600 font-mono">Less: Depreciation</span>
+              <span className="text-sm font-bold text-red-700 font-mono">({fmtNum(data.grandDepreciation)})</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-1 border-t border-slate-300">
+            <span className="text-sm font-bold text-slate-800 font-mono">ACV (Actual Cash Value)</span>
+            <span className="text-lg font-bold text-slate-900 font-mono">${fmtNum(data.grandACV || data.grandTotal)}</span>
+          </div>
         </div>
       )}
     </div>
