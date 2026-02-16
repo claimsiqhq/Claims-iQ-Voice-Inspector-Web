@@ -1,11 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { router } from "expo-router";
-import {
-  getLocalToken,
-  setLocalToken,
-  clearLocalToken,
-  API_BASE,
-} from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 
 export interface AuthUser {
   id: string;
@@ -33,109 +28,129 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchUserProfile(): Promise<AuthUser | null> {
-    const token = await getLocalToken();
-    if (!token) return null;
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return null;
-      return res.json();
-    } catch {
-      return null;
+  async function loadProfile(supabaseUser: any): Promise<AuthUser | null> {
+    if (!supabaseUser) return null;
+    // Get profile from users table
+    const { data } = await supabase
+      .from("users")
+      .select("id, email, full_name, role, title, avatar_url")
+      .eq("supabase_auth_id", supabaseUser.id)
+      .limit(1)
+      .single();
+
+    if (data) {
+      return {
+        id: data.id,
+        email: data.email || supabaseUser.email || "",
+        fullName: data.full_name,
+        role: data.role || "adjuster",
+        title: data.title,
+        avatarUrl: data.avatar_url,
+      };
     }
+
+    // Fallback: create user row
+    const { data: newUser } = await supabase
+      .from("users")
+      .insert({
+        username: supabaseUser.email?.split("@")[0] || `user_${Date.now()}`,
+        password: "supabase",
+        email: supabaseUser.email,
+        full_name: supabaseUser.user_metadata?.full_name || null,
+        supabase_auth_id: supabaseUser.id,
+        role: "adjuster",
+      })
+      .select()
+      .single();
+
+    if (newUser) {
+      return {
+        id: newUser.id,
+        email: newUser.email || "",
+        fullName: newUser.full_name,
+        role: newUser.role || "adjuster",
+        title: newUser.title,
+        avatarUrl: newUser.avatar_url,
+      };
+    }
+
+    return null;
   }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const token = await getLocalToken();
-      if (!token) {
-        setLoading(false);
-        return;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profile = await loadProfile(session.user);
+        if (profile) setUser(profile);
       }
-      const profile = await fetchUserProfile();
-      if (!cancelled && profile) setUser(profile);
       setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const profile = await loadProfile(session.user);
+        if (profile) setUser(profile);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function signIn(
-    emailOrUsername: string,
-    password: string,
-    rememberMe = true
-  ): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        emailOrUsername: emailOrUsername.trim(),
-        password,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error((err as { message?: string }).message ?? "Invalid email/username or password");
+  async function signIn(emailOrUsername: string, password: string): Promise<void> {
+    const email = emailOrUsername.includes("@") ? emailOrUsername : `${emailOrUsername}@claimsiq.local`;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+    if (data.user) {
+      const profile = await loadProfile(data.user);
+      if (profile) setUser(profile);
+      router.replace("/(tabs)");
     }
-    const { token, user: profile } = await res.json();
-    await setLocalToken(token, rememberMe);
-    setUser(profile);
-    router.replace("/(tabs)");
   }
 
-  async function signUp(
-    email: string,
-    password: string,
-    fullName: string,
-    username?: string
-  ): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: username || email.split("@")[0],
-        email: email || undefined,
-        password,
-        fullName: fullName || undefined,
-      }),
+  async function signUp(email: string, password: string, fullName: string): Promise<void> {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } },
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error((err as { message?: string }).message ?? "Registration failed");
+    if (error) throw new Error(error.message);
+    if (data.user) {
+      const profile = await loadProfile(data.user);
+      if (profile) setUser(profile);
+      router.replace("/(tabs)");
     }
-    const { token, user: profile } = await res.json();
-    await setLocalToken(token, true);
-    setUser(profile);
-    router.replace("/(tabs)");
   }
 
   async function signOut(): Promise<void> {
-    await clearLocalToken();
+    await supabase.auth.signOut();
     setUser(null);
     router.replace("/login");
   }
 
   async function refreshSession(): Promise<void> {
-    const profile = await fetchUserProfile();
-    if (profile) setUser(profile);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const profile = await loadProfile(session.user);
+      if (profile) setUser(profile);
+    }
   }
 
-  const value: AuthContextType = {
-    isAuthenticated: !!user,
-    user,
-    role: user?.role ?? null,
-    loading,
-    signIn,
-    signUp,
-    signOut,
-    refreshSession,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{
+      isAuthenticated: !!user,
+      user,
+      role: user?.role ?? null,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      refreshSession,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

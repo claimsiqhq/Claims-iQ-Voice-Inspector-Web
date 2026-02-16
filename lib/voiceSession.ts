@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { API_BASE, getAuthHeaders } from "./api";
+import { callEdgeFunction } from "./api";
 
 export type VoiceState = "idle" | "connecting" | "listening" | "processing" | "speaking" | "error";
 
@@ -57,21 +57,10 @@ export class VoiceSession {
     try {
       const { RTCPeerConnection, mediaDevices } = getRTC();
 
-      // 1. Get ephemeral key
-      const headers = await getAuthHeaders();
-      const tokenRes = await fetch(`${API_BASE}/api/realtime/session`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ claimId, sessionId }),
-      });
-
-      if (!tokenRes.ok) {
-        const err = await tokenRes.json().catch(() => ({}));
-        throw new Error((err as any).message || "Failed to create voice session");
-      }
-
-      const { clientSecret } = await tokenRes.json();
-      if (!clientSecret) throw new Error("No client secret returned. Is OPENAI_API_KEY set?");
+      // 1. Get ephemeral key from Supabase Edge Function
+      const result = await callEdgeFunction("realtime-session", { claimId, sessionId });
+      const clientSecret = result.clientSecret;
+      if (!clientSecret) throw new Error("No client secret returned. Is OPENAI_API_KEY set in Supabase secrets?");
 
       // 2. Create peer connection
       this.pc = new RTCPeerConnection({
