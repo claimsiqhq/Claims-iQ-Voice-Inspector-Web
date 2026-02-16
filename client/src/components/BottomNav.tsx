@@ -54,7 +54,7 @@ function getNavItems(): NavItem[] {
     {
       icon: ClipboardCheck,
       label: "Reports",
-      getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
+      getPath: (c) => c ? `/inspection/${c.id}/export` : "/",
       matchPaths: ["/inspection/*/export"],
     },
     {
