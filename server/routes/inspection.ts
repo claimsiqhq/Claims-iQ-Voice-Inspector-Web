@@ -10,7 +10,8 @@ import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensi
 import { z } from "zod";
 import { logger } from "../logger";
 import { assembleScope } from "../scopeAssemblyService";
-import { calculateDepreciation } from "../depreciationEngine";
+import { calculateDepreciation, lookupLifeExpectancy } from "../depreciationEngine";
+import { calculateItemDepreciation } from "../estimateEngine";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
@@ -2175,6 +2176,40 @@ Respond in JSON format:
       const items = await storage.getLineItems(sessionId);
       const rooms = await storage.getRooms(sessionId);
 
+      const session = await storage.getInspectionSession(sessionId);
+      const claimId = session?.claimId;
+
+      let propertyAge: number | null = null;
+      let applyRoofSchedule = false;
+      let roofScheduleAge: number | null = null;
+      let roofDepPct: number | null = null;
+
+      if (claimId) {
+        const briefing = await storage.getBriefing(claimId);
+        const pp = briefing?.propertyProfile as any;
+        if (pp?.yearBuilt) {
+          propertyAge = new Date().getFullYear() - pp.yearBuilt;
+        }
+
+        const rules = await storage.getPolicyRulesForClaim(claimId);
+        for (const rule of rules) {
+          if (rule.applyRoofSchedule) {
+            applyRoofSchedule = true;
+            roofScheduleAge = rule.roofScheduleAge != null ? Number(rule.roofScheduleAge) : null;
+          }
+        }
+
+        if (applyRoofSchedule && roofScheduleAge != null && propertyAge != null && propertyAge >= roofScheduleAge) {
+          roofDepPct = 75;
+        }
+      }
+
+      const ROOFING_CATEGORIES = ["roofing", "roof"];
+      const isRoofingCategory = (cat: string) => {
+        const lower = (cat || "").toLowerCase();
+        return ROOFING_CATEGORIES.some(r => lower.includes(r));
+      };
+
       const roomSections = rooms.map(room => {
         const d = room.dimensions as any;
         const length = d?.length || 0;
@@ -2196,14 +2231,72 @@ Respond in JSON format:
         } : null;
 
         const roomItems = items.filter(i => i.roomId === room.id);
-        const roomTotal = roomItems.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
-        const roomTax = roomItems.reduce((s, i) => {
-          const qty = Number(i.quantity) || 0;
-          const up = Number(i.unitPrice) || 0;
-          const tp = Number(i.totalPrice) || 0;
-          const laborMaterial = qty * up;
-          return s + Math.max(0, tp - laborMaterial);
-        }, 0);
+
+        const enrichedItems = roomItems.map((item, idx) => {
+          const rcv = Number(item.totalPrice) || 0;
+          const tax = Number(item.taxAmount) || 0;
+          const category = item.category || "";
+          const description = item.description || "";
+          const isRoofing = isRoofingCategory(category);
+
+          let itemAge = item.age != null ? Number(item.age) : null;
+          if (itemAge == null && propertyAge != null) {
+            itemAge = propertyAge;
+          }
+
+          let itemLife = item.lifeExpectancy != null ? Number(item.lifeExpectancy) : null;
+          if (itemLife == null || itemLife === 0) {
+            const lookedUp = lookupLifeExpectancy(category, description);
+            if (lookedUp > 0) itemLife = lookedUp;
+          }
+
+          let depPctOverride = Number(item.depreciationPercentage) || null;
+          if ((depPctOverride == null || depPctOverride === 0) && isRoofing && roofDepPct != null) {
+            depPctOverride = roofDepPct;
+          }
+
+          let baseDepType = item.depreciationType || "Recoverable";
+
+          const depResult = calculateItemDepreciation(
+            rcv,
+            itemAge,
+            itemLife,
+            depPctOverride,
+            baseDepType,
+            applyRoofSchedule,
+            isRoofing
+          );
+
+          return {
+            lineNumber: idx + 1,
+            id: item.id,
+            description,
+            category,
+            quantity: Number(item.quantity) || 0,
+            unit: item.unit,
+            action: item.action,
+            xactCode: item.xactCode,
+            unitPrice: Number(item.unitPrice) || 0,
+            totalPrice: rcv,
+            taxAmount: tax,
+            depreciationAmount: depResult.depreciationAmount,
+            depreciationType: depResult.effectiveDepType,
+            depreciationPercentage: depResult.depreciationPercentage,
+            acv: depResult.acv,
+            age: itemAge,
+            lifeExpectancy: itemLife,
+            provenance: item.provenance,
+          };
+        });
+
+        const roomTotal = enrichedItems.reduce((s, i) => s + i.totalPrice, 0);
+        const roomTotalDep = enrichedItems.reduce((s, i) => s + i.depreciationAmount, 0);
+        const roomTotalRecoverableDep = enrichedItems
+          .filter(i => i.depreciationType === "Recoverable")
+          .reduce((s, i) => s + i.depreciationAmount, 0);
+        const roomTotalNonRecoverableDep = enrichedItems
+          .filter(i => i.depreciationType === "Non-Recoverable")
+          .reduce((s, i) => s + i.depreciationAmount, 0);
 
         return {
           id: room.id,
@@ -2212,36 +2305,13 @@ Respond in JSON format:
           structure: room.structure || "Main Dwelling",
           dimensions: { length, width, height },
           measurements,
-          items: roomItems.map((item, idx) => {
-            const rcv = Number(item.totalPrice) || 0;
-            const tax = Number(item.taxAmount) || 0;
-            const deprec = Number(item.depreciationAmount) || 0;
-            const acv = rcv - deprec;
-            return {
-              lineNumber: idx + 1,
-              id: item.id,
-              description: item.description,
-              category: item.category,
-              quantity: Number(item.quantity) || 0,
-              unit: item.unit,
-              action: item.action,
-              xactCode: item.xactCode,
-              unitPrice: Number(item.unitPrice) || 0,
-              totalPrice: rcv,
-              taxAmount: tax,
-              depreciationAmount: deprec,
-              depreciationType: item.depreciationType || "Recoverable",
-              depreciationPercentage: Number(item.depreciationPercentage) || 0,
-              acv: parseFloat(acv.toFixed(2)),
-              age: item.age != null ? Number(item.age) : null,
-              lifeExpectancy: item.lifeExpectancy != null ? Number(item.lifeExpectancy) : null,
-              provenance: item.provenance,
-            };
-          }),
+          items: enrichedItems,
           subtotal: parseFloat(roomTotal.toFixed(2)),
-          totalTax: parseFloat(roomItems.reduce((s, i) => s + (Number(i.taxAmount) || 0), 0).toFixed(2)),
-          totalDepreciation: parseFloat(roomItems.reduce((s, i) => s + (Number(i.depreciationAmount) || 0), 0).toFixed(2)),
-          totalACV: parseFloat((roomTotal - roomItems.reduce((s, i) => s + (Number(i.depreciationAmount) || 0), 0)).toFixed(2)),
+          totalTax: parseFloat(enrichedItems.reduce((s, i) => s + i.taxAmount, 0).toFixed(2)),
+          totalDepreciation: parseFloat(roomTotalDep.toFixed(2)),
+          totalRecoverableDepreciation: parseFloat(roomTotalRecoverableDep.toFixed(2)),
+          totalNonRecoverableDepreciation: parseFloat(roomTotalNonRecoverableDep.toFixed(2)),
+          totalACV: parseFloat((roomTotal - roomTotalDep).toFixed(2)),
           status: room.status,
           damageCount: room.damageCount || 0,
           photoCount: room.photoCount || 0,
@@ -2251,6 +2321,8 @@ Respond in JSON format:
       const grandTotal = roomSections.reduce((s, r) => s + r.subtotal, 0);
       const grandTax = roomSections.reduce((s, r) => s + (r.totalTax || 0), 0);
       const grandDepreciation = roomSections.reduce((s, r) => s + (r.totalDepreciation || 0), 0);
+      const grandRecoverableDepreciation = roomSections.reduce((s, r) => s + (r.totalRecoverableDepreciation || 0), 0);
+      const grandNonRecoverableDepreciation = roomSections.reduce((s, r) => s + (r.totalNonRecoverableDepreciation || 0), 0);
       const grandACV = grandTotal - grandDepreciation;
 
       res.json({
@@ -2258,6 +2330,8 @@ Respond in JSON format:
         grandTotal: parseFloat(grandTotal.toFixed(2)),
         grandTax: parseFloat(grandTax.toFixed(2)),
         grandDepreciation: parseFloat(grandDepreciation.toFixed(2)),
+        grandRecoverableDepreciation: parseFloat(grandRecoverableDepreciation.toFixed(2)),
+        grandNonRecoverableDepreciation: parseFloat(grandNonRecoverableDepreciation.toFixed(2)),
         grandACV: parseFloat(grandACV.toFixed(2)),
         totalLineItems: items.length,
       });
