@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Design System Colors - Converted to HSL for Tailwind v4 */
+  /* Deep Purple #342A4F -> 256 31% 24% */
+  /* Primary Purple #7763B7 -> 254 37% 55% */
+  /* Secondary Purple #9D8BBF -> 261 29% 65% */
+  /* Gold Accent #C6A54E -> 44 53% 54% */
+  /* Gold Light #F7F0DC -> 44 55% 92% */
+  /* Purple BG #F8F7FC -> 255 33% 98% (Approx) */
+  /* White #FFFFFF -> 0 0% 100% */
+  /* Green #059669 -> 161 94% 30% */
+  /* Amber #D97706 -> 38 92% 50% */
+  /* Red #DC2626 -> 360 71% 51% */
+
+  --color-background: hsl(255 33% 98%); /* Purple BG #F8F7FC */
+  --color-foreground: hsl(256 31% 24%); /* Deep Purple */
+  
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(256 31% 24%);
+  
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(256 31% 24%);
+  
+  --color-primary: hsl(254 37% 55%); /* Primary Purple */
+  --color-primary-foreground: hsl(0 0% 100%);
+  
+  --color-secondary: hsl(261 29% 65%); /* Secondary Purple */
+  --color-secondary-foreground: hsl(0 0% 100%);
+  
+  --color-muted: hsl(267 15% 93%);
+  --color-muted-foreground: hsl(256 31% 40%); /* Lighter Deep Purple */
+  
+  --color-accent: hsl(44 53% 54%); /* Gold Accent */
+  --color-accent-foreground: hsl(0 0% 100%);
+  
+  --color-destructive: hsl(0 71% 51%); /* Red */
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-success: hsl(161 94% 30%);
+  --color-warning: hsl(38 92% 50%);
+
+  --color-border: hsl(267 20% 88%);
+  --color-input: hsl(267 20% 88%);
+  --color-ring: hsl(254 37% 55%);
+  
+  --radius: 0.5rem;
+  
+  --font-display: "Work Sans", sans-serif;
+  --font-sans: "Source Sans 3", sans-serif;
+  --font-mono: "Space Mono", monospace;
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-wave: wave 1.5s ease-in-out infinite;
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.5); }
+    50% { transform: scaleY(1.0); }
+  }
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-background: hsl(256 35% 12%);
+  --color-foreground: hsl(255 20% 92%);
+
+  --color-card: hsl(256 30% 16%);
+  --color-card-foreground: hsl(255 20% 92%);
+
+  --color-popover: hsl(256 30% 16%);
+  --color-popover-foreground: hsl(255 20% 92%);
+
+  --color-primary: hsl(254 42% 63%);
+  --color-primary-foreground: hsl(0 0% 100%);
+
+  --color-secondary: hsl(261 30% 50%);
+  --color-secondary-foreground: hsl(255 20% 92%);
+
+  --color-muted: hsl(256 25% 20%);
+  --color-muted-foreground: hsl(256 15% 65%);
+
+  --color-accent: hsl(44 55% 58%);
+  --color-accent-foreground: hsl(256 35% 12%);
+
+  --color-destructive: hsl(0 63% 45%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-success: hsl(161 80% 38%);
+  --color-warning: hsl(38 90% 55%);
+
+  --color-border: hsl(256 25% 25%);
+  --color-input: hsl(256 25% 25%);
+  --color-ring: hsl(254 42% 63%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/90 backdrop-blur-sm border border-white/20 shadow-sm;
+  }
+  .gold-gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent to-yellow-400;
+  }
+}
+
+.compact-mode {
+  --spacing-scale: 0.75;
+}
+
+.compact-mode .p-5 { padding: 0.75rem; }
+.compact-mode .p-6 { padding: 1rem; }
+.compact-mode .space-y-6 > * + * { margin-top: 1rem; }
+.compact-mode .space-y-4 > * + * { margin-top: 0.5rem; }
+.compact-mode .gap-4 { gap: 0.5rem; }
+.compact-mode .gap-6 { gap: 1rem; }
+.compact-mode .py-3 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.compact-mode .mb-4 { margin-bottom: 0.5rem; }
