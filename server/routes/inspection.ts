@@ -2238,14 +2238,20 @@ Respond in JSON format:
           const category = item.category || "";
           const description = item.description || "";
           const isRoofing = isRoofingCategory(category);
+          const catLower = category.toLowerCase();
+          const isLabor = catLower === "dem" || catLower === "mit" || catLower === "gen";
+          const actionLower = (item.action || "").toLowerCase();
+          const descLower = description.toLowerCase();
+          const isRemovalAction = actionLower === "remove" || actionLower === "tear out" || actionLower === "demolition" || actionLower === "d&r";
+          const isRemovalItem = isRemovalAction || descLower.startsWith("remove ") || descLower.startsWith("tear off ") || descLower.startsWith("tear out ") || descLower.includes("extraction") || descLower.includes("monitoring");
 
           let itemAge = item.age != null ? Number(item.age) : null;
-          if (itemAge == null && propertyAge != null) {
+          if (itemAge == null && propertyAge != null && !isLabor && !isRemovalItem) {
             itemAge = propertyAge;
           }
 
           let itemLife = item.lifeExpectancy != null ? Number(item.lifeExpectancy) : null;
-          if (itemLife == null || itemLife === 0) {
+          if ((itemLife == null || itemLife === 0) && !isLabor && !isRemovalItem) {
             const lookedUp = lookupLifeExpectancy(category, description);
             if (lookedUp > 0) itemLife = lookedUp;
           }

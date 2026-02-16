@@ -121,12 +121,46 @@ export const LIFE_EXPECTANCY_TABLE: Record<string, CategoryEntry> = {
   },
 };
 
+const TRADE_CODE_TO_CATEGORY: Record<string, string> = {
+  rfg: "roofing",
+  ext: "siding",
+  dry: "drywall",
+  pnt: "painting",
+  flr: "flooring",
+  plm: "plumbing",
+  ele: "electrical",
+  hvac: "hvac",
+  car: "cabinetry",
+  cab: "cabinetry",
+  ctr: "cabinetry",
+  win: "windows",
+  ins: "general",
+  dem: "general",
+  mit: "general",
+  gen: "general",
+};
+
 export function lookupLifeExpectancy(category: string, description: string): number {
   const catLower = category.toLowerCase().trim();
   const descLower = description.toLowerCase().trim();
 
-  const entry = LIFE_EXPECTANCY_TABLE[catLower];
-  if (!entry) return 0;
+  const mappedCat = TRADE_CODE_TO_CATEGORY[catLower] || catLower;
+
+  const entry = LIFE_EXPECTANCY_TABLE[mappedCat];
+
+  if (!entry) {
+    for (const [tableCat, tableEntry] of Object.entries(LIFE_EXPECTANCY_TABLE)) {
+      for (const kw of tableEntry.keywords) {
+        if (descLower.includes(kw.match)) {
+          return kw.life;
+        }
+      }
+      if (descLower.includes(tableCat)) {
+        return tableEntry.default;
+      }
+    }
+    return 0;
+  }
 
   for (const kw of entry.keywords) {
     if (descLower.includes(kw.match)) {

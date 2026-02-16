@@ -21,6 +21,7 @@ interface LineItem {
   xactCode: string | null;
   unitPrice: number;
   totalPrice: number;
+  taxAmount?: number;
   depreciationAmount: number;
   depreciationType: string;
   depreciationPercentage: number;
@@ -39,6 +40,8 @@ interface RoomSection {
   items: LineItem[];
   subtotal: number;
   totalDepreciation: number;
+  totalRecoverableDepreciation?: number;
+  totalNonRecoverableDepreciation?: number;
   totalACV: number;
   status: string;
   damageCount: number;
@@ -50,6 +53,8 @@ interface XactimateEstimateViewProps {
     rooms: RoomSection[];
     grandTotal: number;
     grandDepreciation: number;
+    grandRecoverableDepreciation?: number;
+    grandNonRecoverableDepreciation?: number;
     grandACV: number;
     totalLineItems: number;
   } | null;
@@ -67,6 +72,21 @@ function fmtDim(feet: number): string {
 
 function fmtNum(n: number): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtAgeLife(age: number | null, life: number | null): string {
+  const ageStr = age != null ? `${age}` : "—";
+  const lifeStr = life != null && life > 0 ? `${life}` : "NA";
+  return `${ageStr}/${lifeStr} yrs`;
+}
+
+function fmtDepreciation(amount: number, depType: string): string {
+  if (amount <= 0.005) return "";
+  const formatted = fmtNum(amount);
+  if (depType === "Non-Recoverable") {
+    return `<${formatted}>`;
+  }
+  return `(${formatted})`;
 }
 
 function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; width: number; height: number }; name: string }) {
@@ -113,7 +133,6 @@ function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; wid
         {name}
       </text>
 
-      {/* Top dimension (length) */}
       <line x1={rx} y1={ry - tickOff} x2={rx} y2={ry - tickOff - tickLen} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx + rectW} y1={ry - tickOff} x2={rx + rectW} y2={ry - tickOff - tickLen} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx} y1={ry - tickOff - tickLen / 2} x2={rx + rectW} y2={ry - tickOff - tickLen / 2} stroke={lineColor} strokeWidth={0.8} />
@@ -122,7 +141,6 @@ function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; wid
         {fmtDim(length)}
       </text>
 
-      {/* Bottom dimension (length) */}
       <line x1={rx} y1={ry + rectH + tickOff} x2={rx} y2={ry + rectH + tickOff + tickLen} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx + rectW} y1={ry + rectH + tickOff} x2={rx + rectW} y2={ry + rectH + tickOff + tickLen} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx} y1={ry + rectH + tickOff + tickLen / 2} x2={rx + rectW} y2={ry + rectH + tickOff + tickLen / 2} stroke={lineColor} strokeWidth={0.8} />
@@ -131,7 +149,6 @@ function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; wid
         {fmtDim(length)}
       </text>
 
-      {/* Right dimension (width) */}
       <line x1={rx + rectW + tickOff} y1={ry} x2={rx + rectW + tickOff + tickLen} y2={ry} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx + rectW + tickOff} y1={ry + rectH} x2={rx + rectW + tickOff + tickLen} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx + rectW + tickOff + tickLen / 2} y1={ry} x2={rx + rectW + tickOff + tickLen / 2} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
@@ -141,7 +158,6 @@ function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; wid
         {fmtDim(width)}
       </text>
 
-      {/* Left dimension (width) */}
       <line x1={rx - tickOff} y1={ry} x2={rx - tickOff - tickLen} y2={ry} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx - tickOff} y1={ry + rectH} x2={rx - tickOff - tickLen} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
       <line x1={rx - tickOff - tickLen / 2} y1={ry} x2={rx - tickOff - tickLen / 2} y2={ry + rectH} stroke={lineColor} strokeWidth={0.8} />
@@ -183,25 +199,15 @@ function MeasurementsBlock({ m }: { m: RoomMeasurements }) {
   );
 }
 
-function DepreciationBadge({ type }: { type: string }) {
-  if (type === "Non-Recoverable") {
-    return (
-      <span className="inline-block px-1 py-0.5 text-[9px] font-semibold rounded bg-red-100 text-red-700" data-testid="badge-non-recoverable">
-        NR
-      </span>
-    );
-  }
-  if (type === "Paid When Incurred") {
-    return (
-      <span className="inline-block px-1 py-0.5 text-[9px] font-semibold rounded bg-amber-100 text-amber-700" data-testid="badge-paid-when-incurred">
-        PWI
-      </span>
-    );
-  }
-  return null;
-}
-
-function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalACV }: { items: LineItem[]; roomName: string; subtotal: number; totalDepreciation: number; totalACV: number }) {
+function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalRecoverableDepreciation, totalNonRecoverableDepreciation, totalACV }: {
+  items: LineItem[];
+  roomName: string;
+  subtotal: number;
+  totalDepreciation: number;
+  totalRecoverableDepreciation?: number;
+  totalNonRecoverableDepreciation?: number;
+  totalACV: number;
+}) {
   if (items.length === 0) return null;
 
   return (
@@ -209,28 +215,24 @@ function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalACV
       <table className="w-full text-[11px] border-collapse">
         <thead>
           <tr className="border-b border-slate-300">
-            <th className="text-left py-1.5 pr-2 font-semibold text-slate-600 w-[30%]">DESCRIPTION</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">QTY</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">RESET</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">REMOVE</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[8%]">REPLACE</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[7%]">TAX</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[9%]">RCV</th>
-            <th className="text-right py-1.5 px-1 font-semibold text-slate-600 w-[10%]">DEPREC.</th>
-            <th className="text-right py-1.5 pl-1 font-semibold text-slate-600 w-[9%]">ACV</th>
+            <th className="text-left py-1.5 pr-1 font-semibold text-slate-600" style={{ width: "6%" }}></th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "10%" }}>QUANTITY</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "8%" }}>UNIT</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "7%" }}>TAX</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "10%" }}>RCV</th>
+            <th className="text-center py-1.5 px-1 font-semibold text-slate-600" style={{ width: "10%" }}>AGE/LIFE</th>
+            <th className="text-center py-1.5 px-1 font-semibold text-slate-600" style={{ width: "7%" }}>COND.</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "8%" }}>DEP %</th>
+            <th className="text-right py-1.5 px-1 font-semibold text-slate-600" style={{ width: "12%" }}>DEPREC.</th>
+            <th className="text-right py-1.5 pl-1 font-semibold text-slate-600" style={{ width: "10%" }}>ACV</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => {
-            const act = (item.action || "").toLowerCase();
-            const isRemove = act === "remove" || act === "tear out" || act === "demolition";
-            const isReset = act === "reset" || act === "detach & reset" || act === "d&r";
             const qty = item.quantity || 0;
             const up = item.unitPrice || 0;
             const extendedCost = qty * up;
-            const tax = Math.max(0, item.totalPrice - extendedCost);
-            const removeCol = isRemove ? up : 0;
-            const replaceCol = isRemove ? 0 : (isReset ? 0 : up);
+            const tax = item.taxAmount ?? Math.max(0, item.totalPrice - extendedCost);
             const depAmt = item.depreciationAmount || 0;
             const depPct = item.depreciationPercentage || 0;
             const depType = item.depreciationType || "Recoverable";
@@ -239,59 +241,71 @@ function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalACV
             const isPWI = depType === "Paid When Incurred";
 
             return (
-              <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                <td className="py-1.5 pr-2 text-slate-800">
-                  <span className="text-slate-400 mr-1">{item.lineNumber}.</span>
-                  {item.description}
-                </td>
-                <td className="text-right py-1.5 px-1 text-slate-600 font-mono whitespace-nowrap">
-                  {qty > 0 ? `${fmtNum(qty)} ${item.unit || ""}`.trim() : ""}
-                </td>
-                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
-                  {isReset ? fmtNum(item.totalPrice) : ""}
-                </td>
-                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
-                  {removeCol > 0 ? fmtNum(removeCol) : "0.00"}
-                </td>
-                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
-                  {replaceCol > 0 ? fmtNum(replaceCol) : "0.00"}
-                </td>
-                <td className="text-right py-1.5 px-1 text-slate-600 font-mono">
-                  {tax > 0.005 ? fmtNum(tax) : "0.00"}
-                </td>
-                <td className="text-right py-1.5 px-1 font-mono text-slate-800">
-                  {fmtNum(item.totalPrice)}
-                </td>
-                <td className={cn("text-right py-1.5 px-1 font-mono whitespace-nowrap", isNonRecoverable ? "text-red-700" : isPWI ? "text-amber-700" : "text-slate-600")} data-testid={`depreciation-${item.id}`}>
-                  {depAmt > 0.005 || isPWI ? (
-                    <span className="flex items-center justify-end gap-1">
+              <React.Fragment key={item.id}>
+                <tr className="border-b border-slate-100 hover:bg-slate-50/50">
+                  <td colSpan={10} className="py-1 pr-2 text-slate-800">
+                    <span className="text-slate-400 mr-1">{item.lineNumber}.</span>
+                    {item.description}
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-100 hover:bg-slate-50/50">
+                  <td></td>
+                  <td className="text-right py-1 px-1 text-slate-600 font-mono whitespace-nowrap">
+                    {qty > 0 ? `${fmtNum(qty)} ${item.unit || ""}`.trim() : ""}
+                  </td>
+                  <td className="text-right py-1 px-1 text-slate-600 font-mono">
+                    {up > 0 ? fmtNum(up) : ""}
+                  </td>
+                  <td className="text-right py-1 px-1 text-slate-600 font-mono">
+                    {tax > 0.005 ? fmtNum(tax) : "0.00"}
+                  </td>
+                  <td className="text-right py-1 px-1 font-mono text-slate-800">
+                    {fmtNum(item.totalPrice)}
+                  </td>
+                  <td className="text-center py-1 px-1 font-mono text-slate-600 whitespace-nowrap" data-testid={`age-life-${item.id}`}>
+                    {fmtAgeLife(item.age, item.lifeExpectancy)}
+                  </td>
+                  <td className="text-center py-1 px-1 font-mono text-slate-500">
+                    Avg.
+                  </td>
+                  <td className="text-right py-1 px-1 font-mono text-slate-600 whitespace-nowrap">
+                    {depPct > 0 ? (
                       <span>
-                        ({fmtNum(depAmt)})
-                        {depPct > 0 && <span className="text-[9px] ml-0.5">{depPct.toFixed(1)}%</span>}
+                        {depPct % 1 === 0 ? `${depPct}%` : `${depPct.toFixed(2)}%`}
+                        {isPWI ? "" : " [%]"}
                       </span>
-                      <DepreciationBadge type={depType} />
-                    </span>
-                  ) : (
-                    <span className="text-slate-300">—</span>
-                  )}
-                </td>
-                <td className="text-right py-1.5 pl-1 font-mono font-semibold text-slate-800" data-testid={`acv-${item.id}`}>
-                  {fmtNum(acv)}
-                </td>
-              </tr>
+                    ) : isPWI ? "PWI" : ""}
+                  </td>
+                  <td className={cn(
+                    "text-right py-1 px-1 font-mono whitespace-nowrap",
+                    isNonRecoverable ? "text-red-700" : isPWI ? "text-amber-700" : "text-slate-700"
+                  )} data-testid={`depreciation-${item.id}`}>
+                    {depAmt > 0.005 ? fmtDepreciation(depAmt, depType) : isPWI ? "PWI" : ""}
+                  </td>
+                  <td className="text-right py-1 pl-1 font-mono font-semibold text-slate-800" data-testid={`acv-${item.id}`}>
+                    {fmtNum(acv)}
+                  </td>
+                </tr>
+              </React.Fragment>
             );
           })}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300">
-            <td colSpan={6} className="py-2 pr-2 font-semibold text-slate-700">
+            <td colSpan={3} className="py-2 pr-2 font-semibold text-slate-700">
               Totals: {roomName}
+            </td>
+            <td className="text-right py-2 px-1 font-mono font-bold text-slate-700">
+              {(items.reduce((s, i) => s + (i.taxAmount ?? 0), 0)) > 0.005
+                ? fmtNum(items.reduce((s, i) => s + (i.taxAmount ?? 0), 0))
+                : ""}
             </td>
             <td className="text-right py-2 px-1 font-mono font-bold text-slate-900">
               {fmtNum(subtotal)}
             </td>
-            <td className="text-right py-2 px-1 font-mono font-bold text-red-700">
-              {totalDepreciation > 0.005 ? `(${fmtNum(totalDepreciation)})` : "—"}
+            <td colSpan={3}></td>
+            <td className="text-right py-2 px-1 font-mono font-bold text-slate-700">
+              {totalDepreciation > 0.005 ? fmtNum(totalDepreciation) : ""}
             </td>
             <td className="text-right py-2 pl-1 font-mono font-bold text-slate-900">
               {fmtNum(totalACV)}
@@ -348,7 +362,15 @@ function RoomSectionView({ room }: { room: RoomSection }) {
         </div>
       )}
 
-      <LineItemsTable items={room.items} roomName={room.name} subtotal={room.subtotal} totalDepreciation={room.totalDepreciation || 0} totalACV={room.totalACV || 0} />
+      <LineItemsTable
+        items={room.items}
+        roomName={room.name}
+        subtotal={room.subtotal}
+        totalDepreciation={room.totalDepreciation || 0}
+        totalRecoverableDepreciation={room.totalRecoverableDepreciation}
+        totalNonRecoverableDepreciation={room.totalNonRecoverableDepreciation}
+        totalACV={room.totalACV || 0}
+      />
 
       {room.items.length === 0 && (
         <div className="mt-2 text-[11px] text-slate-400 italic">No line items recorded for this area.</div>
@@ -387,6 +409,9 @@ export default function XactimateEstimateView({ data, claimNumber, insuredName }
     }
   }
 
+  const hasRecoverable = (data.grandRecoverableDepreciation || 0) > 0.005;
+  const hasNonRecoverable = (data.grandNonRecoverableDepreciation || 0) > 0.005;
+
   return (
     <div className="bg-white" data-testid="xactimate-estimate-view">
       <div className="border-b border-slate-200 px-4 py-3 flex items-baseline justify-between">
@@ -423,21 +448,33 @@ export default function XactimateEstimateView({ data, claimNumber, insuredName }
       </div>
 
       {data.grandTotal > 0 && (
-        <div className="border-t-2 border-slate-400 mx-4 py-3 space-y-1">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-slate-600 font-mono">RCV (Replacement Cost)</span>
-            <span className="text-sm font-bold text-slate-900 font-mono">${fmtNum(data.grandTotal)}</span>
-          </div>
-          {(data.grandDepreciation || 0) > 0.005 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-semibold text-red-600 font-mono">Less: Depreciation</span>
-              <span className="text-sm font-bold text-red-700 font-mono">({fmtNum(data.grandDepreciation)})</span>
-            </div>
-          )}
-          <div className="flex justify-between items-center pt-1 border-t border-slate-300">
-            <span className="text-sm font-bold text-slate-800 font-mono">ACV (Actual Cash Value)</span>
-            <span className="text-lg font-bold text-slate-900 font-mono">${fmtNum(data.grandACV || data.grandTotal)}</span>
-          </div>
+        <div className="border-t-2 border-slate-400 mx-4 py-3">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="text-left py-1 font-semibold text-slate-600">Replacement Cost Value</th>
+                {hasRecoverable && (
+                  <th className="text-right py-1 font-semibold text-slate-600">Less Recoverable<br/>Depreciation</th>
+                )}
+                {hasNonRecoverable && (
+                  <th className="text-right py-1 font-semibold text-slate-600">Less Non Recoverable<br/>Depreciation</th>
+                )}
+                <th className="text-right py-1 font-semibold text-slate-600">Actual Cash Value (ACV)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="py-2 font-bold text-slate-900">${fmtNum(data.grandTotal)}</td>
+                {hasRecoverable && (
+                  <td className="text-right py-2 font-bold text-slate-700">({fmtNum(data.grandRecoverableDepreciation!)})</td>
+                )}
+                {hasNonRecoverable && (
+                  <td className="text-right py-2 font-bold text-red-700">&lt;${fmtNum(data.grandNonRecoverableDepreciation!)}&gt;</td>
+                )}
+                <td className="text-right py-2 font-bold text-slate-900">${fmtNum(data.grandACV || data.grandTotal)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </div>
