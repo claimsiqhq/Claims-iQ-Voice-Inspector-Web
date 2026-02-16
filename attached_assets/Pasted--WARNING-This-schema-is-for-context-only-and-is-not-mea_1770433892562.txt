@@ -1,0 +1,64 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.briefings (
+  id integer NOT NULL DEFAULT nextval('briefings_id_seq'::regclass),
+  claim_id integer NOT NULL,
+  property_profile jsonb,
+  coverage_snapshot jsonb,
+  peril_analysis jsonb,
+  endorsement_impacts jsonb,
+  inspection_checklist jsonb,
+  duties_after_loss jsonb,
+  red_flags jsonb,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT briefings_pkey PRIMARY KEY (id),
+  CONSTRAINT briefings_claim_id_fkey FOREIGN KEY (claim_id) REFERENCES public.claims(id)
+);
+CREATE TABLE public.claims (
+  id integer NOT NULL DEFAULT nextval('claims_id_seq'::regclass),
+  claim_number character varying NOT NULL,
+  insured_name text,
+  property_address text,
+  city character varying,
+  state character varying,
+  zip character varying,
+  date_of_loss character varying,
+  peril_type character varying,
+  status character varying NOT NULL DEFAULT 'draft'::character varying,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT claims_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.documents (
+  id integer NOT NULL DEFAULT nextval('documents_id_seq'::regclass),
+  claim_id integer NOT NULL,
+  document_type character varying NOT NULL,
+  file_name text,
+  file_size integer,
+  storage_path text,
+  raw_text text,
+  status character varying NOT NULL DEFAULT 'empty'::character varying,
+  error_message text,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT documents_pkey PRIMARY KEY (id),
+  CONSTRAINT documents_claim_id_fkey FOREIGN KEY (claim_id) REFERENCES public.claims(id)
+);
+CREATE TABLE public.extractions (
+  id integer NOT NULL DEFAULT nextval('extractions_id_seq'::regclass),
+  claim_id integer NOT NULL,
+  document_type character varying NOT NULL,
+  extracted_data jsonb NOT NULL,
+  confidence jsonb,
+  confirmed_by_user boolean DEFAULT false,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT extractions_pkey PRIMARY KEY (id),
+  CONSTRAINT extractions_claim_id_fkey FOREIGN KEY (claim_id) REFERENCES public.claims(id)
+);
+CREATE TABLE public.users (
+  id character varying NOT NULL DEFAULT gen_random_uuid(),
+  username text NOT NULL UNIQUE,
+  password text NOT NULL,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);

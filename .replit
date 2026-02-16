@@ -4,18 +4,23 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["nix-output-monitor", "jq"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
 
 [env]
 PORT = "5000"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "./dist/index.cjs"]
 build = ["npm", "run", "build"]
+run = ["node", "./dist/index.cjs"]
 
 [workflows]
 runButton = "Project"
@@ -38,7 +43,7 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
-[userenv]
-
-[userenv.development]
-EXPO_PUBLIC_API_URL = "http://localhost:5000"
+[agent]
+stack = "MOCKUP_JS"
+mockupState = "FULLSTACK"
+integrations = ["javascript_openai_ai_integrations:2.0.0"]

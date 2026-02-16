@@ -1,0 +1,489 @@
+# Claims IQ — Voice Inspection Agent
+## UX Design Specification & Figma Prompt
+
+**Platform:** iPad (1024 × 1366 portrait, 1366 × 1024 landscape)
+**Design System:** Claims IQ brand — clean, minimal, purple + gold
+**Primary Interaction:** Voice-driven with touch confirmation
+**Typography:** Work Sans (display/headings) + Source Sans 3 (body) + Space Mono (data)
+**Color Palette:** Deep Purple #342A4F · Primary Purple #7763B7 · Gold #C6A54E · white canvas
+**Target User:** Insurance field adjuster (hands-busy, glanceable)
+**Core Flow:** Document Upload → AI Parsing → Briefing → Voice Inspection → Review → Export
+
+---
+
+## 1. Design System & Component Library
+
+### 1.1 Color Palette
+
+| Token | Hex | CSS Variable | Usage |
+|---|---|---|---|
+| Primary Purple | `#7763B7` | `--primary` (254 37% 55%) | Interactive elements, links, CTA buttons, active states, voice indicator, ring/focus |
+| Secondary Purple | `#9D8BBF` | `--secondary` (261 29% 65%) | Supporting interactive, hover states, secondary buttons, chart line 3 |
+| Deep Purple | `#342A4F` | `--foreground` (256 31% 24%) | Primary text, nav bar, section headers, foreground text |
+| Gold Accent | `#C6A54E` | `--accent` (44 53% 54%) | Gold badges, accent borders, emphasis highlights, chart line 2 |
+| Gold Light | `#F7F0DC` | — | Accent card backgrounds, endorsement highlights |
+| Purple Light | `#EDEAFF` | — | Selected cards, active tab bg, hover states |
+| Purple BG | `#F8F7FC` | `--background` (270 50% 99%) | Canvas bg behind cards |
+| Muted Purple | `hsl(267 15% 93%)` | `--muted` | Disabled states, subtle fills |
+| Border Purple | `hsl(267 20% 88%)` | `--border` | Card borders, input borders, dividers |
+| Green | `#059669` | — | Success, completed room, confirmed transcription |
+| Amber | `#D97706` | — | Warning, in-progress badge, attention items |
+| Red | `#DC2626` | `--destructive` | Missing required items, validation errors |
+| White | `#FFFFFF` | `--card` (0 0% 100%) | Card surfaces, modals, input fields |
+
+### 1.2 Typography Scale
+
+| Token | Size / Font | Weight | Usage |
+|---|---|---|---|
+| Display | 32px / Work Sans | Bold | Screen titles (Inspection Briefing, Review) |
+| Heading | 24px / Work Sans | Semibold | Section headers within screens (h1-h6 use `--font-display`) |
+| Subheading | 18px / Work Sans | Medium | Card titles, group labels |
+| Body | 16px / Source Sans 3 | Regular | Primary content text (`--font-sans`) |
+| Caption | 14px / Source Sans 3 | Regular | Labels, metadata, timestamps |
+| Overline | 12px / Source Sans 3 | Semibold, uppercase | Category labels, status badges |
+| Mono | 14px / Space Mono | Regular | Measurements, Xact codes, moisture readings (`--font-mono`) |
+
+### 1.3 Core Components
+
+Build these as a reusable Figma component library:
+
+| Component | Variants | Notes |
+|---|---|---|
+| Button | Primary, Secondary, Ghost, Danger | 44px min touch target; Primary = `#7763B7` fill, white text |
+| Card | Default, Selected, Warning, Complete | `0.5rem` radius (`--radius`), subtle shadow, white bg on `#F8F7FC` canvas |
+| Badge | Status (6 colors), Count, Phase | Pill shape, overline text; use brand purple/gold/green/amber/red |
+| Input Field | Text, Number, Dropdown | 48px height for touch; clear label above |
+| Toggle | On/Off | For feature flags like moisture mode |
+| Progress Bar | Linear, Segmented (8 phases) | Phase bar shows inspection progress |
+| Voice Indicator | Idle, Listening, Processing, Speaking | Animated waveform/pulse; Listening = `#7763B7`, Speaking = `#C6A54E` |
+| Photo Thumbnail | Default, Flagged, With Annotation | Aspect-preserved, tap to expand |
+| Document Card | Uploading, Processing, Parsed, Error | Shows doc type icon + extraction status |
+| Line Item Row | Normal, Flagged, Policy-Limited | Xact code, description, qty, unit price, total |
+| Moisture Cell | Dry, Caution, Wet, Saturated | Color-coded grid cell with reading value |
+| Room Card | Not Started, In Progress, Complete | Room name, damage count, photo count |
+| Toast / Alert | Info, Success, Warning, Error | Slides in from top, auto-dismiss |
+| Modal / Sheet | Bottom Sheet, Full Modal | Bottom sheet for quick actions, modal for confirmations |
+| Nav Bar | Top bar with back, title, actions | Deep Purple `#342A4F` bg, white text, 56px height |
+
+---
+
+## 2. Information Architecture & Navigation
+
+### 2.1 Screen Map
+
+The application follows a linear flow with two distinct acts. Navigation is primarily forward-progression with the ability to review previous steps.
+
+| Screen | Description |
+|---|---|
+| **1. Claims List** | Home screen. List of claims with status badges. Tap to open a claim. Search + filter. New Claim button. |
+| **2. Document Upload** | Three document upload slots (FNOL, Policy, Endorsements). Drag-drop or file picker. Processing status per document. Extraction preview cards. |
+| **3. Extraction Review** | AI-parsed results from each document displayed in editable cards. Adjuster confirms or corrects extractions before briefing generation. |
+| **4. Inspection Briefing** | Synthesized intelligence from all 3 documents. Property profile, coverage snapshot, peril-specific checklist, endorsement impacts. START INSPECTION button. |
+| **5. Active Inspection** | Voice-driven HUD. Waveform, live transcription, phase indicator, current context, quick-action bar, running documentation sidebar. |
+| **5a. Camera Capture** | Overlay/modal triggered by voice or tap. Camera viewfinder with auto-tag from current context. Returns to active inspection after capture. |
+| **5b. Moisture Map** | Conditional panel for water claims. Grid of readings, drying equipment calculator, class/category display. |
+| **6. Progress Map** | Visual overview of inspected areas. Room cards with status colors. Tap to jump to a room. Can be accessed as a sidebar during active inspection. |
+| **7. Review & Finalize** | Full estimate breakdown by structure/area/zone. Photo gallery. Scope completeness checklist. Policy limit comparison. Adjuster notes. |
+| **8. Export** | ESX file generation, PDF report preview, submission for review. Share options. |
+
+### 2.2 Navigation Pattern
+
+**Primary:** Linear forward progression (1 → 2 → 3 → 4 → 5 → 7 → 8). During Active Inspection (screen 5), the voice agent manages transitions between sub-screens (5a Camera, 5b Moisture). The Progress Map (6) is accessible as a slide-over panel during inspection. The adjuster can say "show me what we have so far" to access Review (7) mid-inspection.
+
+Back navigation is always available. The app remembers state — leaving Active Inspection and returning resumes exactly where the adjuster left off.
+
+---
+
+## 3. Screen-by-Screen Specifications
+
+### Screen 1: Claims List
+
+**PURPOSE**
+Home screen. The adjuster sees all their assigned claims and can start a new one.
+
+**LAYOUT**
+Top nav bar (Deep Purple `#342A4F`): Claims IQ logo left, user avatar + org name right. Below: search bar + filter chips (All, Pending, In Progress, Complete). Main area: scrollable list of claim cards.
+
+**CLAIM CARD CONTENTS**
+
+| Element | Detail |
+|---|---|
+| Claim Number | Bold, left-aligned (e.g., CLM-2024-00847) |
+| Insured Name | Below claim number, regular weight |
+| Property Address | Caption text, gray |
+| Peril Badge | Colored pill: Hail (`#7763B7`), Water (`#9D8BBF`), Fire (`#DC2626`), Wind (`#C6A54E`) |
+| Status Badge | Right side: Draft, Documents Uploaded, Briefing Ready, Inspecting, Complete |
+| Date of Loss | Caption, right column |
+| Thumbnail | Small property image if available (satellite or uploaded photo) |
+
+**ACTIONS**
+Tap card → opens claim at its current step. FAB (floating action button) bottom-right: + New Claim.
+
+---
+
+### Screen 2: Document Upload
+
+**PURPOSE**
+Upload the three core claim documents. Each document has a dedicated upload zone with type-specific parsing.
+
+**LAYOUT**
+Three vertical cards, each representing a document type. Each card has four states: Empty (upload prompt), Uploading (progress bar), Processing (AI parsing animation), Parsed (extraction preview).
+
+**DOCUMENT CARDS**
+
+| Document | Icon / Color | What AI Extracts |
+|---|---|---|
+| FNOL (First Notice of Loss) | Primary Purple file icon (`#7763B7`) | Insured name, address, date of loss, peril type, reported damage description, property details, claim number |
+| Policy (HO 80 03) | Secondary Purple shield icon (`#9D8BBF`) | Coverage A-F limits, deductible amount, loss settlement provisions, dwelling description, construction type, year built, special conditions |
+| Endorsements | Gold document stack icon (`#C6A54E`) | Each endorsement ID, what it modifies, effective dates, sublimits, special provisions (e.g., HO 88 02 roof schedule, HO 81 17 water backup, HO 86 05 ordinance/law) |
+
+**UPLOAD INTERACTION**
+Tap card → native file picker (PDF, images accepted). Drag-and-drop supported. Upload starts immediately. Progress bar replaces upload prompt. On completion, card transitions to Processing state with a subtle pulse animation. When parsing completes, card shows green checkmark and extraction summary (3-4 key fields visible). Tap card to expand full extraction on Screen 3.
+
+**FOOTER**
+Bottom bar: "Generate Briefing" button (disabled until all 3 documents are parsed). Status text: "2 of 3 documents processed"
+
+---
+
+### Screen 3: Extraction Review
+
+**PURPOSE**
+The adjuster reviews what the AI extracted from each document and corrects any errors before the briefing is generated. This is the human-in-the-loop quality gate.
+
+**LAYOUT**
+Three-tab interface (FNOL | Policy | Endorsements) or collapsible accordion sections. Each section shows extracted fields in editable form format — pre-filled by AI, editable by adjuster.
+
+**FNOL EXTRACTION FIELDS**
+
+| Field | Type / Notes |
+|---|---|
+| Claim Number | Text, read-only after extraction |
+| Insured Name | Text, editable |
+| Property Address | Text, editable (street, city, state, zip) |
+| Date of Loss | Date picker, editable |
+| Peril Type | Dropdown: Hail, Wind, Water, Fire, Freeze, Multi-Peril |
+| Reported Damage | Multi-line text, editable (AI summary of damage description) |
+| Property Type | Dropdown: Single Family, Townhouse, Condo, Multi-Family |
+| Year Built | Number, editable |
+| Stories | Number, editable |
+| AI Confidence | Per-field confidence indicator (green/amber/red dot) |
+
+**POLICY EXTRACTION FIELDS**
+
+| Field | Type / Notes |
+|---|---|
+| Policy Number | Text, read-only |
+| Coverage A (Dwelling) | Currency, editable |
+| Coverage B (Other Structures) | Currency, editable |
+| Coverage C (Personal Property) | Currency, editable |
+| Coverage D (Loss of Use) | Currency, editable |
+| Deductible | Currency + type (flat / percentage / wind-hail specific) |
+| Loss Settlement | Dropdown: Replacement Cost, Actual Cash Value, Functional Replacement |
+| Construction Type | Dropdown: Frame, Masonry, Steel, etc. |
+| Roof Type Noted | Text, editable (composition shingle, tile, metal, etc.) |
+| Special Conditions | Multi-line text, editable |
+
+**ENDORSEMENT EXTRACTION**
+List of extracted endorsements, each as an expandable card showing: Endorsement ID (e.g., HO 88 02), Title, What It Modifies, Key Provisions. Add/Remove endorsement buttons if AI missed or hallucinated one.
+
+**FOOTER**
+"Confirm Extractions & Generate Briefing" button. All fields with low confidence are highlighted amber — adjuster should review these.
+
+---
+
+### Screen 4: Inspection Briefing
+
+**PURPOSE**
+The synthesized mission brief. Everything the adjuster needs to know before walking the property, derived from all three documents.
+
+**LAYOUT**
+Single scrollable screen with distinct sections. Clean card-based layout. This is the last screen before going on-site.
+
+**SECTIONS**
+
+| Section | Content |
+|---|---|
+| Property Profile | Address with map thumbnail, property type, year built, stories, construction, roof type, approximate sqft |
+| Coverage Snapshot | Visual bars showing Coverage A-F with dollar amounts. Deductible prominently displayed. Loss settlement method badge (RCV/ACV). |
+| Peril Analysis | Based on FNOL peril type: what to look for, typical damage patterns, inspection priorities. E.g., for Hail: roof test squares, gutter dents, soft metal damage, collateral marks. |
+| Endorsement Impacts | Each endorsement as a card with: ID, plain-language explanation of how it affects the claim. E.g., HO 88 02: Roof depreciation schedule applies — affects settlement on roofing line items. |
+| Inspection Checklist | Auto-generated checklist based on peril + property type. Checkboxes (checked by voice agent during inspection, not manually). Categories: Exterior, Roof, Interior, Systems. |
+| Duties After Loss | Key requirements from the policy that the adjuster should be aware of (protect property, provide records, submit proof of loss within X days). |
+
+**CTA**
+Large, prominent button at bottom: "START INSPECTION" (Primary Purple `#7763B7`, full-width). Tapping this transitions to Active Inspection (Screen 5) and activates the voice agent.
+
+---
+
+### Screen 5: Active Inspection (Primary Voice Interface)
+
+**PURPOSE**
+This is the main event — the voice-driven inspection HUD. The adjuster talks, the agent processes, the screen confirms. Designed for glanceable use while hands are busy.
+
+**LAYOUT — LANDSCAPE MODE (1366 × 1024)**
+
+| Panel | Width | Content |
+|---|---|---|
+| Left Sidebar | ~25% | Phase progress bar (vertical, 8 phases), room/area list with status badges, quick actions |
+| Center Stage | ~50% | Voice interface: waveform, live transcription, agent responses, current context card |
+| Right Panel | ~25% | Running estimate tally, recent photos, live line items being added |
+
+**VOICE INTERFACE (CENTER STAGE)**
+
+| Element | Specification |
+|---|---|
+| Voice Status Indicator | Large animated element at top center. States: **Idle** (gray circle), **Listening** (Primary Purple `#7763B7` pulsing waveform), **Processing** (Gold `#C6A54E` spinning dots), **Speaking** (Primary Purple `#7763B7` animated bars). Must be visible from arm's length. |
+| Live Transcription | Real-time text as adjuster speaks. Fades from black (current) to gray (previous). Scrolls up as new text arrives. Monospace font (Space Mono) for measurements/numbers. |
+| Agent Response | Below transcription. Purple-tinted bubble (`#EDEAFF` bg) showing what the agent understood and did. E.g., "Created master bedroom (14×16). Added ceiling damage zone — water staining, 4ft extent from NE corner. 3 moisture readings recorded." |
+| Current Context Card | Persistent card below agent response: Current location (e.g., Interior > Master Bedroom), current phase (e.g., Phase 4: Interior Inspection), damage count for this area. Gold `#C6A54E` left border accent. |
+| Quick Action Bar | Bottom of center panel: Camera button, Pause button, Flag Concern button, Skip to Next Room button. Large touch targets (56px min). |
+
+**LEFT SIDEBAR**
+
+| Element | Specification |
+|---|---|
+| Phase Progress | Vertical stepper showing 8 inspection phases. Current phase highlighted Primary Purple `#7763B7`, completed phases show green check, upcoming phases gray. Phases: 1. Pre-Inspection, 2. Session Setup, 3. Exterior, 4. Interior, 5. Water/Moisture, 6. Evidence, 7. Estimate, 8. Finalize |
+| Area List | Below phase stepper: list of rooms/areas. Each shows name, status badge (not started / in progress / complete), damage count, photo count. Tap to review that area's documentation. Current area highlighted with Primary Purple left border. |
+| Structure Toggle | If multi-structure claim: toggle between Main Dwelling, Detached Garage, etc. |
+
+**RIGHT PANEL**
+
+| Element | Specification |
+|---|---|
+| Running Total | Large number at top: current RCV estimate total. Below: ACV after depreciation. Below: deductible. Below: net claim amount. Updates in real-time as line items are added. |
+| Recent Line Items | Last 5 line items added, showing Xact code + description + amount. New items animate in with a subtle slide-down. |
+| Recent Photos | Thumbnail strip of last 4 photos taken. Tap to expand. Each shows auto-generated tag (e.g., RF-TSQ-01, INTW-CEIL-03). |
+| Collapse Toggle | Right panel can collapse to give more space to center stage if adjuster wants less distraction. |
+
+---
+
+### Screen 5a: Camera Capture (Overlay)
+
+**PURPOSE**
+Photo capture triggered by voice ("take a photo") or by tapping the camera button. Appears as an overlay on the active inspection, not a separate screen.
+
+**LAYOUT**
+
+| Element | Specification |
+|---|---|
+| Camera Viewfinder | Full-width center area. Live camera feed. |
+| Auto-Tag Banner | Top overlay showing auto-generated tag based on current context: "RF-TSQ-03 — Roof Test Square #3, North Slope". Editable if adjuster taps it. |
+| Capture Button | Large circle button bottom center (standard camera pattern). Also responds to voice: "capture". |
+| Photo Count | Badge showing "Photo 7 of this area" |
+| Quick Annotate | After capture: brief annotation mode — circle damage, add arrow, add measurement callout. Skip button to return to inspection immediately. |
+| Done / Return | "Back to Inspection" button. Voice: "done with photos" returns to active inspection. |
+
+---
+
+### Screen 5b: Moisture Map (Conditional Panel)
+
+**PURPOSE**
+Only appears for water damage claims. Displays moisture readings spatially, calculates drying equipment, and determines IICRC S500 water damage class/category.
+
+**LAYOUT**
+Slides in as a panel replacing the right sidebar, or as a dedicated sub-screen during Phase 5. Two sections: Moisture Grid and Drying Equipment.
+
+**MOISTURE GRID**
+
+| Element | Specification |
+|---|---|
+| Room Outline | Simple rectangle representing room shape with dimensions shown |
+| Reading Points | Plotted circles at measurement locations. Color-coded: Green (<14% = dry), Amber (14-17% = caution), Red (>17% = wet). Each shows the % reading value. |
+| Gradient Overlay | Optional heat-map style gradient showing moisture spread pattern |
+| Reading List | Below grid: table of all readings with location, value, material type, reference (dry standard for that material) |
+
+**DRYING EQUIPMENT CALCULATOR**
+
+| Element | Specification |
+|---|---|
+| Class/Category Display | IICRC classification: Water Category (1-3) and Damage Class (1-4) with plain-language explanation |
+| Equipment Recommendation | Calculated based on affected area + class: number of air movers, dehumidifiers, air scrubbers. Shows CFM calculations. |
+| Duration Estimate | Estimated drying days based on class/category and equipment |
+| Line Items Generated | Preview of equipment line items that will be added to estimate (rental days × daily rate) |
+
+---
+
+### Screen 6: Progress Map (Slide-Over)
+
+**PURPOSE**
+Visual overview of what has been inspected and what remains. Accessible during active inspection as a slide-over panel. The adjuster says "show me the progress map" or taps the map icon.
+
+**LAYOUT**
+
+| Element | Specification |
+|---|---|
+| Structure View | Visual representation of the property. Exterior shown as building outline. Interior shown as room grid/floorplan. |
+| Room Blocks | Each room as a card/block. Colors: Gray = not started, Primary Purple `#7763B7` = in progress, Green = complete, Gold `#C6A54E` = flagged for review. Shows: room name, damage count, photo count. |
+| Exterior Sections | Roof, Gutters, Siding (N/S/E/W), Foundation, Landscaping — each as a checkable section with status. |
+| Completeness Score | Top of panel: "72% Complete — 3 areas remaining" with progress bar. |
+| Tap to Navigate | Tapping a room block opens its documentation in the active inspection view. |
+
+---
+
+### Screen 7: Review & Finalize
+
+**PURPOSE**
+Post-inspection review. The adjuster reviews the complete estimate, photo documentation, and scope completeness before exporting.
+
+**LAYOUT**
+Tab interface: Estimate | Photos | Completeness | Notes. Each tab is a full-screen scrollable view.
+
+**ESTIMATE TAB**
+
+| Element | Specification |
+|---|---|
+| Hierarchy View | Collapsible tree: Coverage → Structure → Area → Zone → Line Items. Each level shows subtotal. |
+| Line Item Row | Xact code ∣ Description ∣ Quantity ∣ Unit ∣ Unit Price ∣ Total ∣ Depreciation. Tap to expand provenance (how this line item was generated — voice, damage observation, template). |
+| Summary Card | Sticky at bottom: RCV Total, Depreciation, ACV Total, Deductible, Net Claim. Policy limit comparison (bar chart: claim vs Coverage A). |
+| Edit Capability | Adjuster can tap any line item to adjust quantity, add notes, or flag for review. |
+
+**PHOTOS TAB**
+
+| Element | Specification |
+|---|---|
+| Gallery Grid | Photos organized by area/room. Each photo shows: thumbnail, auto-tag, timestamp, linked damage observation. |
+| Filter Bar | Filter by room, damage type, photo type (overview, detail, test square, moisture). |
+| Photo Detail | Tap to expand: full image, annotations, linked line items, voice note transcript if attached. |
+| Missing Photo Alert | If any required photo type is missing (e.g., property overview, 4-corner photos), show amber alert card. |
+
+**COMPLETENESS TAB**
+
+| Element | Specification |
+|---|---|
+| Checklist | Auto-generated based on peril type. Each item: checked/unchecked, linked to the evidence that satisfies it. E.g., "Roof test squares documented" → links to 3 roof test square photos. |
+| Missing Items | Red section: items required but not documented. Adjuster can tap to jump back into inspection for that specific item. |
+| Scope Gaps | AI-detected gaps: "Interior ceiling documented but no corresponding line item for drywall repair". Adjuster can accept suggestion or dismiss. |
+
+---
+
+### Screen 8: Export
+
+**PURPOSE**
+Generate deliverables: ESX file for Xactimate import, PDF inspection report, and submission for carrier review.
+
+**LAYOUT**
+
+| Element | Specification |
+|---|---|
+| Export Options | Three large cards: 1) ESX for Xactimate (primary), 2) PDF Inspection Report, 3) Submit for Review |
+| ESX Card | Shows: file name, estimated size, contents summary (X line items, Y photos, Z structures). "Generate ESX" button. After generation: download button + share options. |
+| PDF Card | Preview thumbnail of report. "Generate PDF" button. Report includes: property photos, damage documentation, estimate summary, moisture data if applicable. |
+| Submit Card | Send to carrier/supervisor for review. Status tracking: Draft → Submitted → Under Review → Approved/Revision Requested. |
+| Validation Gate | Before any export: system checks completeness. If critical items missing, shows warning modal with list. Adjuster can override or return to complete. |
+
+---
+
+## 4. Voice Interaction Patterns
+
+### 4.1 Voice-to-UI Mapping
+
+Every voice utterance triggers both an agent action and a UI response. The screen must confirm what the agent understood.
+
+| Adjuster Says | Agent Does | UI Shows |
+|---|---|---|
+| "Let's start with the roof" | Sets context to Exterior > Roof, activates Phase 3 | Phase stepper highlights Phase 3, context card shows "Exterior — Roof", checklist items for roof appear |
+| "Composition shingle, approximately 30 squares" | Records roof material and size | Agent response bubble confirms: "Roof: composition shingle, ~30 squares" |
+| "I count 12 hits in this test square" | Records test square data, assesses severity | Test square reading appears in sidebar, severity badge (moderate/severe) shown |
+| "Take a photo" | Opens camera with auto-tag RF-TSQ-01 | Camera overlay slides up, auto-tag banner shows "RF-TSQ-01 — Roof Test Square #1" |
+| "Moving inside to the master bedroom, 14 by 16" | Creates room, sets context to Interior | Phase shifts to Phase 4, room card appears in sidebar, context card updates |
+| "Water staining on ceiling, NE corner, about 4 feet" | Adds damage zone, generates line items | Damage marker added, line items slide into right panel estimate |
+| "Moisture reading 22 percent at the wall" | Records reading, plots on moisture grid | Moisture map updates if visible, reading appears in data list |
+| "Show me what we have so far" | Pauses inspection, opens Review | Transitions to Review & Finalize (Screen 7), with "Resume Inspection" button |
+| "We're done here" | Marks current room complete, prompts next | Room card turns green, agent asks "Shall we move to the next room?" |
+| "Generate the estimate" | Triggers Phase 7, assembles all line items | Transitions to estimate assembly view, shows progress as items are compiled |
+
+### 4.2 Error & Clarification States
+
+When the agent needs clarification or encounters an error, the UI must make this obvious:
+
+| State | UI Treatment |
+|---|---|
+| Agent didn't understand | Gold voice indicator + text: "I didn't catch that. Could you repeat?" Agent response bubble shows gold `#C6A54E` border. |
+| Agent needs clarification | Secondary Purple indicator + specific question in agent bubble: "Is that 22% moisture on drywall or wood framing?" Options shown as tappable chips with Primary Purple fill. |
+| Conflicting information | Amber card: "You mentioned 14×16 earlier but now said 14×14 — which is correct?" with two options. |
+| API/system error | Red toast: "Connection issue — your data is saved locally. Retrying…" Never blocks the inspection flow. |
+| Voice connection lost | Prominent red banner at top: "Voice disconnected — Reconnecting…" with manual reconnect button. |
+
+---
+
+## 5. State Management & Data Persistence
+
+Every piece of data captured during the inspection must be persisted in real-time. If the app crashes or connection drops, no data is lost.
+
+| State Category | What's Tracked |
+|---|---|
+| Claim Context | Claim ID, parsed FNOL data, policy extractions, endorsement data, briefing |
+| Inspection Session | Current phase, current location (structure/area/room), session start time, agent mode |
+| Rooms & Areas | Room definitions (name, dimensions), damage zones per room, status per room |
+| Damage Observations | Type, location, severity, measurements, linked photos, linked line items |
+| Photos | Image data, auto-tags, annotations, linked damage observations, timestamps |
+| Moisture Readings | Location, value, material type, timestamp, linked room |
+| Line Items | Xact code, description, quantity, unit, pricing, depreciation, provenance source |
+| Voice Transcript | Full session transcript with timestamps (for audit trail) |
+| Estimate Totals | Running RCV, ACV, depreciation, deductible application, net claim |
+
+---
+
+## 6. Figma Implementation Guide
+
+### 6.1 Frame Setup
+
+| Setting | Value |
+|---|---|
+| Frame Size (Portrait) | 1024 × 1366 (iPad Pro 11″) |
+| Frame Size (Landscape) | 1366 × 1024 (iPad Pro 11″) |
+| Primary Mode | Landscape for Active Inspection; Portrait for Document Upload, Briefing, Review |
+| Grid | 8px base grid, 16px spacing unit |
+| Margins | 24px edge margins, 16px card gutters |
+| Corner Radius | 8px (`--radius: 0.5rem`) for cards, 6px (`--radius-sm`) for inputs, 10px (`--radius-lg`) for modals, 24px for badges/pills |
+
+### 6.2 Figma Page Structure
+
+| Page | Contents |
+|---|---|
+| 🎨 Design System | Color tokens, typography scale, spacing scale, icon set, all component variants |
+| 📱 1 — Claims List | Claims list with sample data (5-6 claims in various states) |
+| 📄 2 — Document Upload | All four card states (empty, uploading, processing, parsed) for each document type |
+| ✅ 3 — Extraction Review | Tabbed view with sample FNOL, Policy, and Endorsement data filled in |
+| 📋 4 — Inspection Briefing | Full briefing for a sample hail claim (Claim #1 — Penson, Sullivan IN) |
+| 🎙️ 5 — Active Inspection | Three-panel landscape layout with voice interface in all 4 states |
+| 📷 5a — Camera Capture | Camera overlay with auto-tag and annotation tools |
+| 💧 5b — Moisture Map | Moisture grid with sample readings + drying equipment calculator |
+| 🗺️ 6 — Progress Map | Property overview with rooms in various completion states |
+| 📊 7 — Review & Finalize | All three tabs (Estimate, Photos, Completeness) with sample data |
+| 📤 8 — Export | Export cards with generated file previews |
+| 🔄 Transitions | Key transition animations: voice state changes, card state transitions, panel slides |
+
+### 6.3 Sample Data for Prototyping
+
+Use the Gold Standard Claim #1 (Penson) data for all prototype screens:
+
+| Data Point | Value |
+|---|---|
+| Claim Number | CLM-2024-00847 |
+| Insured | Robert & Sarah Penson |
+| Property | 1847 Maple Ridge Drive, Sullivan, IN 47882 |
+| Date of Loss | March 14, 2024 |
+| Peril | Hail |
+| Policy | HO 80 03, Coverage A: $285,000, Deductible: $2,500 |
+| Key Endorsements | HO 88 02 (Roof Schedule), HO 86 05 (Ordinance/Law) |
+| Roof | Composition shingle, ~28 squares, 12 years old |
+| Damage | 15 hits/test square (north slope), 8 hits/test square (south slope), gutter dents, soft metal damage on HVAC, window screen tears |
+| Rooms with Interior Damage | Master bedroom (ceiling stain from roof leak), Hallway (same source) |
+| Estimate Range | ~$18,000-22,000 RCV before depreciation |
+
+---
+
+## Design Principles — Keep These Visible
+
+1. **Voice is primary, screen confirms.** The adjuster should never need to stop inspecting to interact with the screen.
+
+2. **Glanceable at arm's length.** Font sizes, color contrast, and indicator sizes must work when the iPad is on a surface or held in one hand.
+
+3. **Progressive disclosure.** Don't show moisture tools on a hail claim. Don't show the full estimate during exterior walkthrough. Show what's relevant to the current phase.
+
+4. **Never block the inspection.** Errors, loading states, and confirmations should be non-modal. The adjuster's voice flow should never be interrupted by a dialog box.
+
+5. **Every action is reversible.** The adjuster can say "undo that" or "that's wrong, it's actually 14 by 18" and the system corrects gracefully.
+
+6. **Real-time persistence.** If the app crashes, nothing is lost. Every utterance, every photo, every line item is saved the moment it's created.
