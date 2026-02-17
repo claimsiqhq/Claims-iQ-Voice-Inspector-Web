@@ -2210,8 +2210,16 @@ Respond in JSON format:
         return ROOFING_CATEGORIES.some(r => lower.includes(r));
       };
 
-      const roomSections = rooms.map(room => {
-        const d = room.dimensions as any;
+      const assignedRoomIds = new Set(rooms.map(r => r.id));
+      const unassignedItems = items.filter(i => !i.roomId || !assignedRoomIds.has(i.roomId));
+
+      const allRoomEntries = [
+        ...rooms.map(room => ({ room, items: items.filter(i => i.roomId === room.id) })),
+        ...(unassignedItems.length > 0 ? [{ room: null as any, items: unassignedItems }] : []),
+      ];
+
+      const roomSections = allRoomEntries.map(({ room, items: roomItems }) => {
+        const d = room?.dimensions as any;
         const length = d?.length || 0;
         const width = d?.width || 0;
         const height = d?.height || 8;
@@ -2220,7 +2228,7 @@ Respond in JSON format:
         const wallArea = perimeter * height;
         const ceilingArea = floorArea;
 
-        const measurements = floorArea > 0 ? {
+        const measurements = (room && floorArea > 0) ? {
           sfWalls: parseFloat(wallArea.toFixed(2)),
           sfCeiling: parseFloat(ceilingArea.toFixed(2)),
           sfWallsAndCeiling: parseFloat((wallArea + ceilingArea).toFixed(2)),
@@ -2229,8 +2237,6 @@ Respond in JSON format:
           lfFloorPerimeter: parseFloat(perimeter.toFixed(2)),
           lfCeilPerimeter: parseFloat(perimeter.toFixed(2)),
         } : null;
-
-        const roomItems = items.filter(i => i.roomId === room.id);
 
         const enrichedItems = roomItems.map((item, idx) => {
           const rcv = Number(item.totalPrice) || 0;
@@ -2305,10 +2311,10 @@ Respond in JSON format:
           .reduce((s, i) => s + i.depreciationAmount, 0);
 
         return {
-          id: room.id,
-          name: room.name,
-          roomType: room.roomType,
-          structure: room.structure || "Main Dwelling",
+          id: room?.id || -1,
+          name: room?.name || "Unassigned",
+          roomType: room?.roomType || null,
+          structure: room?.structure || "Main Dwelling",
           dimensions: { length, width, height },
           measurements,
           items: enrichedItems,
@@ -2318,9 +2324,9 @@ Respond in JSON format:
           totalRecoverableDepreciation: parseFloat(roomTotalRecoverableDep.toFixed(2)),
           totalNonRecoverableDepreciation: parseFloat(roomTotalNonRecoverableDep.toFixed(2)),
           totalACV: parseFloat((roomTotal - roomTotalDep).toFixed(2)),
-          status: room.status,
-          damageCount: room.damageCount || 0,
-          photoCount: room.photoCount || 0,
+          status: room?.status || null,
+          damageCount: room?.damageCount || 0,
+          photoCount: room?.photoCount || 0,
         };
       });
 
