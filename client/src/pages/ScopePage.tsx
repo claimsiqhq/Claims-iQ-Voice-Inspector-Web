@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
-  ChevronLeft, ChevronRight, DollarSign,
+  ChevronLeft, ChevronRight, ChevronDown, DollarSign,
   Edit3, Trash2, AlertTriangle, Zap, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,16 @@ export default function ScopePage({ params }: { params: { id: string } }) {
   const [editingItem, setEditingItem] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0, age: null as number | null, lifeExpectancy: null as number | null });
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [collapsedRooms, setCollapsedRooms] = useState<Set<number>>(new Set());
+
+  const toggleRoom = (roomId: number) => {
+    setCollapsedRooms(prev => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
+  };
 
   const { data: estimateByRoomData } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/estimate-by-room`],
@@ -139,18 +149,31 @@ export default function ScopePage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {roomSections.filter((r: any) => r.items.length > 0).map((room: any) => (
+            {roomSections.filter((r: any) => r.items.length > 0).map((room: any) => {
+              const isCollapsed = collapsedRooms.has(room.id);
+              return (
               <div key={room.id} className="border border-border rounded-lg overflow-hidden" data-testid={`scope-room-${room.id}`}>
-                <div className="bg-[#342A4F] px-4 py-2.5 flex items-center justify-between">
-                  <h3 className="text-sm font-display font-bold text-white">{room.name}</h3>
-                  {room.measurements && (
-                    <span className="text-[10px] text-white/50 font-mono hidden md:block">
-                      {room.dimensions.length}' x {room.dimensions.width}' x {room.dimensions.height}'
-                    </span>
-                  )}
-                </div>
+                <button
+                  onClick={() => toggleRoom(room.id)}
+                  className="w-full bg-[#342A4F] px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-[#3d3260] transition-colors"
+                  data-testid={`button-toggle-room-${room.id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronDown size={16} className={cn("text-white/60 transition-transform", isCollapsed && "-rotate-90")} />
+                    <h3 className="text-sm font-display font-bold text-white">{room.name}</h3>
+                    <span className="text-[10px] text-white/40 font-mono">{room.items.length} items</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {room.measurements && (
+                      <span className="text-[10px] text-white/50 font-mono hidden md:block">
+                        {room.dimensions.length}' x {room.dimensions.width}' x {room.dimensions.height}'
+                      </span>
+                    )}
+                    <span className="text-xs text-[#C6A54E] font-mono font-semibold">${fmt(room.subtotal)}</span>
+                  </div>
+                </button>
 
-                {room.measurements && (
+                {!isCollapsed && room.measurements && (
                   <div className="bg-[#342A4F]/5 border-b border-border px-4 py-1.5 text-[10px] text-muted-foreground font-mono flex flex-wrap gap-x-4 gap-y-0.5">
                     <span>{room.measurements.sfWalls?.toFixed(2)} SF Walls</span>
                     <span>{room.measurements.sfFloor?.toFixed(2)} SF Floor</span>
@@ -159,6 +182,7 @@ export default function ScopePage({ params }: { params: { id: string } }) {
                   </div>
                 )}
 
+                {!isCollapsed && (<>
                 <div className="hidden md:grid grid-cols-[auto_1fr_60px_40px_70px_60px_80px_80px_80px_32px] gap-0 bg-muted/60 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                   <div className="px-3 py-2 w-8 text-center">#</div>
                   <div className="px-2 py-2">Description</div>
@@ -326,8 +350,9 @@ export default function ScopePage({ params }: { params: { id: string } }) {
                     )}
                   </div>
                 </div>
+                </>)}
               </div>
-            ))}
+            );})}
 
             {totalLineItems > 0 && (
               <div className="border border-[#C6A54E]/30 rounded-lg overflow-hidden bg-[#C6A54E]/5">
