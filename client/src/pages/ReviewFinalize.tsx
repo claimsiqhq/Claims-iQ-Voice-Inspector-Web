@@ -5,10 +5,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  ChevronLeft, ChevronDown, ChevronRight, DollarSign,
+  ChevronLeft, ChevronDown, ChevronRight,
   Camera, CheckCircle2, AlertTriangle, FileText,
-  Edit3, Trash2, ImageIcon, AlertCircle, X,
-  ChevronUp, MessageSquare, MapPin, Zap, Link2, Cloud,
+  ImageIcon, AlertCircle, X, Download, Loader2,
+  ChevronUp, MessageSquare, MapPin, Cloud,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -40,12 +40,6 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const hasCriticalError = claimError || sessionError;
   const refetchCritical = () => { refetchClaim(); refetchSession(); };
 
-  // Fetch data for all tabs
-  const { data: estimateData } = useQuery({
-    queryKey: [`/api/inspection/${sessionId}/estimate-grouped`],
-    enabled: !!sessionId,
-  });
-
   const { data: photosData } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/photos-grouped`],
     enabled: !!sessionId,
@@ -76,7 +70,6 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
     enabled: !!sessionId,
   });
 
-  const estimate = estimateData as any;
   const photos = photosData as any;
   const completeness = completenessData as any;
   const transcriptEntries = (transcriptData || []) as any[];
@@ -104,27 +97,16 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             <ChevronLeft size={20} />
           </button>
           <div className="min-w-0">
-            <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review & Finalize</h1>
+            <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review</h1>
             <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}</p>
           </div>
         </div>
-        <Button
-          size="sm"
-          className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
-          onClick={() => setLocation(`/inspection/${claimId}/export`)}
-        >
-          Export
-          <ChevronRight size={14} className="ml-1" />
-        </Button>
       </div>
 
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="estimate" className="h-full flex flex-col">
+        <Tabs defaultValue="photos" className="h-full flex flex-col">
           <TabsList className="w-full justify-start rounded-none border-b bg-white px-2 md:px-5 h-11 shrink-0 gap-0">
-            <TabsTrigger value="estimate" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
-              <DollarSign size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Estimate</span>
-            </TabsTrigger>
             <TabsTrigger value="photos" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
               <Camera size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Photos</span>
             </TabsTrigger>
@@ -140,14 +122,11 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             <TabsTrigger value="weather" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
               <Cloud size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Weather</span>
             </TabsTrigger>
+            <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <FileText size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Reports</span>
+            </TabsTrigger>
           </TabsList>
 
-          {/* ESTIMATE TAB */}
-          <TabsContent value="estimate" className="flex-1 overflow-y-auto mt-0 p-0">
-            <EstimateTab estimate={estimate} sessionId={sessionId} briefing={briefing} queryClient={queryClient} />
-          </TabsContent>
-
-          {/* PHOTOS TAB */}
           <TabsContent value="photos" className="flex-1 overflow-y-auto mt-0 p-0">
             <PhotosTab photos={photos} completeness={completeness} sessionId={sessionId} claimId={claimId} />
           </TabsContent>
