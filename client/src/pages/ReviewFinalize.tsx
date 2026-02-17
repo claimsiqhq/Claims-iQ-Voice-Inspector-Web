@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronDown, ChevronRight,
   Camera, CheckCircle2, AlertTriangle, FileText,
   ImageIcon, AlertCircle, X, Download, Loader2,
-  ChevronUp, MessageSquare, MapPin, Cloud,
+  ChevronUp, MessageSquare, MapPin, Cloud, DollarSign,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -103,8 +103,11 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="photos" className="h-full flex flex-col">
-          <TabsList className="w-full justify-start rounded-none border-b bg-white px-2 md:px-5 h-11 shrink-0 gap-0">
+        <Tabs defaultValue="scope" className="h-full flex flex-col">
+          <TabsList className="w-full justify-start rounded-none border-b bg-white px-2 md:px-5 h-11 shrink-0 gap-0 overflow-x-auto">
+            <TabsTrigger value="scope" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <DollarSign size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Scope</span>
+            </TabsTrigger>
             <TabsTrigger value="photos" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
               <Camera size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Photos</span>
             </TabsTrigger>
@@ -124,6 +127,16 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
               <FileText size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Reports</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="scope" className="flex-1 overflow-y-auto mt-0 p-0">
+            <div className="p-4">
+              <XactimateEstimateView
+                data={estimateByRoom}
+                claim={claim}
+                sessionId={sessionId}
+              />
+            </div>
+          </TabsContent>
 
           <TabsContent value="photos" className="flex-1 overflow-y-auto mt-0 p-0">
             <PhotosTab photos={photos} completeness={completeness} sessionId={sessionId} claimId={claimId} />
