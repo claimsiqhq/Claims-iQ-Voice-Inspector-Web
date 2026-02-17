@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, FileText, Mic, ClipboardCheck, Camera, PenTool, List } from "lucide-react";
+import { Home, List, Mic, ClipboardCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,16 +27,10 @@ function getNavItems(): NavItem[] {
       matchPaths: ["/"],
     },
     {
-      icon: FileText,
-      label: "Docs",
-      getPath: () => "/documents",
-      matchPaths: ["/documents", "/upload", "/review"],
-    },
-    {
       icon: List,
       label: "Scope",
-      getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
-      matchPaths: ["/inspection/*/review"],
+      getPath: (c) => c ? `/inspection/${c.id}/scope` : "/",
+      matchPaths: ["/inspection/*/scope"],
     },
     {
       icon: Mic,
@@ -53,24 +47,20 @@ function getNavItems(): NavItem[] {
     },
     {
       icon: ClipboardCheck,
-      label: "Reports",
-      getPath: (c) => c ? `/inspection/${c.id}/export` : "/",
-      matchPaths: ["/inspection/*/export"],
+      label: "Review",
+      getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
+      matchPaths: ["/inspection/*/review", "/inspection/*/export"],
     },
     {
-      icon: Camera,
-      label: "Photos",
-      getPath: () => "/photo-lab",
-      matchPaths: ["/photo-lab", "/gallery/photos"],
-    },
-    {
-      icon: PenTool,
-      label: "Sketches",
-      getPath: () => "/gallery/sketches",
-      matchPaths: ["/gallery/sketches"],
+      icon: Settings,
+      label: "Settings",
+      getPath: () => "/settings",
+      matchPaths: ["/settings", "/profile"],
     },
   ];
 }
+
+const INSPECTION_SUB_PATHS = ["/scope", "/review", "/export", "/supplemental"];
 
 function isActive(location: string, matchPaths: string[]): boolean {
   if (matchPaths.includes("/") && location === "/") return true;
@@ -81,12 +71,15 @@ function isActive(location: string, matchPaths: string[]): boolean {
         const regex = new RegExp("^" + p.replace(/\*/g, "[^/]+") + "$");
         return regex.test(location);
       }
+      if (p === "/inspection" && INSPECTION_SUB_PATHS.some((sp) => location.includes(sp))) {
+        return false;
+      }
       return location.startsWith(p);
     });
 }
 
 function extractClaimIdFromPath(path: string): number | null {
-  const match = path.match(/\/(upload|review|briefing|inspection|export)\/(\d+)/);
+  const match = path.match(/\/(upload|review|briefing|inspection|export|scope)\/(\d+)/);
   return match ? parseInt(match[2]) : null;
 }
 
@@ -110,7 +103,7 @@ export default function BottomNav() {
 
   const hideOnPaths = ["/inspection/"];
   const shouldHide = hideOnPaths.some(
-    (p) => location.startsWith(p) && !location.includes("/review") && !location.includes("/export")
+    (p) => location.startsWith(p) && !location.includes("/review") && !location.includes("/export") && !location.includes("/scope")
   );
   if (shouldHide) return null;
 

@@ -29,6 +29,7 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const PhotoGallery = lazy(() => import("@/pages/PhotoGallery"));
 const SketchGallery = lazy(() => import("@/pages/SketchGallery"));
 const PhotoLab = lazy(() => import("@/pages/PhotoLab"));
+const ScopePage = lazy(() => import("@/pages/ScopePage"));
 
 import OnboardingWizard, { isOnboardingCompleted } from "@/components/OnboardingWizard";
 
@@ -99,6 +100,7 @@ function RouterContent() {
         <Route path="/upload/:id" component={DocumentUpload} />
         <Route path="/review/:id" component={ExtractionReview} />
         <Route path="/briefing/:id" component={InspectionBriefing} />
+        <Route path="/inspection/:id/scope" component={ScopePage} />
         <Route path="/inspection/:id/review" component={ReviewFinalize} />
         <Route path="/inspection/:id/export" component={ExportPageWithBoundary} />
         <Route path="/inspection/:id/supplemental" component={SupplementalPage} />
