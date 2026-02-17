@@ -2544,6 +2544,124 @@ Respond in JSON format:
         items: catItems,
       }));
 
+      // Build room-grouped estimate with depreciation (same logic as estimate-by-room endpoint)
+      let propertyAge: number | null = null;
+      let applyRoofSchedule = false;
+      let roofScheduleAge: number | null = null;
+      let roofDepPct: number | null = null;
+      let briefingData: any = null;
+
+      if (session.claimId) {
+        const briefing = await storage.getBriefing(session.claimId);
+        briefingData = briefing;
+        const pp = briefing?.propertyProfile as any;
+        if (pp?.yearBuilt) {
+          propertyAge = new Date().getFullYear() - pp.yearBuilt;
+        }
+        const rules = await storage.getPolicyRulesForClaim(session.claimId);
+        for (const rule of rules) {
+          if (rule.applyRoofSchedule) {
+            applyRoofSchedule = true;
+            roofScheduleAge = rule.roofScheduleAge != null ? Number(rule.roofScheduleAge) : null;
+          }
+        }
+        if (applyRoofSchedule && roofScheduleAge != null && propertyAge != null && propertyAge >= roofScheduleAge) {
+          roofDepPct = 75;
+        }
+      }
+
+      const ROOFING_CATS_PDF = ["roofing", "roof"];
+      const isRoofCatPdf = (cat: string) => {
+        const lower = (cat || "").toLowerCase();
+        return ROOFING_CATS_PDF.some(r => lower.includes(r));
+      };
+
+      const assignedRoomIdsPdf = new Set(rooms.map(r => r.id));
+      const unassignedItemsPdf = items.filter(i => !i.roomId || !assignedRoomIdsPdf.has(i.roomId));
+      const allRoomEntriesPdf = [
+        ...rooms.map(room => ({ room, items: items.filter(i => i.roomId === room.id) })),
+        ...(unassignedItemsPdf.length > 0 ? [{ room: null as any, items: unassignedItemsPdf }] : []),
+      ];
+
+      let globalLineNum = 0;
+      const roomSectionsPdf = allRoomEntriesPdf.map(({ room, items: roomItems }) => {
+        const enrichedItems = roomItems.map((item) => {
+          globalLineNum++;
+          const rcv = Number(item.totalPrice) || 0;
+          const tax = Number(item.taxAmount) || 0;
+          const category = item.category || "";
+          const description = item.description || "";
+          const isRoofing = isRoofCatPdf(category);
+          const catLower = category.toLowerCase();
+          const isLabor = catLower === "dem" || catLower === "mit" || catLower === "gen";
+          const actionLower = (item.action || "").toLowerCase();
+          const descLower = description.toLowerCase();
+          const isRemovalItem = actionLower === "remove" || actionLower === "tear out" || actionLower === "demolition" || actionLower === "d&r"
+            || descLower.startsWith("remove ") || descLower.startsWith("tear off ") || descLower.startsWith("tear out ")
+            || descLower.includes("extraction") || descLower.includes("monitoring");
+
+          let itemAge = item.age != null ? Number(item.age) : null;
+          if (itemAge == null && propertyAge != null && !isLabor && !isRemovalItem) {
+            itemAge = propertyAge;
+          }
+          let itemLife = item.lifeExpectancy != null ? Number(item.lifeExpectancy) : null;
+          if ((itemLife == null || itemLife === 0) && !isLabor && !isRemovalItem) {
+            const lookedUp = lookupLifeExpectancy(category, description);
+            if (lookedUp > 0) itemLife = lookedUp;
+          }
+          let depPctOverride = Number(item.depreciationPercentage) || null;
+          if ((depPctOverride == null || depPctOverride === 0) && isRoofing && roofDepPct != null) {
+            depPctOverride = roofDepPct;
+          }
+          let baseDepType = item.depreciationType || "Recoverable";
+          const depResult = calculateItemDepreciation(rcv, itemAge, itemLife, depPctOverride, baseDepType, applyRoofSchedule, isRoofing);
+
+          return {
+            lineNumber: globalLineNum,
+            description,
+            category,
+            quantity: Number(item.quantity) || 0,
+            unit: item.unit,
+            unitPrice: Number(item.unitPrice) || 0,
+            totalPrice: rcv,
+            taxAmount: tax,
+            depreciationAmount: depResult.depreciationAmount,
+            depreciationType: depResult.effectiveDepType,
+            depreciationPercentage: depResult.depreciationPercentage,
+            acv: depResult.acv,
+            age: itemAge,
+            lifeExpectancy: itemLife,
+            action: item.action,
+            provenance: item.provenance,
+          };
+        });
+
+        const roomTotal = enrichedItems.reduce((s, i) => s + i.totalPrice, 0);
+        const roomTotalDep = enrichedItems.reduce((s, i) => s + i.depreciationAmount, 0);
+        const roomTotalRecDep = enrichedItems.filter(i => i.depreciationType === "Recoverable").reduce((s, i) => s + i.depreciationAmount, 0);
+        const roomTotalNonRecDep = enrichedItems.filter(i => i.depreciationType === "Non-Recoverable").reduce((s, i) => s + i.depreciationAmount, 0);
+
+        return {
+          id: room?.id || -1,
+          name: room?.name || "Unassigned",
+          structure: room?.structure || "Main Dwelling",
+          items: enrichedItems,
+          subtotal: parseFloat(roomTotal.toFixed(2)),
+          totalTax: parseFloat(enrichedItems.reduce((s, i) => s + i.taxAmount, 0).toFixed(2)),
+          totalDepreciation: parseFloat(roomTotalDep.toFixed(2)),
+          totalRecoverableDepreciation: parseFloat(roomTotalRecDep.toFixed(2)),
+          totalNonRecoverableDepreciation: parseFloat(roomTotalNonRecDep.toFixed(2)),
+          totalACV: parseFloat((roomTotal - roomTotalDep).toFixed(2)),
+        };
+      });
+
+      const grandTotalPdf = roomSectionsPdf.reduce((s, r) => s + r.subtotal, 0);
+      const grandTaxPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalTax || 0), 0);
+      const grandDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalDepreciation || 0), 0);
+      const grandRecDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalRecoverableDepreciation || 0), 0);
+      const grandNonRecDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalNonRecoverableDepreciation || 0), 0);
+      const grandACVPdf = grandTotalPdf - grandDepPdf;
+
       // Build the data object for PDF generation
       const pdfData = {
         claim: claim || null,
@@ -2567,6 +2685,20 @@ Respond in JSON format:
           itemCount: items.length,
           categories,
         },
+        roomEstimate: {
+          rooms: roomSectionsPdf,
+          grandTotal: parseFloat(grandTotalPdf.toFixed(2)),
+          grandTax: parseFloat(grandTaxPdf.toFixed(2)),
+          grandDepreciation: parseFloat(grandDepPdf.toFixed(2)),
+          grandRecoverableDepreciation: parseFloat(grandRecDepPdf.toFixed(2)),
+          grandNonRecoverableDepreciation: parseFloat(grandNonRecDepPdf.toFixed(2)),
+          grandACV: parseFloat(grandACVPdf.toFixed(2)),
+          totalLineItems: items.length,
+        },
+        briefing: briefingData ? {
+          coverageSnapshot: (briefingData.coverageSnapshot as any) || {},
+          propertyProfile: (briefingData.propertyProfile as any) || {},
+        } : undefined,
         inspectorName: (await storage.getUser(req.user!.id))?.fullName || 'Claims IQ Agent',
         transcript,
         companyName: exportPrefs.companyName || 'Claims IQ',
