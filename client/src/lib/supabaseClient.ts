@@ -31,13 +31,6 @@ function createSupabaseClient(url: string, anonKey: string): SupabaseClient {
   });
 }
 
-const buildTimeUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const buildTimeKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-if (buildTimeUrl && buildTimeKey) {
-  supabase = createSupabaseClient(buildTimeUrl, buildTimeKey);
-}
-
 async function initSupabase(): Promise<SupabaseClient | null> {
   if (supabase) return supabase;
 
