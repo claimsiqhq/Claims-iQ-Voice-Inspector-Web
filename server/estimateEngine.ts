@@ -1,4 +1,3 @@
-import { db } from "./db";
 import { scopeLineItems, regionalPriceSets } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -839,10 +838,23 @@ export function calculateEstimateTotalsV2(
   };
 }
 
+async function getDbOrNull() {
+  // Lazy import so pure calculations can be tested without DB env vars.
+  // If DB env vars are missing, callers should treat pricing as unavailable.
+  try {
+    const { db } = await import("./db");
+    return db;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Looks up a catalog item by code
  */
 export async function lookupCatalogItem(code: string) {
+  const db = await getDbOrNull();
+  if (!db) return null;
   const items = await db
     .select()
     .from(scopeLineItems)
@@ -855,6 +867,8 @@ export async function lookupCatalogItem(code: string) {
  * Gets the regional price for a line item in a specific region
  */
 export async function getRegionalPrice(code: string, regionId: string, activityType?: string) {
+  const db = await getDbOrNull();
+  if (!db) return null;
   const rows = await db
     .select()
     .from(regionalPriceSets)
