@@ -12,9 +12,10 @@ describe("fetchWithTimeout", () => {
     );
 
     const promise = fetchWithTimeout("https://example.com/test", {}, 100);
+    const assertion = expect(promise).rejects.toBeInstanceOf(TimeoutError);
 
     await vi.advanceTimersByTimeAsync(100);
-    await expect(promise).rejects.toBeInstanceOf(TimeoutError);
+    await assertion;
 
     vi.useRealTimers();
     vi.unstubAllGlobals();

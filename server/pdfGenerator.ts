@@ -235,6 +235,11 @@ export async function generateInspectionPDF(data: PDFReportData): Promise<Buffer
       renderTranscript(doc, data.transcript);
     }
 
+    if (data.photos && data.photos.length > 0) {
+      newPage(doc);
+      renderPhotoAppendix(doc, data.photos);
+    }
+
     doc.end();
   });
 }
@@ -811,5 +816,55 @@ function renderTranscript(doc: Doc, transcript: any[]) {
     doc.font(FONTS.bold, 8).fill(COLORS.darkGray).text(speaker, MARGIN, y, { continued: true });
     doc.font(FONTS.normal, 8).fill(COLORS.black).text(`: ${entry.content}`);
     y += 12;
+  }
+}
+
+function renderPhotoAppendix(doc: Doc, photos: InspectionPhoto[]) {
+  let y = MARGIN;
+  doc.font(FONTS.bold, 14).fill(COLORS.black).text("PHOTO APPENDIX", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  y += 20;
+  drawHLine(doc, y);
+  y += 10;
+
+  doc.font(FONTS.normal, 8).fill(COLORS.medGray);
+  doc.text("Note: Photos are referenced by caption and storage path in this report.", MARGIN, y, { width: CONTENT_WIDTH });
+  y += 16;
+
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 16).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
+  doc.text("#", MARGIN + 5, y + 4, { width: 20 });
+  doc.text("Caption", MARGIN + 30, y + 4, { width: 220 });
+  doc.text("Type", MARGIN + 255, y + 4, { width: 90 });
+  doc.text("Storage Path", MARGIN + 350, y + 4, { width: CONTENT_WIDTH - 350 });
+  y += 18;
+
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    const caption = p.caption || `Photo ${i + 1}`;
+    const type = (p.photoType as any) || "photo";
+    const storagePath = p.storagePath || "";
+
+    y = checkPageBreak(doc, 34, y);
+    doc.font(FONTS.normal, 8).fill(COLORS.black);
+    doc.text(String(i + 1), MARGIN + 5, y, { width: 20 });
+    doc.text(caption, MARGIN + 30, y, { width: 220 });
+    doc.text(String(type), MARGIN + 255, y, { width: 90 });
+    doc.text(String(storagePath), MARGIN + 350, y, { width: CONTENT_WIDTH - 350 });
+
+    // Optional: include brief AI analysis description if present.
+    const analysisDesc = (p as any)?.analysis?.description;
+    if (analysisDesc && typeof analysisDesc === "string") {
+      const text = `AI: ${analysisDesc}`;
+      const h = doc.heightOfString(text, { width: CONTENT_WIDTH - 40 });
+      y += 12;
+      y = checkPageBreak(doc, h + 6, y);
+      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
+      doc.text(text, MARGIN + 30, y, { width: CONTENT_WIDTH - 40 });
+      y += Math.max(10, h);
+    } else {
+      y += 14;
+    }
+
+    drawHLine(doc, y - 2);
   }
 }
