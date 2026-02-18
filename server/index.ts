@@ -158,6 +158,16 @@ httpServer.listen({ port, host: "0.0.0.0" }, () => {
   console.log(`serving on port ${port}`);
 });
 
+// Graceful shutdown — allow in-flight requests to finish before exit
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down gracefully");
+  httpServer.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000);
+});
+
 // ── ASYNC INIT (runs after port is open) ─────────────────────────────
 (async () => {
   try {
