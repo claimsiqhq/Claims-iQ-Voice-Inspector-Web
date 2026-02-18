@@ -39,6 +39,7 @@ app.use(
                 "wss://*.openai.com",
               ],
               mediaSrc: ["'self'", "blob:"],
+              manifestSrc: ["'self'"],
             },
           }
         : false,
@@ -103,9 +104,14 @@ app.use(
   })
 );
 
-const openApiSpec = parse(readFileSync(path.resolve("docs/openapi.yaml"), "utf-8"));
-app.get("/docs", (_req, res) => res.redirect(301, "/api-docs/"));
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec, { customCss: ".swagger-ui .topbar { display: none }" }));
+try {
+  const openApiPath = path.resolve("docs/openapi.yaml");
+  if (require("fs").existsSync(openApiPath)) {
+    const openApiSpec = parse(readFileSync(openApiPath, "utf-8"));
+    app.get("/docs", (_req, res) => res.redirect(301, "/api-docs/"));
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec, { customCss: ".swagger-ui .topbar { display: none }" }));
+  }
+} catch {}
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
