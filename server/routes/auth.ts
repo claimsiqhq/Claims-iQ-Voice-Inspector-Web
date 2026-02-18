@@ -97,13 +97,16 @@ export function authRouter(): Router {
     try {
       const supabaseUser = req.supabaseUser;
       const { supabaseId, email, fullName } = req.body;
+      console.log(`[auth.sync] supabaseId=${supabaseId} email=${email} tokenUser=${supabaseUser?.id}`);
       if (!supabaseId || !email) {
         return res.status(400).json({ message: "supabaseId and email required" });
       }
       if (supabaseUser?.id !== supabaseId) {
+        console.log(`[auth.sync] token mismatch: tokenUser=${supabaseUser?.id} vs body=${supabaseId}`);
         return res.status(403).json({ message: "Token does not match provided supabaseId" });
       }
       const user = await storage.syncSupabaseUser(supabaseId, email, fullName || "");
+      console.log(`[auth.sync] success userId=${user.id}`);
       res.json({
         id: user.id,
         email: user.email,
@@ -113,6 +116,7 @@ export function authRouter(): Router {
         avatarUrl: user.avatarUrl,
       });
     } catch (error: unknown) {
+      console.error(`[auth.sync] ERROR:`, error);
       handleRouteError(res, error, "auth.sync");
     }
   });

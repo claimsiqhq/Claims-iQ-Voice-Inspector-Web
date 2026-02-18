@@ -97,6 +97,7 @@ export async function authenticateSupabaseToken(
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("[authenticateSupabaseToken] Missing auth header");
       res.status(401).json({ message: "Missing or invalid Authorization header" });
       return;
     }
@@ -105,6 +106,7 @@ export async function authenticateSupabaseToken(
 
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
+      console.log("[authenticateSupabaseToken] Token verification failed:", authError?.message || "no user");
       res.status(401).json({ message: "Invalid or expired token" });
       return;
     }
@@ -112,6 +114,7 @@ export async function authenticateSupabaseToken(
     req.supabaseUser = authData.user as unknown as { id: string; email?: string; [key: string]: unknown };
     next();
   } catch (error) {
+    console.error("[authenticateSupabaseToken] ERROR:", error);
     res.status(500).json({ message: "Authentication failed" });
   }
 }
