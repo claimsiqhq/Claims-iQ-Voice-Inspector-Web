@@ -144,8 +144,8 @@ app.use("/api/claims/:id/parse-batch", aiLimiter);
 app.use("/api/claims/:id/briefing", aiLimiter);
 app.use("/api/inspection/:sessionId/photos/:photoId/analyze", aiLimiter);
 
-export function log(message: string, source = "express") {
-  appLogger.info(source, message);
+export function log(message: string, _source = "express") {
+  console.log(message);
 }
 
 (async () => {
@@ -187,8 +187,7 @@ export function log(message: string, source = "express") {
       reusePort: true,
     },
     () => {
-      log(`serving on port ${port}`);
-      appLogger.info("SERVER", `Application started on port ${port}`);
+      console.log(`serving on port ${port}`);
     }
   );
 
