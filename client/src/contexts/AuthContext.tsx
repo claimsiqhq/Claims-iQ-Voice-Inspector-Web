@@ -2,9 +2,13 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { supabase as initialSupabase, getSupabaseAsync } from "@/lib/supabaseClient";
 import { getLocalToken, setLocalToken, clearLocalToken } from "@/lib/queryClient";
+import { fetchWithTimeout, readErrorMessage, TimeoutError } from "@/lib/fetchWithTimeout";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
 
 export interface AuthUser {
   id: string;
@@ -46,9 +50,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const localToken = getLocalToken();
       if (localToken) {
         try {
-          const res = await fetch("/api/auth/me", {
+          const res = await fetchWithTimeout(
+            "/api/auth/me",
+            {
             headers: { Authorization: `Bearer ${localToken}` },
-          });
+            },
+            AUTH_BOOTSTRAP_TIMEOUT_MS
+          );
           if (res.ok) {
             const profile = await res.json();
             if (!cancelled) setUser(profile);
@@ -159,9 +167,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const supabaseClient = client || sb;
       const authToken = token || getLocalToken() || (supabaseClient ? (await supabaseClient.auth.getSession()).data.session?.access_token : null);
       if (!authToken) return null;
-      const response = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await fetchWithTimeout(
+        "/api/auth/me",
+        { headers: { Authorization: `Bearer ${authToken}` } },
+        AUTH_REQUEST_TIMEOUT_MS
+      );
       if (!response.ok) return null;
       return response.json();
     } catch {
@@ -178,14 +188,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<AuthUser | null> {
     try {
       const token = accessToken || (client ? (await client.auth.getSession()).data.session?.access_token : null) || "";
-      const response = await fetch("/api/auth/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetchWithTimeout(
+        "/api/auth/sync",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ supabaseId, email, fullName }),
         },
-        body: JSON.stringify({ supabaseId, email, fullName }),
-      });
+        AUTH_REQUEST_TIMEOUT_MS
+      );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.message || "Failed to sync user");
@@ -209,24 +223,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.setItem("claimsiq_session_active", "true");
       }
 
-      const supabase = sb || await getSupabaseAsync();
-      if (!supabase) {
-        throw new Error("Authentication service is not configured.");
+      const identifier = emailOrUsername.trim();
+
+      // Prefer the backend local auth first (supports username OR email).
+      // This prevents sign-in hangs when Supabase Auth isn't configured client-side.
+      let localFailureMessage: string | null = null;
+      try {
+        const localRes = await fetchWithTimeout(
+          "/api/auth/login",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ emailOrUsername: identifier, password }),
+          },
+          AUTH_REQUEST_TIMEOUT_MS
+        );
+
+        if (localRes.ok) {
+          const { token, user: profile } = await localRes.json();
+          setLocalToken(token, rememberMe);
+          setUser(profile);
+          setLocation("/");
+          toast({ title: "Signed in successfully" });
+          return;
+        }
+
+        localFailureMessage = await readErrorMessage(localRes);
+
+        // If the backend explicitly blocks sign-in, don't attempt alternate providers.
+        if (localRes.status === 403 || localRes.status === 429) {
+          throw new Error(localFailureMessage);
+        }
+
+        // Fall through to Supabase (if configured) for email-based auth.
+      } catch (err: unknown) {
+        // If the local auth call timed out or failed, we can still try Supabase (if configured).
+        if (err instanceof TimeoutError) {
+          localFailureMessage = "Sign in timed out. Please check your connection and try again.";
+        } else {
+          localFailureMessage = err instanceof Error ? err.message : "Local sign in failed.";
+        }
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: emailOrUsername.trim(),
-        password,
-      });
+      // Username-based sign-in can only work via local auth.
+      if (!identifier.includes("@")) {
+        throw new Error(localFailureMessage || "Sign in failed");
+      }
+
+      const supabase = sb || await getSupabaseAsync();
+      if (!supabase) {
+        throw new Error(localFailureMessage || "Authentication service is not configured.");
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email: identifier, password });
       if (error) throw error;
       if (data.session && data.user) {
         const token = data.session.access_token;
         const profile =
           (await syncUserToBackendWithClient(supabase, data.user.id, data.user.email || "", "", token)) ||
           (await fetchUserProfileHelper(supabase, token));
-        if (!profile) {
-          throw new Error("Unable to load your profile. Please try again.");
-        }
+        if (!profile) throw new Error("Unable to load your profile. Please try again.");
         setUser(profile);
         setLocation("/");
         toast({ title: "Signed in successfully" });
@@ -241,24 +297,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("claimsiq_remember_me", "true");
       sessionStorage.removeItem("claimsiq_session_active");
 
-      const registerRes = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: username || email.split("@")[0],
-          email: email || undefined,
-          password,
-          fullName: fullName || undefined,
-        }),
-      });
+      let registerRes: Response | null = null;
+      try {
+        registerRes = await fetchWithTimeout(
+          "/api/auth/register",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: username || email.split("@")[0],
+              email: email || undefined,
+              password,
+              fullName: fullName || undefined,
+            }),
+          },
+          AUTH_REQUEST_TIMEOUT_MS
+        );
+      } catch (err: unknown) {
+        // We'll attempt Supabase fallback below if configured.
+        logger.warn("Auth", "Local register request failed", err);
+      }
 
-      if (registerRes.ok) {
+      if (registerRes?.ok) {
         const { token, user: profile } = await registerRes.json();
         setLocalToken(token, true);
         setUser(profile);
         setLocation("/");
         toast({ title: "Account created successfully" });
         return;
+      }
+
+      // If the backend validated and rejected the request (4xx), surface that error directly.
+      if (registerRes && registerRes.status >= 400 && registerRes.status < 500 && registerRes.status !== 404) {
+        throw new Error(await readErrorMessage(registerRes));
       }
 
       const supabase = sb || await getSupabaseAsync();
@@ -280,8 +351,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           toast({ title: "Check your email", description: "Please verify your email address to complete registration." });
         }
       } else {
-        const err = await registerRes.json().catch(() => ({}));
-        throw new Error(err.message || "Registration failed");
+        const message = registerRes ? await readErrorMessage(registerRes) : "Registration failed";
+        throw new Error(message);
       }
     } catch (error: unknown) {
       toast({ title: "Sign up failed", description: error instanceof Error ? error.message : "Sign up failed", variant: "destructive" });

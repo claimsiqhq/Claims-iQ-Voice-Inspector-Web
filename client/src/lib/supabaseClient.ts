@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 function claimsiqAuthStorage() {
   return {
@@ -25,8 +26,15 @@ function claimsiqAuthStorage() {
 let supabase: SupabaseClient | null = null;
 let supabaseInitPromise: Promise<SupabaseClient | null> | null = null;
 
+const CONFIG_FETCH_TIMEOUT_MS = 5000;
+const SUPABASE_HTTP_TIMEOUT_MS = 15000;
+
 function createSupabaseClient(url: string, anonKey: string): SupabaseClient {
   return createClient(url, anonKey, {
+    global: {
+      // Prevent auth calls from hanging forever when the Supabase URL is unreachable.
+      fetch: (input, init) => fetchWithTimeout(input, init, SUPABASE_HTTP_TIMEOUT_MS),
+    },
     auth: { storage: typeof window !== "undefined" ? claimsiqAuthStorage() : undefined },
   });
 }
@@ -35,7 +43,7 @@ async function initSupabase(): Promise<SupabaseClient | null> {
   if (supabase) return supabase;
 
   try {
-    const res = await fetch("/api/config");
+    const res = await fetchWithTimeout("/api/config", {}, CONFIG_FETCH_TIMEOUT_MS);
     if (!res.ok) throw new Error("Config fetch failed");
     const config = await res.json();
     if (config.supabaseUrl && config.supabaseAnonKey) {
