@@ -148,10 +148,21 @@ export function log(message: string, _source = "express") {
   console.log(message);
 }
 
+// Bind to the port IMMEDIATELY so the deployment health check passes.
+// All route registration and async init happens AFTER the port is open.
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen(
+  {
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  },
+  () => {
+    console.log(`serving on port ${port}`);
+  }
+);
+
 (async () => {
-  // Register routes and static serving FIRST so the server can bind to the
-  // port as fast as possible. Replit autoscale sends SIGTERM when the
-  // container doesn't become healthy within its startup-probe window.
   registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 
@@ -178,20 +189,7 @@ export function log(message: string, _source = "express") {
     await setupVite(httpServer, app);
   }
 
-  // Bind to the port IMMEDIATELY so the health check passes.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      console.log(`serving on port ${port}`);
-    }
-  );
-
-  // Run slow background initialization AFTER the server is listening.
+  // Run slow background initialization AFTER routes are registered.
   ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
   seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
 })();
