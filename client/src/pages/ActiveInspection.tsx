@@ -43,7 +43,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, resilientMutation } from "@/lib/queryClient";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
 
@@ -310,8 +310,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const getAuthHeaders = useCallback(async () => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     try {
-      if (!supabase) return headers;
-      const { data } = await supabase.auth.getSession();
+      const sb = await getSupabaseAsync();
+      if (!sb) return headers;
+      const { data } = await sb.auth.getSession();
       const token = data?.session?.access_token;
       if (token) headers["Authorization"] = `Bearer ${token}`;
     } catch (e) { logger.error("Voice", "Auth header error", e); }
@@ -332,8 +333,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
+      if (!res.ok) return;
       const data = await res.json();
-      setEstimateSummary(data);
+      setEstimateSummary({
+        totalRCV: data?.totalRCV ?? 0,
+        totalACV: data?.totalACV ?? 0,
+        itemCount: data?.itemCount ?? 0,
+      });
     } catch (e) { logger.error("Voice", "Refresh estimate error", e); }
   }, [sessionId, getAuthHeaders]);
 
