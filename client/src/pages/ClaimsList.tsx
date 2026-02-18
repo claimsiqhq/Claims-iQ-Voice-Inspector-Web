@@ -34,8 +34,12 @@ export default function ClaimsList() {
     queryKey: [role === "supervisor" ? "/api/claims" : `/api/claims/my-claims`],
   });
 
+  const [creating, setCreating] = useState(false);
+
   const createClaimMutation = useMutation({
     mutationFn: async () => {
+      if (creating) throw new Error("Already creating");
+      setCreating(true);
       const res = await apiRequest("POST", "/api/claims", {
         claimNumber: `CLM-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`,
         status: "draft",
@@ -46,6 +50,9 @@ export default function ClaimsList() {
       queryClient.invalidateQueries({ queryKey: ["/api/claims"] });
       queryClient.invalidateQueries({ queryKey: ["/api/claims/my-claims"] });
       setLocation(`/upload/${newClaim.id}`);
+    },
+    onSettled: () => {
+      setCreating(false);
     },
   });
 
@@ -76,7 +83,7 @@ export default function ClaimsList() {
             size="lg"
             className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
             onClick={() => createClaimMutation.mutate()}
-            disabled={createClaimMutation.isPending}
+            disabled={createClaimMutation.isPending || creating}
           >
             {createClaimMutation.isPending ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
