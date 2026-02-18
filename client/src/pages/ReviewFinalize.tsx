@@ -29,13 +29,25 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
 
   const claim = claimData as any;
 
-  const { data: sessionData, isError: sessionError, refetch: refetchSession } = useQuery({
+  const { data: sessionData, refetch: refetchSession } = useQuery({
     queryKey: [`/api/claims/${claimId}/inspection/active`],
     enabled: !!claimId,
+    retry: false,
+    queryFn: async () => {
+      const { getAuthHeaders } = await import("@/lib/queryClient");
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/claims/${claimId}/inspection/active`, {
+        credentials: "include",
+        headers,
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
   });
 
   const sessionId = (sessionData as any)?.sessionId;
-  const hasCriticalError = claimError || sessionError;
+  const hasCriticalError = claimError;
   const refetchCritical = () => { refetchClaim(); refetchSession(); };
 
   const { data: photosData } = useQuery({
