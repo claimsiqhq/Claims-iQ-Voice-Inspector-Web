@@ -149,9 +149,9 @@ export function log(message: string, source = "express") {
 }
 
 (async () => {
-  await ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
-  await seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
-  // seedCatalog removed — only real Xactimate data is used
+  // Register routes and static serving FIRST so the server can bind to the
+  // port as fast as possible. Replit autoscale sends SIGTERM when the
+  // container doesn't become healthy within its startup-probe window.
   registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 
@@ -171,9 +171,6 @@ export function log(message: string, source = "express") {
     return res.status(status).json({ message: clientMessage });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -181,10 +178,7 @@ export function log(message: string, source = "express") {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
+  // Bind to the port IMMEDIATELY so the health check passes.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
@@ -197,4 +191,8 @@ export function log(message: string, source = "express") {
       appLogger.info("SERVER", `Application started on port ${port}`);
     }
   );
+
+  // Run slow background initialization AFTER the server is listening.
+  ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
+  seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
 })();
