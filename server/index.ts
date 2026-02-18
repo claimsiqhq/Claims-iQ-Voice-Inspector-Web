@@ -27,29 +27,7 @@ app.get("/health", (_req, res) => {
 
 app.use(
   helmet({
-    contentSecurityPolicy:
-      process.env.NODE_ENV === "production"
-        ? {
-            directives: {
-              defaultSrc: ["'self'"],
-              scriptSrc: ["'self'"],
-              styleSrc: ["'self'", "'unsafe-inline'", "https:", "https://fonts.googleapis.com"],
-              styleSrcElem: ["'self'", "'unsafe-inline'", "https:", "https://fonts.googleapis.com"],
-              fontSrc: ["'self'", "https://fonts.gstatic.com"],
-              imgSrc: ["'self'", "data:", "blob:", "*.supabase.co"],
-              connectSrc: [
-                "'self'",
-                "*.supabase.co",
-                "api.openai.com",
-                "wss://*.openai.com",
-                "https://fonts.googleapis.com",
-                "https://fonts.gstatic.com",
-              ],
-              mediaSrc: ["'self'", "blob:"],
-              manifestSrc: ["'self'"],
-            },
-          }
-        : false,
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
   })
 );
