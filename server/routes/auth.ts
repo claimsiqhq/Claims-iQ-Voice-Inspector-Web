@@ -106,14 +106,18 @@ export function authRouter(): Router {
         return res.status(403).json({ message: "Token does not match provided supabaseId" });
       }
       const user = await storage.syncSupabaseUser(supabaseId, email, fullName || "");
+      const token = createLocalToken(user);
       console.log(`[auth.sync] success userId=${user.id}`);
       res.json({
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        title: user.title,
-        avatarUrl: user.avatarUrl,
+        token,
+        user: {
+          id: user.id,
+          email: user.email || "",
+          fullName: user.fullName,
+          role: user.role,
+          title: user.title,
+          avatarUrl: user.avatarUrl,
+        },
       });
     } catch (error: unknown) {
       console.error(`[auth.sync] ERROR:`, error);

@@ -114,7 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           session.user.id,
           session.user.email || "",
           "",
-          session.access_token
+          session.access_token,
+          rememberMe
         );
         if (!cancelled) {
           if (!profile) {
@@ -132,10 +133,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (event === "SIGNED_OUT") {
           setUser(null);
+          clearLocalToken();
           return;
         }
         if (session) {
-          await syncUserToBackendWithClient(supabase, session.user.id, session.user.email || "", "", session.access_token);
+          const rm = localStorage.getItem("claimsiq_remember_me") === "true";
+          await syncUserToBackendWithClient(supabase, session.user.id, session.user.email || "", "", session.access_token, rm);
         }
       });
 
@@ -162,6 +165,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timeout);
   }, []);
 
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+    };
+    window.addEventListener("auth:unauthorized", handler);
+    return () => window.removeEventListener("auth:unauthorized", handler);
+  }, []);
+
   async function fetchUserProfileHelper(client?: SupabaseClient | null, token?: string): Promise<AuthUser | null> {
     try {
       const supabaseClient = client || sb;
@@ -184,7 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabaseId: string,
     email: string,
     fullName: string,
-    accessToken?: string
+    accessToken?: string,
+    rememberMe: boolean = true
   ): Promise<AuthUser | null> {
     try {
       const token = accessToken || (client ? (await client.auth.getSession()).data.session?.access_token : null) || "";
@@ -204,7 +216,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.message || "Failed to sync user");
       }
-      const profile = (await response.json()) as AuthUser;
+      const data = (await response.json()) as { token?: string; user?: AuthUser } & AuthUser;
+      const profile = data.user ?? data;
+      const localToken = data.token;
+      if (localToken) {
+        setLocalToken(localToken, rememberMe);
+      }
       setUser(profile);
       return profile;
     } catch (error) {
@@ -280,7 +297,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.session && data.user) {
         const token = data.session.access_token;
         const profile =
-          (await syncUserToBackendWithClient(supabase, data.user.id, data.user.email || "", "", token)) ||
+          (await syncUserToBackendWithClient(supabase, data.user.id, data.user.email || "", "", token, rememberMe)) ||
           (await fetchUserProfileHelper(supabase, token));
         if (!profile) throw new Error("Unable to load your profile. Please try again.");
         setUser(profile);
@@ -341,7 +358,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session && data.user) {
           const token = data.session.access_token;
-          const profile = await syncUserToBackendWithClient(supabase, data.user.id, email, fullName, token);
+          const profile = await syncUserToBackendWithClient(supabase, data.user.id, email, fullName, token, true);
           if (!profile) {
             throw new Error("Unable to complete registration. Please try again.");
           }
