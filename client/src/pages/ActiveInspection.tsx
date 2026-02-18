@@ -261,13 +261,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           setLocation(`/inspection/${claimId}/review`);
         }
       })
-      .catch(() => {
-        localStorage.removeItem(STORAGE_KEY);
-        setSessionId(null);
-        setIsResumedSession(false);
-        if (!sessionStartedRef.current) {
-          sessionStartedRef.current = true;
-          startSessionMutation.mutate();
+      .catch((err: Error) => {
+        const is404 = err.message?.startsWith("404:");
+        if (is404) {
+          localStorage.removeItem(STORAGE_KEY);
+          setSessionId(null);
+          setIsResumedSession(false);
+          if (!sessionStartedRef.current) {
+            sessionStartedRef.current = true;
+            startSessionMutation.mutate();
+          }
+        } else {
+          logger.warn("Inspection", `Session validation failed (keeping session ${sessionId}): ${err.message}`);
         }
       });
   }, [sessionId, claimId, isResumedSession]);

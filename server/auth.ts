@@ -39,6 +39,7 @@ export async function authenticateRequest(
 ): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
+    console.log(`[auth] ${req.method} ${req.originalUrl} hasAuth=${!!authHeader} authLen=${authHeader?.length || 0}`);
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({ message: "Missing or invalid Authorization header" });
       return;
