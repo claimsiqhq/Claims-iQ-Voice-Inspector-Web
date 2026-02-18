@@ -42,7 +42,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, resilientMutation } from "@/lib/queryClient";
+import { apiRequest, resilientMutation, getAuthHeaders as getGlobalAuthHeaders } from "@/lib/queryClient";
 import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
@@ -313,15 +313,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   }, [sessionId, isConnected]);
 
   const getAuthHeaders = useCallback(async () => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    try {
-      const sb = await getSupabaseAsync();
-      if (!sb) return headers;
-      const { data } = await sb.auth.getSession();
-      const token = data?.session?.access_token;
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch (e) { logger.error("Voice", "Auth header error", e); }
-    return headers;
+    const authHeaders = await getGlobalAuthHeaders();
+    return { "Content-Type": "application/json", ...authHeaders };
   }, []);
 
   const sendLogToServer = useCallback(async (toolName: string, type: "call" | "result" | "error", data: any) => {
