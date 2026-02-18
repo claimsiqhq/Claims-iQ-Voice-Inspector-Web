@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase as initialSupabase, getSupabaseAsync } from "@/lib/supabaseClient";
 import { getLocalToken, setLocalToken, clearLocalToken } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface AuthUser {
   id: string;
@@ -31,61 +32,64 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sb, setSb] = useState<SupabaseClient | null>(initialSupabase);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
-    const rememberMe = localStorage.getItem("claimsiq_remember_me") === "true";
-    const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
+    let cancelled = false;
 
-    // Try local token first
-    const localToken = getLocalToken();
-    if (localToken) {
-      fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${localToken}` },
-      })
-        .then((res) => {
-          if (res.ok) return res.json();
+    async function init() {
+      const rememberMe = localStorage.getItem("claimsiq_remember_me") === "true";
+      const sessionActive = sessionStorage.getItem("claimsiq_session_active") === "true";
+
+      const localToken = getLocalToken();
+      if (localToken) {
+        try {
+          const res = await fetch("/api/auth/me", {
+            headers: { Authorization: `Bearer ${localToken}` },
+          });
+          if (res.ok) {
+            const profile = await res.json();
+            if (!cancelled) setUser(profile);
+          } else {
+            clearLocalToken();
+          }
+        } catch {
           clearLocalToken();
-          return null;
-        })
-        .then((profile) => {
-          if (profile) setUser(profile);
-        })
-        .catch(() => clearLocalToken())
-        .finally(() => setLoading(false));
-      return;
-    }
-
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
-    if (!rememberMe && !sessionActive) {
-      supabase.auth.getSession().then(({ data }) => {
-        if (!data.session) {
-          setLoading(false);
-          return;
         }
-        supabase.auth.signOut().catch(() => {});
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      const supabase = await getSupabaseAsync();
+      if (cancelled) return;
+      if (supabase) setSb(supabase);
+
+      if (!supabase) {
         setLoading(false);
-      }).catch(() => setLoading(false));
-      return;
-    }
+        return;
+      }
 
-    let initDone = false;
+      if (!rememberMe && !sessionActive) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+        } catch {}
+        if (!cancelled) setLoading(false);
+        return;
+      }
 
-    async function initSession() {
       try {
         let session = (await supabase.auth.getSession()).data.session;
-
         if (!session) {
           const { data: refreshData } = await supabase.auth.refreshSession();
           session = refreshData.session;
         }
-
         if (!session) {
+          if (!cancelled) setLoading(false);
           return;
         }
 
@@ -97,37 +101,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (refreshData.session) session = refreshData.session;
         }
 
-        const profile = await syncUserToBackend(
+        const profile = await syncUserToBackendWithClient(
+          supabase,
           session.user.id,
           session.user.email || "",
           "",
           session.access_token
         );
-        if (!profile) {
-          const fetched = await fetchUserProfile();
-          if (fetched) setUser(fetched);
+        if (!cancelled) {
+          if (!profile) {
+            const fetched = await fetchUserProfileHelper(supabase);
+            if (fetched) setUser(fetched);
+          }
         }
       } catch (err) {
         logger.error("Auth", "Session init failed", err);
       } finally {
-        initDone = true;
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+
+      const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (cancelled) return;
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+          return;
+        }
+        if (session) {
+          await syncUserToBackendWithClient(supabase, session.user.id, session.user.email || "", "", session.access_token);
+        }
+      });
+
+      return () => { listener.subscription.unsubscribe(); };
     }
 
-    initSession();
-
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!initDone) return;
-      if (event === "SIGNED_OUT") {
-        setUser(null);
-        return;
-      }
-      if (session) {
-        await syncUserToBackend(session.user.id, session.user.email || "", "", session.access_token);
-      }
-    });
-    return () => data.subscription.unsubscribe();
+    const cleanupPromise = init();
+    return () => {
+      cancelled = true;
+      cleanupPromise?.then((cleanup) => cleanup?.());
+    };
   }, []);
 
   useEffect(() => {
@@ -139,13 +150,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return prev;
       });
-    }, 3000);
+    }, 5000);
     return () => clearTimeout(timeout);
   }, []);
 
-  async function fetchUserProfile(token?: string): Promise<AuthUser | null> {
+  async function fetchUserProfileHelper(client?: SupabaseClient | null, token?: string): Promise<AuthUser | null> {
     try {
-      const authToken = token || getLocalToken() || (supabase ? (await supabase.auth.getSession()).data.session?.access_token : null);
+      const supabaseClient = client || sb;
+      const authToken = token || getLocalToken() || (supabaseClient ? (await supabaseClient.auth.getSession()).data.session?.access_token : null);
       if (!authToken) return null;
       const response = await fetch("/api/auth/me", {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -157,14 +169,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function syncUserToBackend(
+  async function syncUserToBackendWithClient(
+    client: SupabaseClient | null,
     supabaseId: string,
     email: string,
     fullName: string,
     accessToken?: string
   ): Promise<AuthUser | null> {
     try {
-      const token = accessToken || (supabase ? (await supabase.auth.getSession()).data.session?.access_token : null) || "";
+      const token = accessToken || (client ? (await client.auth.getSession()).data.session?.access_token : null) || "";
       const response = await fetch("/api/auth/sync", {
         method: "POST",
         headers: {
@@ -196,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.setItem("claimsiq_session_active", "true");
       }
 
+      const supabase = sb || await getSupabaseAsync();
       if (!supabase) {
         throw new Error("Authentication service is not configured.");
       }
@@ -208,8 +222,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.session && data.user) {
         const token = data.session.access_token;
         const profile =
-          (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
-          (await fetchUserProfile(token));
+          (await syncUserToBackendWithClient(supabase, data.user.id, data.user.email || "", "", token)) ||
+          (await fetchUserProfileHelper(supabase, token));
         if (!profile) {
           throw new Error("Unable to load your profile. Please try again.");
         }
@@ -224,11 +238,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signUp(email: string, password: string, fullName: string, username?: string) {
     try {
-      // Set remember me for new users (default true)
       localStorage.setItem("claimsiq_remember_me", "true");
       sessionStorage.removeItem("claimsiq_session_active");
 
-      // Try local registration first
       const registerRes = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fall back to Supabase if configured
+      const supabase = sb || await getSupabaseAsync();
       if (supabase) {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -258,7 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session && data.user) {
           const token = data.session.access_token;
-          const profile = await syncUserToBackend(data.user.id, email, fullName, token);
+          const profile = await syncUserToBackendWithClient(supabase, data.user.id, email, fullName, token);
           if (!profile) {
             throw new Error("Unable to complete registration. Please try again.");
           }
@@ -281,6 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearLocalToken();
       localStorage.removeItem("claimsiq_remember_me");
       sessionStorage.removeItem("claimsiq_session_active");
+      const supabase = sb || await getSupabaseAsync();
       if (supabase) await supabase.auth.signOut();
       setUser(null);
       setLocation("/login");
@@ -293,14 +306,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function refreshSession() {
     const localToken = getLocalToken();
     if (localToken) {
-      const profile = await fetchUserProfile(localToken);
+      const profile = await fetchUserProfileHelper(sb, localToken);
       if (profile) setUser(profile);
       return;
     }
+    const supabase = sb || await getSupabaseAsync();
     if (supabase) {
       const session = await supabase.auth.getSession();
       if (session.data.session) {
-        const profile = await fetchUserProfile();
+        const profile = await fetchUserProfileHelper(supabase);
         if (profile) setUser(profile);
       }
     }
