@@ -42,6 +42,8 @@ app.use(
                 "*.supabase.co",
                 "api.openai.com",
                 "wss://*.openai.com",
+                "https://fonts.googleapis.com",
+                "https://fonts.gstatic.com",
               ],
               mediaSrc: ["'self'", "blob:"],
               manifestSrc: ["'self'"],

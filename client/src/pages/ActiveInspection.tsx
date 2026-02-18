@@ -2033,11 +2033,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
         </div>
         <div className="text-2xl font-display font-bold text-foreground">
-          ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          ${Number(estimateSummary?.totalRCV ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
-          <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          <span>{estimateSummary.itemCount} items</span>
+          <span>ACV: ${Number(estimateSummary?.totalACV ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span>{estimateSummary?.itemCount ?? 0} items</span>
         </div>
       </div>
 
@@ -2283,7 +2283,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               >
                 <DollarSign size={12} className="text-accent" />
                 <span className="text-xs font-bold text-accent">
-                  ${estimateSummary.totalRCV.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  ${Number(estimateSummary?.totalRCV ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
               </button>
               <button
@@ -2292,7 +2292,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 data-testid="pill-scope"
               >
                 <FileText size={12} className="text-primary" />
-                <span className="text-xs font-medium">{estimateSummary.itemCount} items</span>
+                <span className="text-xs font-medium">{estimateSummary?.itemCount ?? 0} items</span>
               </button>
               <button
                 onClick={() => setMobileRightOpen(true)}

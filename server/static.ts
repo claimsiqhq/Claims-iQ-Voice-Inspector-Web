@@ -35,9 +35,10 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // SPA fallback: serve index.html for non-API, non-file requests
+  // SPA fallback: serve index.html for non-API, non-file requests only
+  // Never serve index.html for /assets/ — missing CSS/JS should 404, not return HTML
   app.use((req, res, next) => {
-    if (req.path.startsWith("/api")) return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/assets/")) return next();
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
