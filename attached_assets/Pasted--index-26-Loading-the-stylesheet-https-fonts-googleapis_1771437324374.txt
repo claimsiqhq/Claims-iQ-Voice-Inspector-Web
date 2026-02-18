@@ -1,0 +1,130 @@
+(index):26 Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;600&family=Space+Mono:wght@400&display=swap' violates the following Content Security Policy directive: "style-src 'self' 'unsafe-inline'". Note that 'style-src-elem' was not explicitly set, so 'style-src' is used as a fallback. The action has been blocked.
+(index):1 <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">
+/api/auth/sync:1  Failed to load resource: the server responded with a status of 404 ()
+/api/settings:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/me:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/login:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/sync:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/sync:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/me:1  Failed to load resource: the server responded with a status of 404 ()
+/api/auth/sync:1  Failed to load resource: the server responded with a status of 404 ()
+(index):1 Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;600&family=Space+Mono:wght@400&display=swap' violates the following Content Security Policy directive: "style-src 'self' 'unsafe-inline'". Note that 'style-src-elem' was not explicitly set, so 'style-src' is used as a fallback. The action has been blocked.
+index-kuL3SrMn.js:52  POST https://inspect.claimsiq.ai/api/auth/login 404 (Not Found)
+y @ index-kuL3SrMn.js:52
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52 Fetch failed loading: POST "https://inspect.claimsiq.ai/api/auth/login".
+y @ index-kuL3SrMn.js:52
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:36 Fetch finished loading: POST "https://hjxruhvnswtleqpuhkgb.supabase.co/auth/v1/token?grant_type=password".
+(anonymous) @ index-kuL3SrMn.js:36
+uw @ index-kuL3SrMn.js:36
+W @ index-kuL3SrMn.js:36
+signInWithPassword @ index-kuL3SrMn.js:51
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52  POST https://inspect.claimsiq.ai/api/auth/sync 404 (Not Found)
+g @ index-kuL3SrMn.js:52
+(anonymous) @ index-kuL3SrMn.js:52
+(anonymous) @ index-kuL3SrMn.js:52
+_notifyAllSubscribers @ index-kuL3SrMn.js:52
+signInWithPassword @ index-kuL3SrMn.js:51
+await in signInWithPassword
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52 Fetch failed loading: POST "https://inspect.claimsiq.ai/api/auth/sync".
+g @ index-kuL3SrMn.js:52
+(anonymous) @ index-kuL3SrMn.js:52
+(anonymous) @ index-kuL3SrMn.js:52
+_notifyAllSubscribers @ index-kuL3SrMn.js:52
+signInWithPassword @ index-kuL3SrMn.js:51
+await in signInWithPassword
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52  POST https://inspect.claimsiq.ai/api/auth/sync 404 (Not Found)
+g @ index-kuL3SrMn.js:52
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52 Fetch failed loading: POST "https://inspect.claimsiq.ai/api/auth/sync".
+g @ index-kuL3SrMn.js:52
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+index-kuL3SrMn.js:52  GET https://inspect.claimsiq.ai/api/auth/me 404 (Not Found)
+m @ index-kuL3SrMn.js:52
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
+workbox-58bd4dca.js:1 Fetch failed loading: GET "https://inspect.claimsiq.ai/api/auth/me".
+fetch @ workbox-58bd4dca.js:1
+fetchAndCachePut @ workbox-58bd4dca.js:1
+ht @ workbox-58bd4dca.js:1
+W @ workbox-58bd4dca.js:1
+M @ workbox-58bd4dca.js:1
+await in M
+handleAll @ workbox-58bd4dca.js:1
+handle @ workbox-58bd4dca.js:1
+handleRequest @ workbox-58bd4dca.js:1
+(anonymous) @ workbox-58bd4dca.js:1
+index-kuL3SrMn.js:52 Fetch failed loading: GET "https://inspect.claimsiq.ai/api/auth/me".
+m @ index-kuL3SrMn.js:52
+y @ index-kuL3SrMn.js:52
+await in y
+d @ LoginPage-Bdk48vb5.js:1
+rm @ index-kuL3SrMn.js:9
+(anonymous) @ index-kuL3SrMn.js:9
+dd @ index-kuL3SrMn.js:9
+Ru @ index-kuL3SrMn.js:9
+Vu @ index-kuL3SrMn.js:10
+k0 @ index-kuL3SrMn.js:10
