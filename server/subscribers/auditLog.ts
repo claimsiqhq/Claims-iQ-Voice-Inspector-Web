@@ -1,9 +1,11 @@
 import { on, type AppEvent } from "../events";
-import { logger } from "../logger";
+import pinoLogger from "../logger";
 
 export function registerAuditLogSubscriber(): void {
+  const auditLogger = pinoLogger.child({ subsystem: "audit" });
+
   on("*", (event: AppEvent) => {
-    logger.child({ subsystem: "audit" }).info(
+    auditLogger.info(
       {
         event: event.type,
         ...("claimId" in event && { claimId: event.claimId }),
