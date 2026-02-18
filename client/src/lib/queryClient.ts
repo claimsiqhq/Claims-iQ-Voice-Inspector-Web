@@ -1,5 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { supabase } from "./supabaseClient";
+import { supabase, getSupabaseAsync } from "./supabaseClient";
 import { enqueueMutation } from "./offlineQueue";
 
 const LOCAL_TOKEN_KEY = "claimsiq_local_token";
@@ -33,9 +33,10 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
     headers["Authorization"] = `Bearer ${localToken}`;
     return headers;
   }
-  if (supabase) {
+  const sb = supabase || await getSupabaseAsync();
+  if (sb) {
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await sb.auth.getSession();
       const token = data?.session?.access_token;
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
