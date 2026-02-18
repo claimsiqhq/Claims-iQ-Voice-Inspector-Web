@@ -6,6 +6,24 @@ import { useQuery } from "@tanstack/react-query";
 import WeatherCorrelation from "@/components/WeatherCorrelation";
 import { useState } from "react";
 
+function renderValue(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "number") return `$${val.toLocaleString()}`;
+  if (typeof val === "string") return val;
+  if (typeof val === "object") {
+    const obj = val as Record<string, unknown>;
+    if ("limit" in obj && obj.limit != null) {
+      const label = obj.label ? `${obj.label}: ` : "";
+      return `${label}${typeof obj.limit === "number" ? `$${obj.limit.toLocaleString()}` : String(obj.limit)}`;
+    }
+    if ("value" in obj && obj.value != null) {
+      return typeof obj.value === "number" ? `$${obj.value.toLocaleString()}` : String(obj.value);
+    }
+    return JSON.stringify(val);
+  }
+  return String(val);
+}
+
 interface BriefingData {
   id: number;
   claimId: number;
@@ -200,37 +218,37 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
               {cs.coverageA != null && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Coverage A (Dwelling)</p>
-                  <p className="font-semibold">{typeof cs.coverageA === "number" ? `$${cs.coverageA.toLocaleString()}` : cs.coverageA}</p>
+                  <p className="font-semibold">{renderValue(cs.coverageA)}</p>
                 </div>
               )}
               {cs.coverageB != null && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Coverage B (Other Structures)</p>
-                  <p className="font-semibold">{typeof cs.coverageB === "number" ? `$${cs.coverageB.toLocaleString()}` : cs.coverageB}</p>
+                  <p className="font-semibold">{renderValue(cs.coverageB)}</p>
                 </div>
               )}
               {cs.coverageC != null && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Coverage C (Contents)</p>
-                  <p className="font-semibold">{typeof cs.coverageC === "number" ? `$${cs.coverageC.toLocaleString()}` : cs.coverageC}</p>
+                  <p className="font-semibold">{renderValue(cs.coverageC)}</p>
                 </div>
               )}
               {cs.deductible != null && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Deductible</p>
-                  <p className="font-semibold">{typeof cs.deductible === "number" ? `$${cs.deductible.toLocaleString()}` : cs.deductible}</p>
+                  <p className="font-semibold">{renderValue(cs.deductible)}</p>
                 </div>
               )}
               {cs.deductibleType && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Deductible Type</p>
-                  <p className="font-semibold">{cs.deductibleType}</p>
+                  <p className="font-semibold">{renderValue(cs.deductibleType)}</p>
                 </div>
               )}
               {cs.lossSettlement && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Settlement Type</p>
-                  <p className="font-semibold">{cs.lossSettlement}</p>
+                  <p className="font-semibold">{renderValue(cs.lossSettlement)}</p>
                 </div>
               )}
             </div>

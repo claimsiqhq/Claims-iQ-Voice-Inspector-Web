@@ -74,8 +74,10 @@ export default function ScopePage({ params }: { params: { id: string } }) {
   const totalDepreciation = estimate?.totalDepreciation || grandDepreciation;
   const totalACV = estimate?.totalACV || grandACV;
 
-  const coverageA = briefing?.coverageSnapshot?.coverageA || 0;
-  const deductible = briefing?.coverageSnapshot?.deductible || 0;
+  const rawCovA = briefing?.coverageSnapshot?.coverageA;
+  const coverageA = typeof rawCovA === "number" ? rawCovA : (typeof rawCovA === "object" && rawCovA?.limit ? Number(rawCovA.limit) : Number(rawCovA) || 0);
+  const rawDed = briefing?.coverageSnapshot?.deductible;
+  const deductible = typeof rawDed === "number" ? rawDed : (typeof rawDed === "object" && rawDed?.limit ? Number(rawDed.limit) : Number(rawDed) || 0);
   const netClaim = totalACV - deductible;
   const policyUtilization = coverageA > 0 ? (totalRCV / coverageA) * 100 : 0;
 
