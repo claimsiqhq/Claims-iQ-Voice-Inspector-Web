@@ -122,10 +122,21 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const authHeaders = await getAuthHeaders();
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = queryKey.join("/") as string;
+    let res = await fetch(url, {
       credentials: "include",
       headers: authHeaders,
     });
+
+    if (res.status === 401 && authHeaders["Authorization"]) {
+      const freshHeaders = await getAuthHeaders();
+      if (freshHeaders["Authorization"] && freshHeaders["Authorization"] !== authHeaders["Authorization"]) {
+        res = await fetch(url, {
+          credentials: "include",
+          headers: freshHeaders,
+        });
+      }
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;
@@ -142,7 +153,12 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: 5 * 60_000,
-      retry: 2,
+      retry: (failureCount, error) => {
+        if (failureCount >= 3) return false;
+        const msg = error instanceof Error ? error.message : "";
+        if (msg.startsWith("401:")) return failureCount < 2;
+        return failureCount < 2;
+      },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
     mutations: {

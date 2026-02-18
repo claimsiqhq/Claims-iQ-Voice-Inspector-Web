@@ -45,12 +45,14 @@ export async function authenticateRequest(
     }
 
     const token = authHeader.substring(7);
+    const reqPath = req.path;
 
     // Try local JWT first
     const localPayload = verifyLocalToken(token);
     if (localPayload) {
       const user = await storage.getUser(localPayload.userId);
       if (!user) {
+        console.log(`[auth] 401 local-jwt user not found userId=${localPayload.userId} path=${reqPath}`);
         res.status(401).json({ message: "User not found" });
         return;
       }
@@ -66,6 +68,7 @@ export async function authenticateRequest(
     // Fall back to Supabase
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
+      console.log(`[auth] 401 supabase-token-invalid path=${reqPath} error=${authError?.message || "no user"}`);
       res.status(401).json({ message: "Invalid or expired token" });
       return;
     }
@@ -73,6 +76,7 @@ export async function authenticateRequest(
     const supabaseAuthId = authData.user.id;
     const user = await storage.getUserBySupabaseId(supabaseAuthId);
     if (!user) {
+      console.log(`[auth] 401 supabase user not in DB supabaseId=${supabaseAuthId} path=${reqPath}`);
       res.status(401).json({ message: "User not found" });
       return;
     }

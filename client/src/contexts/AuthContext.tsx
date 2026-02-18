@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 12000;
 const AUTH_REQUEST_TIMEOUT_MS = 15000;
 
 export interface AuthUser {
@@ -60,11 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (res.ok) {
             const profile = await res.json();
             if (!cancelled) setUser(profile);
-          } else {
+          } else if (res.status === 401 || res.status === 403) {
             clearLocalToken();
           }
         } catch {
-          clearLocalToken();
+          logger.warn("Auth", "Bootstrap /api/auth/me failed (timeout or network) — keeping token for retry");
         }
         if (!cancelled) setLoading(false);
         return;
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return prev;
       });
-    }, 5000);
+    }, 15000);
     return () => clearTimeout(timeout);
   }, []);
 
