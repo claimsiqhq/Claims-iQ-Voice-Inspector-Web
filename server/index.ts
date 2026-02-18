@@ -3,22 +3,27 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
-import swaggerUi from "swagger-ui-express";
-import { readFileSync } from "fs";
-import path from "path";
-import { parse } from "yaml";
-import { registerRoutes } from "./routes";
-import { registerAuditLogSubscriber } from "./subscribers/auditLog";
-import { serveStatic } from "./static";
 import { createServer } from "http";
-import { ensureStorageBuckets } from "./supabase";
-import { seedInspectionFlows } from "./seed-flows";
-// seed-catalog removed — only real Xactimate data is used
-import pinoInstance, { logger as appLogger } from "./logger";
+import { readFileSync, existsSync } from "fs";
+import path from "path";
+import pinoInstance from "./logger";
+
+// Prevent unhandled errors from crashing the process on Cloud Run.
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
 
 const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
+
+// Bare-minimum health endpoint — responds before any middleware.
+app.get("/health", (_req, res) => {
+  res.json({ status: "healthy", uptime: process.uptime() });
+});
 
 app.use(
   helmet({
@@ -83,7 +88,7 @@ app.use(
     logger: pinoInstance,
     genReqId: (req) => (req.headers["x-request-id"] as string) || crypto.randomUUID(),
     autoLogging: {
-      ignore: (req) => req.url === "/health" || req.url === "/readiness",
+      ignore: (req) => req.url === "/health",
     },
     customLogLevel: (_req, res, err) => {
       if (res.statusCode >= 500 || err) return "error";
@@ -93,20 +98,17 @@ app.use(
     customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
     customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode} FAILED`,
     serializers: {
-      req: (req) => ({
-        method: req.method,
-        url: req.url,
-      }),
-      res: (res) => ({
-        statusCode: res.statusCode,
-      }),
+      req: (req) => ({ method: req.method, url: req.url }),
+      res: (res) => ({ statusCode: res.statusCode }),
     },
   })
 );
 
 try {
   const openApiPath = path.resolve("docs/openapi.yaml");
-  if (require("fs").existsSync(openApiPath)) {
+  if (existsSync(openApiPath)) {
+    const { parse } = require("yaml");
+    const swaggerUi = require("swagger-ui-express");
     const openApiSpec = parse(readFileSync(openApiPath, "utf-8"));
     app.get("/docs", (_req, res) => res.redirect(301, "/api-docs/"));
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec, { customCss: ".swagger-ui .topbar { display: none }" }));
@@ -144,52 +146,57 @@ app.use("/api/claims/:id/parse-batch", aiLimiter);
 app.use("/api/claims/:id/briefing", aiLimiter);
 app.use("/api/inspection/:sessionId/photos/:photoId/analyze", aiLimiter);
 
-export function log(message: string, _source = "express") {
-  console.log(message);
+export function log(message: string, source = "express") {
+  console.log(`[${source}] ${message}`);
 }
 
-// Bind to the port IMMEDIATELY so the deployment health check passes.
-// All route registration and async init happens AFTER the port is open.
+// ── BIND TO PORT IMMEDIATELY ─────────────────────────────────────────
+// Replit autoscale (Cloud Run) sends SIGTERM if the container doesn't
+// respond to health checks quickly. We listen FIRST, register routes after.
 const port = parseInt(process.env.PORT || "5000", 10);
-httpServer.listen(
-  {
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  },
-  () => {
-    console.log(`serving on port ${port}`);
-  }
-);
+httpServer.listen({ port, host: "0.0.0.0" }, () => {
+  console.log(`serving on port ${port}`);
+});
 
+// ── ASYNC INIT (runs after port is open) ─────────────────────────────
 (async () => {
-  registerAuditLogSubscriber();
-  await registerRoutes(httpServer, app);
+  try {
+    const { registerAuditLogSubscriber } = await import("./subscribers/auditLog");
+    registerAuditLogSubscriber();
 
-  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
+    const { registerRoutes } = await import("./routes");
+    await registerRoutes(httpServer, app);
 
-    (req as any).log?.error?.(
-      { err, statusCode: status, path: req.path, method: req.method },
-      `Unhandled error: ${err.message}`
-    ) || appLogger.error("ERROR", `Unhandled error: ${err.message}`, err);
+    app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      console.error(`Unhandled error: ${err.message}`, err);
 
-    if (res.headersSent) {
-      return next(err);
+      if (res.headersSent) {
+        return next(err);
+      }
+
+      const clientMessage = status >= 500 ? "Internal server error" : (err.message || "An error occurred");
+      return res.status(status).json({ message: clientMessage });
+    });
+
+    if (process.env.NODE_ENV === "production") {
+      const { serveStatic } = await import("./static");
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
     }
 
-    const clientMessage = status >= 500 ? "Internal server error" : (err.message || "An error occurred");
-    return res.status(status).json({ message: clientMessage });
-  });
+    console.log("Routes registered successfully");
 
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
+    // Background tasks — fire and forget.
+    import("./supabase")
+      .then((m) => m.ensureStorageBuckets())
+      .catch((e) => console.error("Storage bucket init error:", e));
+    import("./seed-flows")
+      .then((m) => m.seedInspectionFlows())
+      .catch((e) => console.error("Flow seed error:", e));
+  } catch (err) {
+    console.error("FATAL: Route registration failed:", err);
   }
-
-  // Run slow background initialization AFTER routes are registered.
-  ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
-  seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
 })();
