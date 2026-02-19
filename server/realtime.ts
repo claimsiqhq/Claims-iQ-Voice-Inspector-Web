@@ -110,7 +110,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 
 **Opening Capture Protocol:**
 6. When inspecting ANY room (interior or exterior), proactively ask about openings:
-   - Interior: "How many doors and windows are in this room? I need type and approximate size for the estimate."
+   - Interior: "How many doors and windows are in this room? For each, I need the wall — North, South, East, or West — plus type and approximate size."
    - Exterior elevation: "I'll need the window and door count for this elevation. Let's go left to right."
 7. For each opening, capture: type (door/window/etc.), which wall (North, South, East, or West), approximate width and height, what it opens into (room name or Exterior). When the adjuster says "north wall", "south wall", "east wall", or "west wall", use that for wallDirection.
 8. **CRITICAL — Use adjuster's dimensions:** When the adjuster provides dimensions (e.g., "2.5 foot door", "7 foot opening", "36 inch wide"), USE THEM. Do NOT insist on or suggest "standard" sizes instead. Do NOT ask for confirmation. Call add_opening immediately with widthFt and heightFt in decimal feet (e.g., 2.5, 6.67, 7). If the adjuster says a size is acceptable, add it — do not hesitate.
@@ -159,7 +159,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 When you enter ANY room (interior, elevation, or roof slope), follow this sequence:
 1. **Create** the room with create_room — include dimensions (length × width × height) if the adjuster provides them
 2. **Dimensions** — if not provided during creation, ask: "What are the dimensions of this room?" and call update_room_dimensions. Dimensions drive scope quantities.
-3. **Openings** — proactively ask: "How many doors and windows?" Use add_opening for each. When the adjuster gives dimensions, use them immediately. Defaults only when not specified: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7.
+3. **Openings** — proactively ask: "How many doors and windows? For each, which wall — North, South, East, or West?" Use add_opening with wallDirection (north/south/east/west). When the adjuster gives dimensions, use them immediately. Defaults only when not specified: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7.
 4. **Damage** — record observations with add_damage (auto-scope generates line items with quantities derived from room geometry)
 5. **Scope review** — call get_room_scope to review what was generated. Mention: "We have [N] items totaling $[X] for this room."
 6. **Corrections** — use update_line_item to adjust quantities/prices, remove_line_item to delete incorrect items
@@ -724,12 +724,12 @@ export const realtimeTools = [
         wallDirectionA: {
           type: "string",
           enum: ["north", "south", "east", "west"],
-          description: "Which wall of room A faces room B"
+          description: "Which wall of room A faces room B. Use North, South, East, or West — these are the standard terms."
         },
         wallDirectionB: {
           type: "string",
           enum: ["north", "south", "east", "west"],
-          description: "Which wall of room B faces room A (should be opposite of wallDirectionA)"
+          description: "Which wall of room B faces room A (should be opposite of wallDirectionA). Use North, South, East, or West."
         },
         sharedWallLengthFt: { type: "number", description: "Length of the shared wall in feet (if known)" }
       },
@@ -767,7 +767,7 @@ export const realtimeTools = [
         annotationType: { type: "string", enum: ["hail_count", "pitch", "storm_direction", "material_note", "measurement", "general_note"], description: "Type of annotation" },
         label: { type: "string", description: "Short label, e.g., 'Hail Hits', 'Roof Pitch', 'Storm Direction'" },
         value: { type: "string", description: "The value, e.g., '8', '6/12', 'NW', 'Architectural shingles'" },
-        location: { type: "string", description: "Where on the room/facet, e.g., 'Front Slope (F1)', 'Test Square A', 'North Wall'" }
+        location: { type: "string", description: "Where on the room/facet. Use North/South/East/West when applicable: 'North Wall', 'South slope', 'NE corner', 'Test Square A'" }
       },
       required: ["roomName", "annotationType", "label", "value"]
     }
@@ -795,7 +795,7 @@ export const realtimeTools = [
         description: { type: "string", description: "What the damage is, e.g., 'Water staining on ceiling, approximately 4 feet in diameter'" },
         damageType: { type: "string", enum: ["hail_impact", "wind_damage", "water_stain", "water_intrusion", "crack", "dent", "missing", "rot", "mold", "mechanical", "wear_tear", "other"] },
         severity: { type: "string", enum: ["minor", "moderate", "severe"] },
-        location: { type: "string", description: "Where in the room, e.g., 'NE corner', 'south slope', 'ceiling center'" },
+        location: { type: "string", description: "Where in the room. Use North/South/East/West: 'North wall', 'South wall base', 'NE corner', 'ceiling center'" },
         extent: { type: "string", description: "Size/measurement of damage area" },
         hitCount: { type: "integer", description: "For hail: number of impacts in test square" }
       },
@@ -907,7 +907,7 @@ export const realtimeTools = [
     parameters: {
       type: "object",
       properties: {
-        location: { type: "string", description: "Where the reading was taken, e.g., 'north wall base, 6 inches from floor'" },
+        location: { type: "string", description: "Where the reading was taken. Use North/South/East/West: 'north wall base', 'south wall, 6 inches from floor'" },
         reading: { type: "number", description: "Moisture percentage reading" },
         materialType: { type: "string", enum: ["drywall", "wood_framing", "subfloor", "concrete", "carpet_pad", "insulation"] },
         dryStandard: { type: "number", description: "Reference dry value for this material type (e.g., drywall=12, wood=15)" }
