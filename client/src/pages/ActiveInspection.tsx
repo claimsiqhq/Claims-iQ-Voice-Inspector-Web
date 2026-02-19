@@ -46,6 +46,7 @@ import { apiRequest, resilientMutation, getAuthHeaders as getGlobalAuthHeaders }
 import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
+import { normalizeWallDirection, parseFeetValue } from "@/lib/openingToolNormalization";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -903,9 +904,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             : openType.includes("window") ? 4
             : openType.includes("missing") ? 8
             : 7; // standard door
-          const openWidthFt = args.widthFt || args.width || defaultW;
-          const openHeightFt = args.heightFt || args.height || defaultH;
+          const openWidthFt = parseFeetValue(args.widthFt) ?? parseFeetValue(args.width) ?? defaultW;
+          const openHeightFt = parseFeetValue(args.heightFt) ?? parseFeetValue(args.height) ?? defaultH;
           const openQuantity = args.quantity || 1;
+          const wallDirection = normalizeWallDirection(args.wallDirection);
           const openHeaders = await getAuthHeaders();
           const openRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, {
             method: "POST",
@@ -913,11 +915,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             body: JSON.stringify({
               openingType: args.openingType,
               wallIndex: args.wallIndex ?? null,
-              wallDirection: args.wallDirection || null,
+              wallDirection,
               widthFt: openWidthFt,
               heightFt: openHeightFt,
               quantity: openQuantity,
-              label: args.label || `${args.openingType}${args.wallDirection ? ` on ${args.wallDirection} wall` : ''}`,
+              label: args.label || `${args.openingType}${wallDirection ? ` on ${wallDirection} wall` : ''}`,
               opensInto: args.opensInto || null,
               goesToFloor: args.openingType === "overhead_door",
               goesToCeiling: false,
@@ -942,7 +944,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           result = {
             success: true,
             openingId: opening.id,
-            message: `Added ${typeLabel}${qtyLabel} (${openWidthFt}' × ${openHeightFt}')${opensLabel ? ` opening ${opensLabel}` : ""} to "${args.roomName}". Total wall deductions for this room: ${totalDeductionSF.toFixed(0)} SF.`,
+            message: `Added ${typeLabel}${qtyLabel} (${openWidthFt}' × ${openHeightFt}')${opensLabel ? ` opening ${opensLabel}` : ""} to "${openingRoom.name}". Total wall deductions for this room: ${totalDeductionSF.toFixed(0)} SF.`,
           };
           break;
         }
