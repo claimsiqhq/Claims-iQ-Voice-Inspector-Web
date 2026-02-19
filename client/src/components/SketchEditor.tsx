@@ -1829,10 +1829,18 @@ export default function SketchEditor({
                 </p>
                 <button
                   onClick={() => createElevation(activeElevation)}
-                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  disabled={saveStatus === "saving"}
+                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                   data-testid="button-create-elevation"
                 >
-                  Create {ELEVATION_LABELS[activeElevation]} Elevation
+                  {saveStatus === "saving" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                      Creating…
+                    </>
+                  ) : (
+                    `Create ${ELEVATION_LABELS[activeElevation]} Elevation`
+                  )}
                 </button>
               </div>
             ) : elevLayout ? (
