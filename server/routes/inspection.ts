@@ -14,7 +14,7 @@ import { handleWaterDamageProtocol } from "../waterProtocol";
 import { deriveQuantity, type QuantityFormula } from "../scopeQuantityEngine";
 import { calculateDepreciation, lookupLifeExpectancy } from "../depreciationEngine";
 import { calculateItemDepreciation } from "../estimateEngine";
-import { advance, canAdvance, getAllowedTools, getWorkflowState, runGates, setWorkflowState } from "../workflow/orchestrator";
+import { advance, canAdvance, getAllowedTools, getWorkflowState, runGates, setWorkflowState, validateToolForWorkflow } from "../workflow/orchestrator";
 import { runAllWorkflowGates } from "../workflow/validators";
 import { toolFailure, toolSuccess } from "@shared/contracts/tools";
 
@@ -183,7 +183,46 @@ const adjacencyCreateSchema = z.object({
   openingId: z.number().int().positive().nullable().optional(),
 });
 
+/**
+ * Maps REST route patterns to their corresponding workflow tool names.
+ * Used by the workflow enforcement middleware to validate tool access per phase.
+ */
+const ROUTE_TOOL_MAP: Array<{ method: string; pattern: RegExp; tool: string }> = [
+  { method: "POST", pattern: /\/structures$/, tool: "create_structure" },
+  { method: "POST", pattern: /\/rooms$/, tool: "create_room" },
+  { method: "POST", pattern: /\/openings$/, tool: "add_opening" },
+  { method: "PATCH", pattern: /\/openings\/\d+$/, tool: "update_opening" },
+  { method: "DELETE", pattern: /\/openings\/\d+$/, tool: "delete_opening" },
+  { method: "POST", pattern: /\/damages$/, tool: "add_damage" },
+  { method: "POST", pattern: /\/line-items$/, tool: "add_line_item" },
+  { method: "PATCH", pattern: /\/line-items\/\d+$/, tool: "update_line_item" },
+  { method: "POST", pattern: /\/photos$/, tool: "trigger_photo_capture" },
+  { method: "POST", pattern: /\/photos\/\d+\/analyze$/, tool: "analyze_photo" },
+  { method: "POST", pattern: /\/annotations$/, tool: "add_sketch_annotation" },
+  { method: "POST", pattern: /\/export\/esx$/, tool: "export_esx" },
+];
+
+export function resolveToolName(method: string, path: string): string | null {
+  for (const entry of ROUTE_TOOL_MAP) {
+    if (entry.method === method && entry.pattern.test(path)) return entry.tool;
+  }
+  return null;
+}
+
 export async function registerInspectionRoutes(app: Express): Promise<void> {
+
+  // Workflow tool-allowlist enforcement middleware
+  app.use("/api/inspection/:sessionId", async (req, res, next) => {
+    if (req.method === "GET") return next(); // reads are always allowed
+    const sessionId = parseInt(req.params.sessionId);
+    if (isNaN(sessionId)) return next();
+    const toolName = resolveToolName(req.method, req.path);
+    if (!toolName) return next(); // no mapped tool — allow
+    const rejection = await validateToolForWorkflow(sessionId, toolName, req.body);
+    if (rejection) return res.status(403).json(rejection);
+    next();
+  });
+
   app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));

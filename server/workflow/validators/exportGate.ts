@@ -1,6 +1,7 @@
 import { storage } from "../../storage";
 import { runSketchGate } from "./sketchGate";
 import { runScopeGate } from "./scopeGate";
+import { runPhotoDamageGate } from "./photoDamageGate";
 import type { GateIssue, GateResult } from "../types";
 
 function summarize(issues: GateIssue[]): GateResult {
@@ -24,12 +25,19 @@ export async function runExportGate(sessionId: number): Promise<GateResult> {
     issues.push({ severity: "BLOCKER", code: "EXPORT_REQUIRED_CLAIM_DATA", message: "Claim identifiers/address missing." });
   }
 
-  const [sketch, scope] = await Promise.all([runSketchGate(sessionId), runScopeGate(sessionId, claim?.perilType || "")]);
+  const [sketch, scope, photo] = await Promise.all([
+    runSketchGate(sessionId),
+    runScopeGate(sessionId, claim?.perilType || ""),
+    runPhotoDamageGate(sessionId),
+  ]);
   if (!sketch.ok) {
     issues.push({ severity: "BLOCKER", code: "EXPORT_SKETCH_BLOCKER", message: "Sketch gate has blockers.", details: sketch.summary });
   }
   if (scope.issues.some((i) => i.code === "SCOPE_DAMAGE_UNCOVERED")) {
     issues.push({ severity: "WARNING", code: "EXPORT_SCOPE_COVERAGE_WARN", message: "Some confirmed damages do not have scope lines." });
+  }
+  for (const pi of photo.issues) {
+    issues.push({ severity: "WARNING", code: `EXPORT_PHOTO_${pi.code}`, message: pi.message, entity: pi.entity });
   }
 
   return summarize(issues);
