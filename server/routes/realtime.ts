@@ -120,10 +120,32 @@ export function realtimeRouter() {
       const session = sessionId ? await storage.getInspectionSession(sessionId) : null;
       const flowSteps = inspectionFlow ? (inspectionFlow.steps as any[]) || [] : [];
 
+      let hierarchySummary: string | null = null;
+      if (sessionId && transcriptSummary) {
+        try {
+          const hierarchy = await storage.getInspectionHierarchy(sessionId);
+          const parts: string[] = [];
+          for (const struct of hierarchy.structures) {
+            const roomNames = struct.rooms.map(r => {
+              const details: string[] = [];
+              if (r.damages.length > 0) details.push(`${r.damages.length} damages`);
+              if (r.lineItemCount > 0) details.push(`${r.lineItemCount} items`);
+              if (r.photoCount > 0) details.push(`${r.photoCount} photos`);
+              return `${r.name}${details.length > 0 ? ` (${details.join(", ")})` : ""}`;
+            });
+            parts.push(`${struct.name}: ${roomNames.length > 0 ? roomNames.join(", ") : "no rooms yet"}`);
+          }
+          hierarchySummary = parts.length > 0 ? parts.join(" | ") : "No structures documented yet.";
+        } catch (e) {
+          logger.error("Realtime", "Failed to build hierarchy summary", e);
+        }
+      }
+
       res.json({
         clientSecret: data.client_secret.value,
         sessionId,
         transcriptSummary,
+        hierarchySummary,
         sessionPhase: session?.currentPhase || 1,
         completedPhases: session?.completedPhases || [],
         sessionStructure: session?.currentStructure || "Main Dwelling",
