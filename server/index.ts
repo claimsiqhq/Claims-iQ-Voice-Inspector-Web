@@ -134,6 +134,17 @@ export function log(message: string, source = "express") {
 // Replit autoscale (Cloud Run) sends SIGTERM if the container doesn't
 // respond to health checks quickly. We listen FIRST, register routes after.
 const port = parseInt(process.env.PORT || "5000", 10);
+
+let appReady = false;
+app.use((req, res, next) => {
+  if (appReady || req.path.startsWith("/api") || req.path === "/health") return next();
+  if (req.method === "GET" && req.accepts("html")) {
+    res.status(200).set("Content-Type", "text/html").end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Claims IQ</title><style>body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui;background:#F8F7FC;color:#342A4F}div{text-align:center}.spin{width:32px;height:32px;border:3px solid #e2ddf5;border-top-color:#7c3aed;border-radius:50%;animation:s 0.8s linear infinite;margin:0 auto 16px}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div><div class="spin"></div><p>Loading Claims IQ...</p></div><script>setTimeout(()=>location.reload(),2000)</script></body></html>`);
+    return;
+  }
+  next();
+});
+
 httpServer.listen({ port, host: "0.0.0.0" }, () => {
   console.log(`serving on port ${port}`);
 });
@@ -177,6 +188,7 @@ process.on("SIGTERM", () => {
       await setupVite(httpServer, app);
     }
 
+    appReady = true;
     console.log("Routes registered successfully");
 
     // Background tasks — fire and forget.
