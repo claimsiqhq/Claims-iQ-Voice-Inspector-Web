@@ -13,6 +13,7 @@
 import { IStorage } from "./storage";
 import type { InspectionRoom, DamageObservation, ScopeLineItem, ScopeItem, InsertScopeItem } from "@shared/schema";
 import { deriveQuantity, type QuantityFormula } from "./scopeQuantityEngine";
+import { calculateOpeningDeductions } from "./openingDeductionService";
 
 export interface ScopeAssemblyResult {
   created: ScopeItem[];
@@ -470,8 +471,7 @@ export async function assembleScope(
   storage: IStorage,
   sessionId: number,
   room: InspectionRoom,
-  damage: DamageObservation,
-  _netWallDeduction: number = 0
+  damage: DamageObservation
 ): Promise<ScopeAssemblyResult> {
   const result: ScopeAssemblyResult = {
     created: [],
@@ -479,6 +479,42 @@ export async function assembleScope(
     manualQuantityNeeded: [],
     warnings: [],
   };
+
+  // ── Fetch openings and calculate net wall deduction ──
+  let netWallDeduction = 0;
+  let openingWarnings: string[] = [];
+
+  try {
+    const roomOpenings = await storage.getRoomOpenings(room.id);
+    if (roomOpenings && roomOpenings.length > 0) {
+      const deductionResult = calculateOpeningDeductions(
+        roomOpenings.map((o: { id: number; openingType: string; widthFt: number | null; heightFt: number | null; quantity?: number; label?: string | null }) => ({
+          id: o.id,
+          openingType: o.openingType,
+          widthFt: o.widthFt,
+          heightFt: o.heightFt,
+          quantity: o.quantity || 1,
+          label: o.label,
+        }))
+      );
+      netWallDeduction = deductionResult.totalDeductionSF;
+      openingWarnings = deductionResult.warnings;
+
+      if (deductionResult.openingCount > 0) {
+        result.warnings.push(
+          `Room has ${deductionResult.openingCount} opening(s) with ${netWallDeduction} SF total deduction applied to WALL_SF_NET items.`
+        );
+      }
+    }
+  } catch (err) {
+    result.warnings.push(
+      `Could not fetch room openings for wall deduction calculation: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  if (openingWarnings.length > 0) {
+    result.warnings.push(...openingWarnings);
+  }
 
   const allCatalogItems = await storage.getScopeLineItems();
   const activeCatalog = allCatalogItems.filter(item => item.isActive && item.xactCategoryCode != null);
@@ -524,7 +560,7 @@ export async function assembleScope(
 
     if (quantityFormula && quantityFormula !== "MANUAL" && quantityFormula !== "EACH") {
       if (hasDimensions) {
-        const qResult = deriveQuantity(room, quantityFormula as QuantityFormula, _netWallDeduction);
+        const qResult = deriveQuantity(room, quantityFormula as QuantityFormula, netWallDeduction);
         if (qResult && qResult.quantity > 0) {
           quantity = qResult.quantity;
         } else {

@@ -7,6 +7,7 @@
 
 import { IStorage } from "./storage";
 import type { ScopeItem, InspectionRoom, DamageObservation, ScopeLineItem } from "@shared/schema";
+import { calculateOpeningDeductions } from "./openingDeductionService";
 
 export interface ValidationResult {
   valid: boolean;
@@ -168,7 +169,62 @@ export async function validateScopeCompleteness(
     roomItemKeys.add(key);
   }
 
-  // ── 7. Coverage type consistency ───────────────────
+  // ── 7. Missing openings for wall scope items ─────────
+  for (const room of rooms) {
+    const roomScope = scopeItems.filter(s => s.roomId === room.id && s.status === "active");
+    const hasWallScope = roomScope.some(si =>
+      si.quantityFormula === "WALL_SF_NET" || si.quantityFormula === "WALL_SF"
+    );
+    if (hasWallScope) {
+      const roomOpenings = await storage.getRoomOpenings(room.id);
+      if (!roomOpenings || roomOpenings.length === 0) {
+        issues.push({
+          category: "wall_scope_no_openings",
+          severity: "warning",
+          message:
+            `Room "${room.name}" has wall treatment items (WALL_SF_NET or WALL_SF) ` +
+            `but zero openings recorded. Wall scope may be overstated. ` +
+            `Add openings via add_room_opening or update_room_opening to deduct doors/windows from wall area.`,
+          roomId: room.id,
+          code: "WALL_SCOPE_NO_OPENINGS",
+        });
+      } else {
+        const deductionResult = calculateOpeningDeductions(
+          roomOpenings.map((o: { id: number; openingType: string; widthFt: number | null; heightFt: number | null; quantity?: number; label?: string | null }) => ({
+            id: o.id,
+            openingType: o.openingType,
+            widthFt: o.widthFt,
+            heightFt: o.heightFt,
+            quantity: o.quantity || 1,
+            label: o.label,
+          }))
+        );
+        const dims = room.dimensions as Record<string, unknown> | null;
+        if (dims) {
+          const length = (dims.length as number) || 0;
+          const width = (dims.width as number) || 0;
+          const height = (dims.height as number) || 8;
+          const grossWallSF = (length + width) * 2 * height;
+          const deductionPercent = grossWallSF > 0 ? (deductionResult.totalDeductionSF / grossWallSF) * 100 : 0;
+
+          if (deductionPercent > 50) {
+            issues.push({
+              category: "opening_deduction_excessive",
+              severity: "warning",
+              message:
+                `Room "${room.name}" opening deductions (${deductionResult.totalDeductionSF} SF) ` +
+                `exceed 50% of gross wall area (${Math.round(grossWallSF)} SF). ` +
+                `Deduction: ${Math.round(deductionPercent)}%. Verify opening dimensions are accurate.`,
+              roomId: room.id,
+              code: "OPENING_DEDUCTION_EXCESSIVE",
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // ── 8. Coverage type consistency ───────────────────
   for (const item of scopeItems) {
     if (item.status !== "active" || !item.roomId) continue;
     const room = rooms.find(r => r.id === item.roomId);

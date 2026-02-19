@@ -1349,33 +1349,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const damage = damages.find(d => d.id === damageId);
       if (!damage) return res.status(404).json({ message: "Damage not found" });
 
-      let netWallDeduction = 0;
-      try {
-        const openings = await storage.getOpeningsForRoom(roomId);
-        const openingData: OpeningData[] = openings.map(o => ({
-          openingType: o.openingType || "door",
-          widthFt: (o.widthFt ?? o.width ?? 0) as number,
-          heightFt: (o.heightFt ?? o.height ?? 0) as number,
-          quantity: o.quantity ?? 1,
-          opensInto: o.opensInto ?? null,
-          goesToFloor: o.goesToFloor ?? false,
-          goesToCeiling: o.goesToCeiling ?? false,
-        }));
-        const dims = room.dimensions as { length?: number; width?: number; height?: number } | null;
-        if (dims?.length && dims?.width) {
-          const grossWall = ((dims.length! + dims.width!) * 2) * (dims.height ?? 8);
-          const { afterMW } = calculateDimVars(
-            { length: dims.length!, width: dims.width!, height: dims.height ?? 8 },
-            openingData
-          );
-          netWallDeduction = Math.max(0, grossWall - (afterMW?.W ?? 0));
-        }
-      } catch {
-        // Use 0 if DIM_VARS calculation fails
-      }
-
       const { assembleScope } = await import("../scopeAssemblyService");
-      const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+      const result = await assembleScope(storage, sessionId, room, damage);
 
       res.json({
         created: result.created.length,
@@ -1567,19 +1542,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         damages = [genericDamage];
       }
 
-      const openings = await storage.getOpeningsForRoom(roomId);
-      const netWallDeduction = openings.reduce((sum, o) => {
-        const w = o.widthFt || 0;
-        const h = o.heightFt || 0;
-        return sum + (w * h);
-      }, 0);
-
       let totalCreated = 0;
       const allWarnings: string[] = [];
       const createdLineItems: any[] = [];
 
       for (const damage of damages) {
-        const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+        const result = await assembleScope(storage, sessionId, room, damage);
         totalCreated += result.created.length + result.companionItems.length;
         allWarnings.push(...result.warnings);
 
@@ -1645,15 +1613,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         const roomDamages = allDamages.filter(d => d.roomId === room.id);
         if (roomDamages.length === 0) continue;
 
-        const openings = await storage.getOpeningsForRoom(room.id);
-        const netWallDeduction = openings.reduce((sum, o) => {
-          const w = o.widthFt || 0;
-          const h = o.heightFt || 0;
-          return sum + (w * h);
-        }, 0);
-
         for (const damage of roomDamages) {
-          const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+          const result = await assembleScope(storage, sessionId, room, damage);
           totalCreated += result.created.length + result.companionItems.length;
           allWarnings.push(...result.warnings);
 

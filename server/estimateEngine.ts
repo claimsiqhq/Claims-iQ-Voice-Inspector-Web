@@ -6,6 +6,7 @@ export interface DimVarsResult {
   HH: number;
   SH: number;
   W: number;
+  W_NET?: number;  // Wall area after opening deductions
   LW: number;
   SW: number;
   PF: number;
@@ -94,6 +95,7 @@ export function calculateDimVars(
   }
 
   afterMW.W = Math.max(0, beforeMW.W - totalOpeningAreaSF);
+  afterMW.W_NET = afterMW.W; // Net wall area after opening deductions
   afterMW.PF = Math.max(0, beforeMW.PF - totalOpeningWidthLF);
 
   const longWallRatio = beforeMW.LW / (beforeMW.LW + beforeMW.SW || 1);
@@ -150,6 +152,7 @@ export function calculateElevationDimVars(
   }
 
   afterMW.W = Math.max(0, beforeMW.W - totalOpeningAreaSF);
+  afterMW.W_NET = afterMW.W;
   afterMW.LW = afterMW.W;
   afterMW.PF = Math.max(0, beforeMW.PF - totalOpeningWidthLF);
 
@@ -210,7 +213,7 @@ export function generateSubroomXml(
   const { beforeMW, afterMW } = dimVarsResult;
 
   const dimVarsAttrs = (dv: DimVarsResult) =>
-    `HH="${dv.HH}" SH="${dv.SH}" W="${dv.W}" LW="${dv.LW}" SW="${dv.SW}" PF="${dv.PF}" PC="${dv.PC}" C="${dv.C}" F="${dv.F}" LL="${dv.LL}" R="${dv.R}" SQ="${dv.SQ}" V="${dv.V}"`;
+    `HH="${dv.HH}" SH="${dv.SH}" W="${dv.W}" W_NET="${dv.W_NET ?? dv.W}" LW="${dv.LW}" SW="${dv.SW}" PF="${dv.PF}" PC="${dv.PC}" C="${dv.C}" F="${dv.F}" LL="${dv.LL}" R="${dv.R}" SQ="${dv.SQ}" V="${dv.V}"`;
 
   let misswallsXml = "";
   if (openings.length > 0) {
