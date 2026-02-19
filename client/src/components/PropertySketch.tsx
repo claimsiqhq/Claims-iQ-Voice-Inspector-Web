@@ -1124,10 +1124,10 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
 function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClick, onEditRoom }: {
   items: HierarchyRoom[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void;
 }) {
-  const cols = expanded ? 3 : 2;
-  const gap = 4;
+  const cols = expanded ? 3 : Math.min(2, items.length) || 1;
+  const gap = 6;
   const itemW = (svgW - 16 - (cols - 1) * gap) / cols;
-  const itemH = 22;
+  const itemH = items.length <= 2 ? 48 : 28;
   const rows = Math.ceil(items.length / cols);
   const sectionH = rows * (itemH + gap) + 18;
 
@@ -1252,8 +1252,9 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   const categories = useMemo(() => categorizeRooms(structureRooms), [structureRooms]);
 
-  const svgW = expanded ? 520 : 260;
+  const svgW = expanded ? 520 : 380;
   const scale = expanded ? 4 : 3;
+  const MIN_CANVAS_HEIGHT = 320;
 
   const layout = useMemo(() => {
     const sections: Array<{ height: number; render: (y: number) => React.ReactNode }> = [];
@@ -1288,7 +1289,8 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
       totalH += sec.height + 6;
     }
 
-    return { sections, totalHeight: totalH + 4 };
+    const totalHeight = Math.max(totalH + 4, MIN_CANVAS_HEIGHT);
+    return { sections, totalHeight };
   }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded, adjacencies, allOpenings, sectionsFilter]);
 
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
@@ -1301,11 +1303,15 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   const effectiveViewBox = zoomViewBox || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
 
+  const MIN_ZOOM_W = 60;
+  const MIN_ZOOM_H = 60;
+
   const handleZoomIn = useCallback(() => {
     setZoomViewBox((prev) => {
       const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
-      const nw = v.w * 0.8;
-      const nh = v.h * 0.8;
+      const nw = Math.max(v.w * 0.8, MIN_ZOOM_W);
+      const nh = Math.max(v.h * 0.8, MIN_ZOOM_H);
+      if (nw >= v.w && nh >= v.h) return v;
       return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
     });
   }, [svgW, layout.totalHeight]);
@@ -1313,8 +1319,9 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
   const handleZoomOut = useCallback(() => {
     setZoomViewBox((prev) => {
       const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
-      const nw = v.w * 1.25;
-      const nh = v.h * 1.25;
+      const nw = Math.min(v.w * 1.25, svgW);
+      const nh = Math.min(v.h * 1.25, layout.totalHeight);
+      if (nw >= svgW && nh >= layout.totalHeight) return null;
       return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
     });
   }, [svgW, layout.totalHeight]);
@@ -1431,7 +1438,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
         viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className="w-full"
         style={{
-          ...(expanded ? {} : { maxHeight: 500 }),
+          ...(expanded ? { minHeight: 400 } : { maxHeight: 520, minHeight: 280 }),
           userSelect: 'none',
           WebkitUserSelect: 'none',
           cursor: isPanning ? 'grabbing' : (zoomViewBox ? 'grab' : 'default'),

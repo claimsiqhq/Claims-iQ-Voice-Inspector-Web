@@ -2859,7 +2859,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                 "border-t border-border bg-card/60 backdrop-blur-sm transition-all",
                 sketchCollapsed ? "h-9" : "min-h-0"
               )}
-              style={!sketchCollapsed ? { flex: "0 0 auto", maxHeight: isMobile ? "30%" : "40%" } : undefined}
+              style={!sketchCollapsed ? { flex: "0 0 auto", minHeight: 280, maxHeight: isMobile ? "45%" : "55%" } : undefined}
               data-testid="sketch-inline-panel"
             >
               <div
@@ -2892,8 +2892,8 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   </Button>
                 )}
               </div>
-              {!sketchCollapsed && !isMobile && (
-                <div className="overflow-y-auto px-2 pb-2" style={{ maxHeight: "calc(100% - 36px)" }}>
+              {!sketchCollapsed && (
+                <div className="overflow-y-auto px-2 pb-2 flex-1 min-h-0" style={{ maxHeight: "calc(100% - 36px)" }}>
                   <PropertySketch
                     sessionId={sessionId}
                     rooms={rooms}
