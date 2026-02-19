@@ -46,8 +46,8 @@ const hailSteps: InspectionStep[] = [
   {
     id: makeId("hail", 5),
     phaseName: "Test Squares — All Slopes",
-    agentPrompt: "Mark a 10x10 foot test square on each roof slope. Count hail hits within each square. Record the pitch for each facet (critical for steep charges above 7/12). Use log_test_square for each facet and add_sketch_annotation with type 'hail_count'. If 8+ hits per 10x10, recommend full slope replacement. Take a photo of each test square.",
-    requiredTools: ["log_test_square", "add_sketch_annotation", "trigger_photo_capture"],
+    agentPrompt: "Mark a 10x10 foot test square on each roof slope. Count hail hits within each square. Record the pitch for each facet (critical for steep charges above 7/12). Use log_test_square for each facet and add_sketch_annotation with type 'hail_count'. If 8+ hits per 10x10, recommend full slope replacement. Take a photo of each test square. After confirming hail damage on a slope, suggest applying the hail roof template: 'I have a standard hail roof scope template. Shall I apply it as a starting point?'",
+    requiredTools: ["log_test_square", "add_sketch_annotation", "trigger_photo_capture", "apply_peril_template"],
     completionCriteria: "Test square completed on all roof slopes with hit counts recorded.",
   },
   {
@@ -67,8 +67,8 @@ const hailSteps: InspectionStep[] = [
   {
     id: makeId("hail", 8),
     phaseName: "Elevations & Siding",
-    agentPrompt: "Create elevation rooms for each side of the structure. Inspect siding for hail impact — vinyl siding may show cracks, fiber cement may show chip marks, wood may show dents. Add openings (doors, windows) and check window screens and frames. Document damage per elevation.",
-    requiredTools: ["create_room", "add_opening", "add_damage", "add_line_item", "trigger_photo_capture"],
+    agentPrompt: "Create elevation rooms for each side of the structure. Inspect siding for hail impact — vinyl siding may show cracks, fiber cement may show chip marks, wood may show dents. Add openings (doors, windows) and check window screens and frames. Document damage per elevation. After documenting damage, suggest applying the hail exterior template: 'For hail damage on this elevation, I have a standard scope template. Shall I apply it as a starting point?'",
+    requiredTools: ["create_room", "add_opening", "add_damage", "add_line_item", "trigger_photo_capture", "apply_peril_template"],
     completionCriteria: "All 4 elevations inspected with openings documented.",
   },
   {
@@ -112,8 +112,8 @@ const windSteps: InspectionStep[] = [
   {
     id: makeId("wind", 3),
     phaseName: "Roof Inspection — Directional Damage",
-    agentPrompt: "Create roof facets for all slopes. Wind damage should follow a directional pattern (windward side most affected). Check for missing shingles, lifted/creased shingles, blown-off ridge caps, and displaced flashing. Use log_test_square to document wind crease counts per facet. Note any tree impact damage separately.",
-    requiredTools: ["create_room", "log_test_square", "add_sketch_annotation", "add_damage", "trigger_photo_capture"],
+    agentPrompt: "Create roof facets for all slopes. Wind damage should follow a directional pattern (windward side most affected). Check for missing shingles, lifted/creased shingles, blown-off ridge caps, and displaced flashing. Use log_test_square to document wind crease counts per facet. Note any tree impact damage separately. After confirming wind damage, suggest applying the wind roof template: 'I have a standard wind roof scope template for the affected slopes. Shall I apply it?'",
+    requiredTools: ["create_room", "log_test_square", "add_sketch_annotation", "add_damage", "trigger_photo_capture", "apply_peril_template"],
     completionCriteria: "All roof slopes inspected with directional damage documented.",
   },
   {
@@ -185,8 +185,8 @@ const waterSteps: InspectionStep[] = [
   {
     id: makeId("water", 5),
     phaseName: "Damage Documentation",
-    agentPrompt: "Document all water damage in each room: staining, swelling, warping, delamination, mold/mildew. Check baseboards, cabinetry, flooring type (hardwood buckles, carpet/pad saturation, tile grout discoloration). Note ceiling damage from upper-floor leaks. Add line items for R&R of damaged materials.",
-    requiredTools: ["add_damage", "add_line_item", "trigger_photo_capture", "add_opening", "create_sub_area"],
+    agentPrompt: "Document all water damage in each room: staining, swelling, warping, delamination, mold/mildew. Check baseboards, cabinetry, flooring type (hardwood buckles, carpet/pad saturation, tile grout discoloration). Note ceiling damage from upper-floor leaks. Add line items for R&R of damaged materials. After documenting damage in each room, suggest applying the water template: 'For water damage in this room, I have a standard scope template based on room type. Shall I apply it as a starting point?'",
+    requiredTools: ["add_damage", "add_line_item", "trigger_photo_capture", "add_opening", "create_sub_area", "apply_peril_template"],
     completionCriteria: "All damage observations recorded with corresponding line items.",
   },
   {
@@ -230,15 +230,15 @@ const fireSteps: InspectionStep[] = [
   {
     id: makeId("fire", 3),
     phaseName: "Interior — Fire Origin Area",
-    agentPrompt: "Start with the room of fire origin. Document char depth, structural damage, complete loss areas. This room often requires full gutting. Get dimensions, create the room, and photograph thoroughly.",
-    requiredTools: ["create_room", "add_damage", "add_line_item", "trigger_photo_capture"],
+    agentPrompt: "Start with the room of fire origin. Document char depth, structural damage, complete loss areas. This room often requires full gutting. Get dimensions, create the room, and photograph thoroughly. After documenting fire damage, suggest applying the fire interior template: 'For fire damage in this room, I have a standard scope template including demolition, fire-rated drywall, and painting. Shall I apply it as a starting point?'",
+    requiredTools: ["create_room", "add_damage", "add_line_item", "trigger_photo_capture", "apply_peril_template"],
     completionCriteria: "Fire origin room fully documented.",
   },
   {
     id: makeId("fire", 4),
     phaseName: "Interior — Smoke & Heat Damage",
-    agentPrompt: "Move room by room away from the origin. Classify smoke type: wet (protein/grease), dry (paper/wood), fuel oil (petroleum). Check for soot deposits, smoke staining on walls/ceilings, heat damage to plastics and electronics. Even rooms far from the fire may need cleaning or repainting.",
-    requiredTools: ["create_room", "add_damage", "add_line_item", "trigger_photo_capture", "create_sub_area", "add_opening"],
+    agentPrompt: "Move room by room away from the origin. Classify smoke type: wet (protein/grease), dry (paper/wood), fuel oil (petroleum). Check for soot deposits, smoke staining on walls/ceilings, heat damage to plastics and electronics. Even rooms far from the fire may need cleaning or repainting. After documenting smoke/heat damage in a room, suggest applying the fire interior template for affected rooms.",
+    requiredTools: ["create_room", "add_damage", "add_line_item", "trigger_photo_capture", "create_sub_area", "add_opening", "apply_peril_template"],
     completionCriteria: "All interior rooms assessed for smoke/heat damage.",
   },
   {

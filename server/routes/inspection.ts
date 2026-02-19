@@ -10,6 +10,7 @@ import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensi
 import { z } from "zod";
 import { logger } from "../logger";
 import { assembleScope } from "../scopeAssemblyService";
+import { deriveQuantity, type QuantityFormula } from "../scopeQuantityEngine";
 import { calculateDepreciation, lookupLifeExpectancy } from "../depreciationEngine";
 import { calculateItemDepreciation } from "../estimateEngine";
 
@@ -700,7 +701,56 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       }
 
       const updated = await storage.updateRoomDimensions(roomId, merged);
-      res.json(updated);
+
+      // Auto-rescope: re-derive quantities for existing scope items and line items
+      let rescopedItems = 0;
+      if (dims.length && dims.width) {
+        try {
+          const updatedRoom = await storage.getRoom(roomId);
+          if (updatedRoom) {
+            const openings = await storage.getOpeningsForRoom(roomId);
+            const netDeduction = openings.reduce((sum, o) =>
+              ((o.widthFt ?? o.width ?? 0) * (o.heightFt ?? o.height ?? 0) * (o.quantity ?? 1)) + sum, 0);
+
+            // Re-derive scope item quantities
+            const roomScopeItems = await storage.getScopeItemsForRoom(roomId);
+            for (const si of roomScopeItems) {
+              if (si.status !== "active" || !si.catalogCode) continue;
+              const formula = si.quantityFormula;
+              if (!formula || formula === "MANUAL" || formula === "EACH") continue;
+
+              const qResult = deriveQuantity(updatedRoom, formula as QuantityFormula, netDeduction);
+              if (qResult && qResult.quantity > 0) {
+                await storage.updateScopeItem(si.id, { quantity: qResult.quantity });
+              }
+            }
+
+            // Re-derive line item quantities
+            const roomLineItems = await storage.getLineItemsForRoom(roomId);
+            for (const li of roomLineItems) {
+              if (!li.xactCode || li.provenance === "manual") continue;
+              const catalogItem = await storage.getScopeLineItemByCode(li.xactCode);
+              if (!catalogItem?.quantityFormula || catalogItem.quantityFormula === "MANUAL" || catalogItem.quantityFormula === "EACH") continue;
+
+              const qResult = deriveQuantity(updatedRoom, catalogItem.quantityFormula as QuantityFormula, netDeduction);
+              if (qResult && qResult.quantity > 0) {
+                const unitPrice = parseFloat(String(li.unitPrice) || "0");
+                const waste = li.wasteFactor || 0;
+                const totalPrice = qResult.quantity * unitPrice * (1 + waste / 100);
+                await storage.updateLineItem(li.id, {
+                  quantity: String(qResult.quantity),
+                  totalPrice: String(totalPrice.toFixed(2)),
+                } as any);
+                rescopedItems++;
+              }
+            }
+          }
+        } catch (rescopeErr) {
+          logger.warn("DimUpdate", `Auto-rescope after dimension update failed for room ${roomId}`, rescopeErr as Error);
+        }
+      }
+
+      res.json({ ...updated, rescopedItems });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
@@ -811,56 +861,15 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             return (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0);
           }
 
-          function calcQuantityFromRoom(unit: string, description: string, roomDims: any): number {
-            if (!roomDims) return 1;
-            const dv = roomDims.dimVars || null;
-            const length = Number(roomDims.length) || 0;
-            const width = Number(roomDims.width) || 0;
-            const height = Number(roomDims.height) || 8;
-            const floorArea = length * width;
-            const perimeter = 2 * (length + width);
-            const wallArea = perimeter * height;
-
-            const desc = (description || "").toLowerCase();
-            const u = (unit || "SF").toUpperCase();
-
-            if (u === "SF") {
-              if (dv) {
-                if (desc.includes("ceiling")) return Number(dv.C) || floorArea;
-                if (desc.includes("floor")) return Number(dv.F) || floorArea;
-                if (desc.includes("wall")) return Number(dv.W) || wallArea;
-                if (desc.includes("insulation")) return Number(dv.W) || wallArea;
-                return Number(dv.F) || floorArea;
-              }
-              if (desc.includes("ceiling")) return floorArea;
-              if (desc.includes("floor")) return floorArea;
-              if (desc.includes("wall")) return wallArea;
-              if (desc.includes("insulation")) return wallArea;
-              return floorArea;
-            }
-            if (u === "SY") {
-              const sf = dv ? (Number(dv.F) || floorArea) : floorArea;
-              return parseFloat((sf / 9).toFixed(2));
-            }
-            if (u === "LF") {
-              if (dv) {
-                if (desc.includes("base") || desc.includes("trim")) return Number(dv.PF) || perimeter;
-                if (desc.includes("ceil") || desc.includes("crown")) return Number(dv.PC) || perimeter;
-                return Number(dv.PF) || perimeter;
-              }
-              return perimeter;
-            }
-            if (u === "EA") return 1;
-            if (u === "HR") return 1;
-            return 1;
-          }
-
+          // Derive quantities using the catalog's quantityFormula via scopeQuantityEngine
+          // (scope items already have derived quantities from assembleScope v5)
           const allScopeItems = [...result.created, ...result.companionItems];
           for (const si of allScopeItems) {
             const actType = si.activityType || "install";
             const up = await lookupPrice(si.catalogCode, actType);
-            const rawQty = calcQuantityFromRoom(si.unit || "EA", si.description, room.dimensions);
-            const qty = parseFloat(rawQty.toFixed(2));
+            // Use the quantity already derived by assembleScope (via scopeQuantityEngine)
+            // which uses the catalog's quantityFormula field for accurate derivation
+            const qty = parseFloat((si.quantity || 1).toFixed(2));
             const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
 
             const lineItem = await storage.createLineItem({
@@ -892,6 +901,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
               source: result.created.includes(si) ? "auto_scope" : "companion",
             });
           }
+          const roomDims = room.dimensions as Record<string, unknown> | null;
+          const dimensionsAvailable = !!(roomDims && (roomDims.length as number) > 0 && (roomDims.width as number) > 0);
           autoScope = {
             itemsCreated,
             itemsGenerated: itemsCreated,
@@ -899,6 +910,10 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             companionItems: result.companionItems.length,
             manualQuantityNeeded: result.manualQuantityNeeded,
             warnings: result.warnings,
+            dimensionsAvailable,
+            dimensionWarning: !dimensionsAvailable
+              ? "Room dimensions not set — quantities default to 1. Provide dimensions with update_room_dimensions for accurate quantities."
+              : undefined,
           };
         }
       } catch (scopeErr) {

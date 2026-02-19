@@ -804,14 +804,39 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         case "add_opening": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const freshRooms = await fetchFreshRooms();
-          const openingRoom = freshRooms.find(r => r.name === args.roomName);
+          // Match by exact name, then case-insensitive, then partial match, then roomId, then currentRoomId
+          const openingRoomNameArg = (args.roomName || "").trim();
+          let openingRoom = freshRooms.find(r => r.name === openingRoomNameArg);
+          if (!openingRoom && openingRoomNameArg) {
+            openingRoom = freshRooms.find(r => r.name.toLowerCase() === openingRoomNameArg.toLowerCase());
+          }
+          if (!openingRoom && openingRoomNameArg) {
+            openingRoom = freshRooms.find(r => r.name.toLowerCase().includes(openingRoomNameArg.toLowerCase()));
+          }
+          if (!openingRoom && args.roomId) {
+            openingRoom = freshRooms.find(r => r.id === args.roomId);
+          }
+          if (!openingRoom && currentRoomId) {
+            openingRoom = freshRooms.find(r => r.id === currentRoomId);
+          }
           if (!openingRoom) {
-            result = { success: false, error: `Room "${args.roomName}" not found. Create a room first before adding openings.` };
+            const availableNames = freshRooms.map(r => r.name).join(", ");
+            result = { success: false, error: `Room "${args.roomName}" not found. Available rooms: ${availableNames}. Create a room first before adding openings.` };
             break;
           }
-          // Resolve width/height from new or legacy params
-          const openWidthFt = args.widthFt || args.width || 0;
-          const openHeightFt = args.heightFt || args.height || 0;
+          // Resolve width/height from new or legacy params, with sensible defaults by type
+          const openType = (args.openingType || "").toLowerCase();
+          const defaultW = openType.includes("overhead") || openType.includes("garage") ? 16
+            : openType.includes("window") ? 3
+            : openType.includes("missing") ? 8
+            : openType.includes("french") || openType.includes("sliding") ? 6
+            : 3; // standard door
+          const defaultH = openType.includes("overhead") || openType.includes("garage") ? 8
+            : openType.includes("window") ? 4
+            : openType.includes("missing") ? 8
+            : 7; // standard door
+          const openWidthFt = args.widthFt || args.width || defaultW;
+          const openHeightFt = args.heightFt || args.height || defaultH;
           const openQuantity = args.quantity || 1;
           const openHeaders = await getAuthHeaders();
           const openRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, {
@@ -907,13 +932,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             result = { success: false, error: "Failed to update dimensions" };
             break;
           }
-          const updatedRoom = await dimRes.json();
-          const newDims = updatedRoom.dimensions || dimBody;
+          const updatedDimRoom = await dimRes.json();
+          const newDims = updatedDimRoom.dimensions || dimBody;
+          const rescopedCount = updatedDimRoom.rescopedItems || 0;
           await refreshRooms();
+          if (rescopedCount > 0) await refreshLineItems();
           result = {
             success: true,
             dimensions: newDims,
-            message: `Updated ${args.roomName}: ${newDims.length || '?'}'×${newDims.width || '?'}'×${newDims.height || 8}'${newDims.dimVars ? ` (${newDims.dimVars.W} SF walls, ${newDims.dimVars.F} SF floor)` : ""}`,
+            rescopedItems: rescopedCount,
+            message: `Updated ${args.roomName}: ${newDims.length || '?'}'×${newDims.width || '?'}'×${newDims.height || 8}'${newDims.dimVars ? ` (${newDims.dimVars.W} SF walls, ${newDims.dimVars.F} SF floor)` : ""}${rescopedCount > 0 ? `. ${rescopedCount} scope items updated with new quantities.` : ""}`,
           };
           break;
         }
@@ -964,12 +992,28 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "add_damage": {
-          if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          // Resolve room: prefer explicit roomName, fall back to currentRoomId
+          let damageRoomId = currentRoomId;
+          if (args.roomName) {
+            const freshDmgRooms = await fetchFreshRooms();
+            const foundDmgRoom = freshDmgRooms.find(r => r.name === args.roomName);
+            if (foundDmgRoom) {
+              damageRoomId = foundDmgRoom.id;
+            } else {
+              result = { success: false, error: `Room "${args.roomName}" not found. Create it first with create_room.` };
+              break;
+            }
+          }
+          if (!damageRoomId) {
+            result = { success: false, error: "No room selected. Tell me which room the damage is in, or create a room first." };
+            break;
+          }
           const measurements: any = {};
           if (args.extent) measurements.extent = args.extent;
           if (args.hitCount) measurements.hitCount = args.hitCount;
           const damageBody = {
-            roomId: currentRoomId,
+            roomId: damageRoomId,
             description: args.description,
             damageType: args.damageType,
             severity: args.severity,
@@ -1011,6 +1055,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${Number(i.unitPrice ?? 0).toFixed(2)} = $${Number(i.totalPrice ?? 0).toFixed(2)} [${i.source}]`
               ).join("\n") || "No items matched",
               warnings: autoScope.warnings,
+              dimensionsAvailable: autoScope.dimensionsAvailable,
+              dimensionWarning: autoScope.dimensionWarning,
             } : undefined,
           };
           break;
@@ -1491,6 +1537,123 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             reason: skipReason,
             message: `Skipped "${skipDescription}". Proceed to next step.`,
             nextAction: "Call get_inspection_state to see current progress, then advance to the next phase or area in the flow. Prompt the adjuster for what comes next.",
+          };
+          break;
+        }
+
+        case "update_line_item": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const { lineItemId: updateLiId, ...updateFields } = args;
+          if (!updateLiId) { result = { success: false, error: "lineItemId is required" }; break; }
+          const updateBody: Record<string, any> = {};
+          if (updateFields.quantity !== undefined) updateBody.quantity = String(updateFields.quantity);
+          if (updateFields.unitPrice !== undefined) updateBody.unitPrice = String(updateFields.unitPrice);
+          if (updateFields.description !== undefined) updateBody.description = updateFields.description;
+          if (updateFields.unit !== undefined) updateBody.unit = updateFields.unit;
+          if (updateFields.age !== undefined) updateBody.age = updateFields.age;
+          if (updateFields.depreciationType !== undefined) updateBody.depreciationType = updateFields.depreciationType;
+          // Recalculate totalPrice if quantity or unitPrice changed
+          if (updateBody.quantity !== undefined || updateBody.unitPrice !== undefined) {
+            try {
+              const liHeaders = await getAuthHeaders();
+              const existingRes = await fetch(`/api/inspection/${sessionId}/line-items`, { headers: liHeaders });
+              if (existingRes.ok) {
+                const allLiItems = await existingRes.json();
+                const existingItem = allLiItems.find((i: any) => i.id === updateLiId);
+                if (existingItem) {
+                  const newQty = updateBody.quantity !== undefined ? parseFloat(updateBody.quantity) : parseFloat(existingItem.quantity || "1");
+                  const newUp = updateBody.unitPrice !== undefined ? parseFloat(updateBody.unitPrice) : parseFloat(existingItem.unitPrice || "0");
+                  const waste = existingItem.wasteFactor || 0;
+                  updateBody.totalPrice = String((newQty * newUp * (1 + waste / 100)).toFixed(2));
+                }
+              }
+            } catch (e) { /* recalc best effort */ }
+          }
+          const updateLiHeaders = await getAuthHeaders();
+          const updateLiRes = await fetch(`/api/inspection/${sessionId}/line-items/${updateLiId}`, {
+            method: "PATCH",
+            headers: updateLiHeaders,
+            body: JSON.stringify(updateBody),
+          });
+          if (!updateLiRes.ok) {
+            result = { success: false, error: "Failed to update line item" };
+            break;
+          }
+          const updatedLi = await updateLiRes.json();
+          await refreshLineItems();
+          result = {
+            success: true,
+            lineItemId: updatedLi.id,
+            description: updatedLi.description,
+            quantity: updatedLi.quantity,
+            unitPrice: updatedLi.unitPrice,
+            totalPrice: updatedLi.totalPrice,
+            message: `Updated: ${updatedLi.description} — ${updatedLi.quantity} ${updatedLi.unit || ""} @ $${Number(updatedLi.unitPrice || 0).toFixed(2)} = $${Number(updatedLi.totalPrice || 0).toFixed(2)}`,
+          };
+          break;
+        }
+
+        case "remove_line_item": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const removeLiId = args.lineItemId;
+          if (!removeLiId) { result = { success: false, error: "lineItemId is required" }; break; }
+          const removeLiHeaders = await getAuthHeaders();
+          const removeLiRes = await fetch(`/api/inspection/${sessionId}/line-items/${removeLiId}`, {
+            method: "DELETE",
+            headers: removeLiHeaders,
+          });
+          if (!removeLiRes.ok) {
+            result = { success: false, error: "Failed to remove line item" };
+            break;
+          }
+          await refreshLineItems();
+          result = {
+            success: true,
+            message: `Line item ${removeLiId} removed${args.reason ? `: ${args.reason}` : ""}`,
+          };
+          break;
+        }
+
+        case "get_room_scope": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let scopeTargetRoomId = args.roomId;
+          if (!scopeTargetRoomId && args.roomName) {
+            const freshScopeRooms = await fetchFreshRooms();
+            const foundScopeRoom = freshScopeRooms.find(r => r.name === args.roomName);
+            if (foundScopeRoom) scopeTargetRoomId = foundScopeRoom.id;
+          }
+          if (!scopeTargetRoomId) scopeTargetRoomId = currentRoomId;
+          if (!scopeTargetRoomId) {
+            result = { success: false, error: "No room specified or selected" };
+            break;
+          }
+          const scopeHeaders = await getAuthHeaders();
+          const scopeRes = await fetch(`/api/inspection/${sessionId}/line-items`, { headers: scopeHeaders });
+          if (!scopeRes.ok) {
+            result = { success: false, error: "Failed to fetch line items" };
+            break;
+          }
+          const allScopeItems = await scopeRes.json();
+          const roomScopeItems = allScopeItems.filter((i: any) => i.roomId === scopeTargetRoomId);
+          const totalRCV = roomScopeItems.reduce((sum: number, i: any) => sum + parseFloat(i.totalPrice || "0"), 0);
+          result = {
+            success: true,
+            roomId: scopeTargetRoomId,
+            itemCount: roomScopeItems.length,
+            totalRCV: Math.round(totalRCV * 100) / 100,
+            items: roomScopeItems.map((i: any) => ({
+              id: i.id,
+              code: i.xactCode,
+              description: i.description,
+              quantity: i.quantity,
+              unit: i.unit,
+              unitPrice: i.unitPrice,
+              totalPrice: i.totalPrice,
+              source: i.provenance,
+            })),
+            summary: roomScopeItems.length > 0
+              ? roomScopeItems.map((i: any) => `${i.xactCode || "—"}: ${i.description} — ${i.quantity} ${i.unit || ""} @ $${Number(i.unitPrice || 0).toFixed(2)} = $${Number(i.totalPrice || 0).toFixed(2)}`).join("\n")
+              : "No items scoped for this room yet.",
           };
           break;
         }
