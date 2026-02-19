@@ -1354,8 +1354,8 @@ export class DatabaseStorage implements IStorage {
       isDefault: t.isDefault || false,
     }));
 
-    const { calculateSettlement } = await import("./estimateEngine");
-    return calculateSettlement(mapped, policyInput, taxInput);
+    const { calculateSettlementFromPolicyRules } = await import("./estimateEngine");
+    return calculateSettlementFromPolicyRules(mapped, policyInput, taxInput);
   }
 }
 

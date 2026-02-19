@@ -4,6 +4,8 @@ import {
   generateSubroomXml,
   type RoomDimensions, type OpeningData
 } from "./estimateEngine";
+import type { SettlementRules } from "./settlementRules";
+import { getDefaultSettlementRules } from "./settlementRules";
 
 interface LineItemXML {
   id: number;
@@ -33,6 +35,8 @@ export interface ESXOptions {
   isSupplemental?: boolean;
   supplementalReason?: string;
   removedItemIds?: number[];
+  /** Optional settlement rules for consistent tax/labor calculation */
+  settlementRules?: SettlementRules;
 }
 
 /**
@@ -51,16 +55,44 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
   const briefing = await storage.getBriefing(session.claimId);
   const openings = await storage.getOpeningsForSession(sessionId);
 
-  return generateESXFromData({ claim, session, rooms, lineItems: items, briefing, openings });
+  const { resolveSettlementRules } = await import("./settlementRules");
+  const settlementRules = await resolveSettlementRules(
+    String(session.claimId),
+    (claim as { carrierCode?: string }).carrierCode ?? null
+  );
+
+  return generateESXFromData({
+    claim,
+    session,
+    rooms,
+    lineItems: items,
+    briefing,
+    openings,
+    settlementRules,
+  });
 }
 
 /**
- * Generates ESX from pre-built data — used by both full export and supplemental delta export
+ * Generates ESX from pre-built data — used by both full export and supplemental delta export.
+ * Accepts optional settlementRules for consistent tax rates and labor treatment.
  */
 export async function generateESXFromData(options: ESXOptions): Promise<Buffer> {
-  const { claim, session, rooms, lineItems, briefing, openings, isSupplemental, supplementalReason, removedItemIds } = options;
+  const {
+    claim,
+    session,
+    rooms,
+    lineItems,
+    briefing,
+    openings,
+    isSupplemental,
+    supplementalReason,
+    removedItemIds,
+    settlementRules,
+  } = options;
 
-  // Map line items to XML format with ACTUAL M/L/E from regional prices when available
+  const rules = settlementRules ?? getDefaultSettlementRules();
+  const laborRatePerHour = claim?.laborRatePerHour ?? 75;
+
   const lineItemsXML: LineItemXML[] = [];
   const { getRegionalPrice } = await import("./estimateEngine");
 
@@ -79,22 +111,28 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
         const wasteFactor = Number(item.wasteFactor) || 0;
         const matCost = Number(regionalPrice.materialCost || 0) * (1 + wasteFactor / 100) * qty;
         const labCost = Number(regionalPrice.laborCost || 0) * qty;
-        const equipCost = Number(regionalPrice.equipmentCost || 0) * qty;
         material = Math.round(matCost * 100) / 100;
         laborTotal = Math.round(labCost * 100) / 100;
-        tax = Math.round(material * 0.08 * 100) / 100;
-        laborHours = Math.round((laborTotal / 75) * 100) / 100;
+        const taxBase = rules.taxOnLabor ? matCost + labCost : matCost;
+        tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
+        laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
       } else {
         laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
         material = Math.round(rcvTotal * 0.65 * 100) / 100;
-        tax = Math.round(material * 0.08 * 100) / 100;
-        laborHours = Math.round((laborTotal / 75) * 100) / 100;
+        const taxBase = rules.taxOnLabor ? rcvTotal : material;
+        tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
+        laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
       }
     } else {
       laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
       material = Math.round(rcvTotal * 0.65 * 100) / 100;
-      tax = Math.round(material * 0.08 * 100) / 100;
-      laborHours = Math.round((laborTotal / 75) * 100) / 100;
+      const taxBase = rules.taxOnLabor ? rcvTotal : material;
+      tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
+      laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
+    }
+
+    if (rules.laborEfficiency < 100) {
+      laborHours = Math.round((laborHours * (rules.laborEfficiency / 100)) * 100) / 100;
     }
 
     const acvTotal = Math.round(rcvTotal * 0.85 * 100) / 100;

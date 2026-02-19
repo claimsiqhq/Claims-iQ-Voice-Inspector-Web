@@ -453,6 +453,8 @@ export const scopeLineItems = pgTable("scope_line_items", {
   xactQualitySpec: text("xact_quality_spec"),
   xactNotes: text("xact_notes"),
   isTaxable: boolean("is_taxable").default(true),
+  /** Per-item tax rate override (e.g., 7.25). null = use settlement rules default */
+  taxRate: real("tax_rate"),
   xactPhase: varchar("xact_phase", { length: 10 }),
   xactMinimumId: varchar("xact_minimum_id", { length: 10 }),
   notes: text("notes"),
