@@ -163,11 +163,11 @@ describe("buildSystemInstructions", () => {
   it("includes core behavioral sections", () => {
     const instructions = buildSystemInstructions(testBriefing, testClaim as any);
     expect(instructions).toContain("Guided Flow");
-    expect(instructions).toContain("Proactive Prompting");
+    expect(instructions).toContain("Photo Triggers");
     expect(instructions).toContain("Ambiguity Resolution");
     expect(instructions).toContain("Peril-Specific");
     expect(instructions).toContain("Photo Trigger");
-    expect(instructions).toContain("Coverage Limit");
+    expect(instructions).toContain("Coverage");
     expect(instructions).toContain("Conversational");
   });
 

@@ -6,8 +6,9 @@
  */
 
 import { IStorage } from "./storage";
-import type { ScopeItem, InspectionRoom, DamageObservation, ScopeLineItem } from "@shared/schema";
+import type { ScopeItem, InspectionRoom, DamageObservation, ScopeLineItem, InspectionSession } from "@shared/schema";
 import { calculateOpeningDeductions } from "./openingDeductionService";
+import { companionEngine } from "./companionEngine";
 
 export interface ValidationResult {
   valid: boolean;
@@ -106,9 +107,15 @@ export async function validateScopeCompleteness(
   }
 
   const TRADE_SEQUENCES = [
-    { name: "Drywall", sequence: ["DEM", "DRY", "PNT"], trigger: "DRY" },
-    { name: "Flooring", sequence: ["DEM", "FLR"], trigger: "FLR" },
-    { name: "Mitigation", sequence: ["MIT", "DEM"], trigger: "MIT" },
+    { name: "Drywall", sequence: ["DEM", "DRY", "PNT"], trigger: "DRY", companionTrades: ["DEM", "MIT", "PNT"] },
+    { name: "Flooring", sequence: ["DEM", "FLR"], trigger: "FLR", companionTrades: ["DEM", "PNT"] },
+    { name: "Mitigation", sequence: ["MIT", "DEM"], trigger: "MIT", companionTrades: ["DRY"] },
+    { name: "Roofing", sequence: ["DEM", "RFG"], trigger: "RFG", companionTrades: ["DEM", "WIN"] },
+    { name: "Painting", sequence: ["DEM", "DRY", "PNT"], trigger: "PNT", companionTrades: [] },
+    { name: "Plumbing", sequence: ["PLM", "DEM", "DRY"], trigger: "PLM", companionTrades: ["DEM", "DRY"] },
+    { name: "Electrical", sequence: ["ELE", "DEM", "PNT"], trigger: "ELE", companionTrades: ["DEM", "PNT"] },
+    { name: "Windows", sequence: ["WIN", "PNT"], trigger: "WIN", companionTrades: ["PNT"] },
+    { name: "Exterior", sequence: ["EXT", "PNT"], trigger: "EXT", companionTrades: ["PNT"] },
   ];
 
   for (const [roomId, trades] of tradesByRoom) {
@@ -245,6 +252,11 @@ export async function validateScopeCompleteness(
     }
   }
 
+  // ── 9. Water classification warnings ───────────────
+  const session = await storage.getInspectionSession(sessionId);
+  const waterIssues = validateWaterClassificationWarnings(session, scopeItems);
+  issues.push(...waterIssues);
+
   // ── Calculate score ────────────────────────────────
   const errors = issues.filter(i => i.severity === "error");
   const warnings = issues.filter(i => i.severity === "warning");
@@ -263,4 +275,78 @@ export async function validateScopeCompleteness(
     warnings,
     suggestions,
   };
+}
+
+/**
+ * Validate companion items after auto-addition.
+ */
+export async function validateCompanionsPostAutoAdd(
+  storage: IStorage,
+  sessionId: number
+): Promise<ValidationIssue[]> {
+  const items = await storage.getScopeItems(sessionId);
+  const result = companionEngine.validateCompanionItems(items);
+
+  const issues: ValidationIssue[] = result.issues.map((i) => ({
+    category: "companion",
+    severity: i.severity,
+    message: i.message,
+    scopeItemId: typeof i.itemId === "number" ? i.itemId : undefined,
+  }));
+
+  for (const companion of items.filter((i) => i.parentScopeItemId != null)) {
+    const primary = items.find((p) => p.id === companion.parentScopeItemId);
+    if (primary && (companion.quantity ?? 0) / (primary.quantity ?? 1) > 10) {
+      issues.push({
+        category: "companion_quantity",
+        severity: "warning",
+        message: `Companion quantity (${companion.quantity}) is disproportionate to primary (${primary.quantity})`,
+        scopeItemId: companion.id,
+      });
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Water classification warning checks for Category 3 and Class 4.
+ */
+export function validateWaterClassificationWarnings(
+  session: InspectionSession | undefined,
+  items: ScopeItem[]
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const wc = session?.waterClassification as
+    | { category?: number; waterClass?: number }
+    | undefined;
+
+  if (!wc) return issues;
+
+  const { category, waterClass } = wc;
+  const hasTrade = (code: string) => items.some((i) => i.tradeCode === code && i.status === "active");
+
+  if (category === 3 && !hasTrade("DEM")) {
+    issues.push({
+      category: "water_classification",
+      severity: "error",
+      message: "Category 3 black water damage requires Demolition (DEM) in scope",
+    });
+  }
+  if (category === 3 && !hasTrade("MIT")) {
+    issues.push({
+      category: "water_classification",
+      severity: "error",
+      message: "Category 3 water damage requires Mitigation Equipment (MIT) for safe handling",
+    });
+  }
+  if (waterClass === 4 && !hasTrade("DRY")) {
+    issues.push({
+      category: "water_classification",
+      severity: "warning",
+      message: "Class 4 water damage (structural/masonry) typically requires professional Drying (DRY)",
+    });
+  }
+
+  return issues;
 }

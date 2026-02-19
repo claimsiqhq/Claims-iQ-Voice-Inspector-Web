@@ -841,6 +841,23 @@ export const realtimeTools = [
   },
   {
     type: "function",
+    name: "add_water_classification",
+    description: "Records IICRC water damage classification for the session. Use for water peril claims to capture source, contamination level, and drying feasibility. This drives companion auto-addition (DEM, MIT) and water-aware depreciation (0% for Category 3, MIT, DRY).",
+    parameters: {
+      type: "object",
+      properties: {
+        waterSource: { type: "string", description: "Source of water, e.g., 'supply line break', 'washing machine overflow', 'sewer backup', 'rain/flood'" },
+        affectedArea: { type: "number", description: "Approximate affected area in square feet" },
+        visibleContamination: { type: "boolean", description: "Whether visible contamination (discoloration, odor, growth) is present" },
+        standingWaterStart: { type: "string", description: "When water first appeared (ISO date or description)" },
+        standingWaterEnd: { type: "string", description: "When water was removed (ISO date or description)" },
+        notes: { type: "string", description: "Additional notes about the water damage" }
+      },
+      required: ["waterSource", "visibleContamination"]
+    }
+  },
+  {
+    type: "function",
     name: "log_moisture_reading",
     description: "Records a moisture meter reading at a specific location.",
     parameters: {

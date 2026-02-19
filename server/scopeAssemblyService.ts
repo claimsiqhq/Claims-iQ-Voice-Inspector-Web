@@ -14,6 +14,7 @@ import { IStorage } from "./storage";
 import type { InspectionRoom, DamageObservation, ScopeLineItem, ScopeItem, InsertScopeItem } from "@shared/schema";
 import { deriveQuantity, type QuantityFormula } from "./scopeQuantityEngine";
 import { calculateOpeningDeductions } from "./openingDeductionService";
+import { companionEngine, type WaterClassification } from "./companionEngine";
 
 export interface ScopeAssemblyResult {
   created: ScopeItem[];
@@ -615,6 +616,35 @@ export async function assembleScope(
   if (itemsToCreate.length > 0) {
     const created = await storage.createScopeItems(itemsToCreate);
     result.created.push(...created);
+
+    const session = await storage.getInspectionSession(sessionId);
+    const waterClassification = session?.waterClassification as WaterClassification | undefined;
+
+    let affectedArea = 0;
+    const dims = room.dimensions as Record<string, unknown> | null;
+    if (dims && typeof dims.length === "number" && typeof dims.width === "number") {
+      affectedArea = (dims.length as number) * (dims.width as number);
+    }
+
+    let allItemsNow: ScopeItem[] = [...existingScopeItems, ...created];
+
+    for (const primary of created) {
+      const companions = await companionEngine.autoAddCompanions(
+        sessionId,
+        room.id,
+        damage.id,
+        primary,
+        allItemsNow,
+        waterClassification,
+        { affectedArea }
+      );
+
+      if (companions.length > 0) {
+        const compCreated = await storage.createScopeItems(companions);
+        result.companionItems.push(...compCreated);
+        allItemsNow = [...allItemsNow, ...compCreated];
+      }
+    }
   }
 
   if (!hasDimensions && itemsToCreate.length > 0) {

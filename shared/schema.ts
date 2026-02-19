@@ -144,6 +144,7 @@ export const inspectionSessions = pgTable(
     currentStructure: varchar("current_structure", { length: 100 }).default("Main Dwelling"),
     voiceSessionId: text("voice_session_id"),
     adjusterNotes: text("adjuster_notes"),
+    waterClassification: jsonb("water_classification"),
     startedAt: timestamp("started_at").defaultNow(),
     completedAt: timestamp("completed_at"),
   },
@@ -746,3 +747,27 @@ export const insertStandalonePhotoSchema = createInsertSchema(standalonePhotos).
 
 export type StandalonePhoto = typeof standalonePhotos.$inferSelect;
 export type InsertStandalonePhoto = z.infer<typeof insertStandalonePhotoSchema>;
+
+// ── Water Damage Classification (IICRC) ─────────────────────
+export interface WaterClassificationInput {
+  category: 1 | 2 | 3;
+  waterClass: 1 | 2 | 3 | 4;
+  source: "clean" | "gray" | "black";
+  contaminationLevel: "low" | "medium" | "high";
+  dryingPossible: boolean;
+  notes?: string;
+}
+
+export const WATER_CLASSIFICATION_RULES = {
+  categories: {
+    1: { label: "Clean Water", sources: ["supply line breaks", "rain", "sprinklers"] },
+    2: { label: "Gray Water", sources: ["washing machine", "dish washer", "sink overflow"] },
+    3: { label: "Black Water", sources: ["sewer backup", "toilet overflow", "flood"] },
+  },
+  classes: {
+    1: { label: "Minimal", maxArea: 24, evaporationSpeed: "fast" },
+    2: { label: "Moderate", maxArea: 300, evaporationSpeed: "normal" },
+    3: { label: "Large", maxArea: Infinity, evaporationSpeed: "slow" },
+    4: { label: "Specialty", maxArea: Infinity, evaporationSpeed: "very slow" },
+  },
+} as const;

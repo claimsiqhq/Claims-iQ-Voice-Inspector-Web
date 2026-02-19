@@ -162,6 +162,10 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       laborHours = Math.round((laborHours * (rules.laborEfficiency / 100)) * 100) / 100;
     }
 
+    const waterClass = session?.waterClassification as
+      | { category?: number; waterClass?: number }
+      | undefined;
+
     const depResult = calculateDepreciation({
       totalPrice: rcvTotal,
       age: item.age ?? item.itemAge ?? session?.yearsAfterLoss,
@@ -169,6 +173,8 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       category: item.category || item.tradeCode,
       description: item.description,
       depreciationType: claim?.depreciationType ?? "Standard",
+      tradeCode: item.tradeCode,
+      waterClassification: waterClass,
     });
     depreciationPercentage = depResult.depreciationPercentage;
     depreciationAmount = depResult.depreciationAmount;

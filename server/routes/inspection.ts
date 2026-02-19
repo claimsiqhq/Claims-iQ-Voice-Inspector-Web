@@ -10,6 +10,7 @@ import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensi
 import { z } from "zod";
 import { logger } from "../logger";
 import { assembleScope } from "../scopeAssemblyService";
+import { handleWaterDamageProtocol } from "../waterProtocol";
 import { deriveQuantity, type QuantityFormula } from "../scopeQuantityEngine";
 import { calculateDepreciation, lookupLifeExpectancy } from "../depreciationEngine";
 import { calculateItemDepreciation } from "../estimateEngine";
@@ -936,6 +937,28 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       res.json(damages);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/water-classification", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { waterSource, affectedArea, visibleContamination, standingWaterStart, standingWaterEnd, notes } = req.body;
+      if (!waterSource || visibleContamination === undefined) {
+        return res.status(400).json({ message: "waterSource and visibleContamination are required" });
+      }
+      const result = await handleWaterDamageProtocol(sessionId, {
+        waterSource,
+        affectedArea: affectedArea ? Number(affectedArea) : undefined,
+        visibleContamination: Boolean(visibleContamination),
+        standingWaterStart: standingWaterStart ? new Date(standingWaterStart) : undefined,
+        standingWaterEnd: standingWaterEnd ? new Date(standingWaterEnd) : undefined,
+        notes,
+      });
+      res.json(result);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

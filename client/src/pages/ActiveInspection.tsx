@@ -1252,6 +1252,36 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           return;
         }
 
+        case "add_water_classification": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const wcBody = {
+            waterSource: args.waterSource,
+            affectedArea: args.affectedArea,
+            visibleContamination: args.visibleContamination ?? false,
+            standingWaterStart: args.standingWaterStart,
+            standingWaterEnd: args.standingWaterEnd,
+            notes: args.notes,
+          };
+          const wcRes = await resilientMutation(
+            "POST",
+            `/api/inspection/${sessionId}/water-classification`,
+            wcBody,
+            { label: "Record water classification" }
+          );
+          const wcJson = await wcRes.json();
+          if (!wcRes.ok) {
+            result = { success: false, error: wcJson.message || "Failed to record water classification" };
+            break;
+          }
+          result = {
+            success: true,
+            classification: wcJson.classification,
+            companionsTriggered: wcJson.companionsTriggered || [],
+            message: `Water classified: Category ${wcJson.classification?.category}, Class ${wcJson.classification?.waterClass}. ${(wcJson.companionsTriggered?.length || 0) > 0 ? "Companion rules triggered." : ""}`,
+          };
+          break;
+        }
+
         case "log_moisture_reading": {
           if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
           const moistureHeaders = await getAuthHeaders();

@@ -178,6 +178,11 @@ export function calculateDepreciation(params: {
   category?: string;
   description?: string;
   depreciationType?: string;
+  tradeCode?: string;
+  waterClassification?: {
+    category?: number;
+    waterClass?: number;
+  };
 }): {
   lifeExpectancy: number;
   depreciationPercentage: number;
@@ -185,6 +190,19 @@ export function calculateDepreciation(params: {
 } {
   if (params.depreciationType === "Paid When Incurred") {
     return { lifeExpectancy: 0, depreciationPercentage: 0, depreciationAmount: 0 };
+  }
+
+  const waterOverride = checkWaterDepreciationOverride(
+    params.tradeCode ?? params.category ?? "",
+    params.waterClassification
+  );
+  if (waterOverride !== undefined) {
+    const depreciationAmount = Math.round(params.totalPrice * (waterOverride / 100) * 100) / 100;
+    return {
+      lifeExpectancy: 0,
+      depreciationPercentage: waterOverride,
+      depreciationAmount,
+    };
   }
 
   const lifeExpectancy =
@@ -204,4 +222,35 @@ export function calculateDepreciation(params: {
   const depreciationAmount = Math.round(params.totalPrice * depreciationPercentage / 100 * 100) / 100;
 
   return { lifeExpectancy, depreciationPercentage, depreciationAmount };
+}
+
+/**
+ * Water damage depreciation overrides (IICRC-compliant).
+ * - Category 3 (black water) = 0% depreciation (total loss)
+ * - Class 4 structural = 0% depreciation
+ * - MIT (mitigation) equipment = 0% depreciation
+ * - DRY (drying) = 0% depreciation
+ * - Category 2 gray water on Class 3+ for DEM/RFG/FLR/EXT = 50%
+ */
+export function checkWaterDepreciationOverride(
+  tradeCode: string,
+  waterClassification?: { category?: number; waterClass?: number }
+): number | undefined {
+  if (!waterClassification) return undefined;
+
+  const code = (tradeCode || "").toUpperCase();
+
+  if (waterClassification.category === 3) return 0;
+  if (waterClassification.waterClass === 4) return 0;
+  if (code === "MIT") return 0;
+  if (code === "DRY") return 0;
+
+  if (
+    waterClassification.category === 2 &&
+    (waterClassification.waterClass ?? 0) >= 3
+  ) {
+    if (["DEM", "RFG", "FLR", "EXT"].includes(code)) return 50;
+  }
+
+  return undefined;
 }
