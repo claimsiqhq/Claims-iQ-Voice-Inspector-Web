@@ -866,6 +866,7 @@ export function claimsRouter(): Router {
       await ensurePolicyRules(claimId, req.user?.id);
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
+      console.error("[inspection/start] Error:", error?.message, error?.stack);
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
     }

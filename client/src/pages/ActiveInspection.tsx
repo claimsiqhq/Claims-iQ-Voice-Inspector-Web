@@ -252,10 +252,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const startSessionMutation = useMutation({
     mutationFn: async () => {
+      console.log("[Session] Starting session for claim", claimId);
       const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
-      return res.json();
+      const data = await res.json();
+      console.log("[Session] Session start response:", data);
+      return data;
     },
     onSuccess: (data) => {
+      console.log("[Session] startSession onSuccess, sessionId=", data.sessionId);
       setSessionId(data.sessionId);
       localStorage.setItem(
         STORAGE_KEY,
@@ -265,6 +269,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           elapsedSeconds: elapsedRef.current,
         })
       );
+    },
+    onError: (error: any) => {
+      console.error("[Session] startSession failed:", error?.message || error?.toString() || error);
+      sessionStartedRef.current = false;
     },
   });
 
@@ -2559,6 +2567,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   }, [addTranscriptEntry, flushPendingToolCalls, logVoiceTimeline, queueOrExecuteToolCall]);
 
   const connectVoice = useCallback(async () => {
+    console.log("[Voice] connectVoice called, sessionId=", sessionId, "isConnecting=", isConnectingRef.current);
     if (!sessionId || isConnectingRef.current) return;
     isConnectingRef.current = true;
     setIsConnecting(true);
