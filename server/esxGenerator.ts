@@ -6,6 +6,8 @@ import {
 } from "./estimateEngine";
 import type { SettlementRules } from "./settlementRules";
 import { getDefaultSettlementRules } from "./settlementRules";
+import { resolveCategory } from "./tradeCodeMapping";
+import type { XactdocMetadata } from "./xactdocMetadata";
 
 interface LineItemXML {
   id: number;
@@ -18,9 +20,12 @@ interface LineItemXML {
   laborTotal: number;
   laborHours: number;
   material: number;
+  equipment: number;
   tax: number;
   acvTotal: number;
   rcvTotal: number;
+  depreciationPercentage?: number;
+  depreciationAmount?: number;
   room?: string;
   provenance?: string;
 }
@@ -92,41 +97,63 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
 
   const rules = settlementRules ?? getDefaultSettlementRules();
   const laborRatePerHour = claim?.laborRatePerHour ?? 75;
+  const priceListId = claim?.regionalPriceListId ?? "FLFM8X_NOV22";
 
   const lineItemsXML: LineItemXML[] = [];
   const { getRegionalPrice } = await import("./estimateEngine");
+  const { resolveMLE, applyMLEToPrice } = await import("./mleSplitService");
+  const { calculateDepreciation } = await import("./depreciationEngine");
 
   for (const item of lineItems) {
     const qty = Number(item.quantity) || 0;
     const rcvTotal = Number(item.totalPrice) || 0;
     let laborTotal: number;
     let material: number;
+    let equipment = 0;
     let tax: number;
     let laborHours: number;
+    let depreciationPercentage = 0;
+    let depreciationAmount = 0;
+
+    const mleSplit = await resolveMLE({
+      xactCode: item.xactCode,
+      category: item.category || item.tradeCode,
+      priceListId,
+      activityType: "install",
+      getRegionalPrice,
+    });
 
     if (item.xactCode) {
-      let regionalPrice = await getRegionalPrice(item.xactCode, "FLFM8X_NOV22", "install");
+      let regionalPrice = await getRegionalPrice(item.xactCode, priceListId, "install");
       if (!regionalPrice) regionalPrice = await getRegionalPrice(item.xactCode, "US_NATIONAL", "install");
+
       if (regionalPrice) {
         const wasteFactor = Number(item.wasteFactor) || 0;
         const matCost = Number(regionalPrice.materialCost || 0) * (1 + wasteFactor / 100) * qty;
         const labCost = Number(regionalPrice.laborCost || 0) * qty;
+        const equipCost = Number(regionalPrice.equipmentCost || 0) * qty;
+
         material = Math.round(matCost * 100) / 100;
         laborTotal = Math.round(labCost * 100) / 100;
-        const taxBase = rules.taxOnLabor ? matCost + labCost : matCost;
+        equipment = Math.round(equipCost * 100) / 100;
+        const taxBase = rules.taxOnLabor ? material + laborTotal + equipment : material;
         tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
         laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
       } else {
-        laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
-        material = Math.round(rcvTotal * 0.65 * 100) / 100;
-        const taxBase = rules.taxOnLabor ? rcvTotal : material;
+        const mlePrices = applyMLEToPrice(rcvTotal, mleSplit);
+        material = mlePrices.material;
+        laborTotal = mlePrices.labor;
+        equipment = mlePrices.equipment;
+        const taxBase = rules.taxOnLabor ? material + laborTotal + equipment : material;
         tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
         laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
       }
     } else {
-      laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
-      material = Math.round(rcvTotal * 0.65 * 100) / 100;
-      const taxBase = rules.taxOnLabor ? rcvTotal : material;
+      const mlePrices = applyMLEToPrice(rcvTotal, mleSplit);
+      material = mlePrices.material;
+      laborTotal = mlePrices.labor;
+      equipment = mlePrices.equipment;
+      const taxBase = rules.taxOnLabor ? material + laborTotal + equipment : material;
       tax = Math.round(taxBase * (rules.defaultTaxRate / 100) * 100) / 100;
       laborHours = Math.round((laborTotal / laborRatePerHour) * 100) / 100;
     }
@@ -135,7 +162,23 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       laborHours = Math.round((laborHours * (rules.laborEfficiency / 100)) * 100) / 100;
     }
 
-    const acvTotal = Math.round(rcvTotal * 0.85 * 100) / 100;
+    const depResult = calculateDepreciation({
+      totalPrice: rcvTotal,
+      age: item.age ?? item.itemAge ?? session?.yearsAfterLoss,
+      lifeExpectancy: item.lifeExpectancy,
+      category: item.category || item.tradeCode,
+      description: item.description,
+      depreciationType: claim?.depreciationType ?? "Standard",
+    });
+    depreciationPercentage = depResult.depreciationPercentage;
+    depreciationAmount = depResult.depreciationAmount;
+
+    if (claim?.perilType === "water" && item.damageType === "saturated") {
+      depreciationPercentage = 0;
+      depreciationAmount = 0;
+    }
+
+    const acvTotal = Math.round((rcvTotal - depreciationAmount) * 100) / 100;
 
     lineItemsXML.push({
       id: item.id,
@@ -148,9 +191,12 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
       laborTotal,
       laborHours,
       material,
+      equipment,
       tax,
       acvTotal,
       rcvTotal,
+      depreciationPercentage,
+      depreciationAmount,
       room: rooms.find((r: any) => r.id === item.roomId)?.name || "Unassigned",
       provenance: item.provenance,
     });
@@ -159,14 +205,32 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
   const summary = {
     totalRCV: lineItemsXML.reduce((sum, i) => sum + i.rcvTotal, 0),
     totalACV: lineItemsXML.reduce((sum, i) => sum + i.acvTotal, 0),
-    totalDepreciation: lineItemsXML.reduce((sum, i) => sum + (i.rcvTotal - i.acvTotal), 0),
+    totalDepreciation: lineItemsXML.reduce((sum, i) => sum + (i.depreciationAmount ?? 0), 0),
   };
 
+  const { buildXactdocMetadata } = await import("./xactdocMetadata");
+  const { validateESXData } = await import("./esxValidator");
+
+  const metadata = buildXactdocMetadata({
+    claim,
+    session: session ?? {},
+    briefing,
+    lineItemsXML,
+    isSupplemental,
+    supplementalReason,
+  });
+
+  const validation = validateESXData({ lineItems: lineItemsXML, metadata, claim });
+  if (!validation.isValid) {
+    const msg = validation.errors.map((e) => `${e.field}: ${e.message}`).join("; ");
+    throw new Error(`ESX validation failed: ${msg}`);
+  }
+
   // Generate XACTDOC.XML
-  const xactdocXml = generateXactdoc(claim, summary, lineItemsXML, isSupplemental, supplementalReason, briefing);
+  const xactdocXml = generateXactdocFromMetadata(metadata, isSupplemental, supplementalReason);
 
   // Generate GENERIC_ROUGHDRAFT.XML
-  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems, openings || []);
+  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems, openings || [], claim);
 
   // Create ZIP archive
   return new Promise((resolve, reject) => {
@@ -185,16 +249,110 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
   });
 }
 
-function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[], isSupplemental?: boolean, supplementalReason?: string, briefing?: any): string {
-  const transactionId = `CLAIMSIQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const estimateType = isSupplemental ? 'SUPPLEMENT' : 'ESTIMATE';
+function generateXactdocFromMetadata(
+  metadata: XactdocMetadata,
+  isSupplemental?: boolean,
+  supplementalReason?: string
+): string {
+  const perilXml = `
+  <PERIL>
+    <type>${escapeXml(metadata.peril.type)}</type>
+    <severity>${escapeXml(metadata.peril.severity)}</severity>
+    <dateOfLoss>${metadata.peril.dateOfLoss}</dateOfLoss>
+    <dateDiscovered>${metadata.peril.dateDiscovered || metadata.peril.dateOfLoss}</dateDiscovered>
+    <dateReported>${metadata.peril.dateReported || new Date().toISOString().split("T")[0]}</dateReported>
+    <affectedAreas>
+      ${(metadata.peril.affectedAreas || []).map((area: string) => `<area>${escapeXml(area)}</area>`).join("\n      ")}
+    </affectedAreas>
+  </PERIL>`;
 
-  let notesSection = '';
+  const lossLocationXml = `
+  <LOSS_LOCATION>
+    <address>${escapeXml(metadata.lossLocation.propertyAddress)}</address>
+    <city>${escapeXml(metadata.lossLocation.city)}</city>
+    <state>${metadata.lossLocation.state}</state>
+    <zip>${metadata.lossLocation.zip}</zip>
+    <county>${escapeXml(metadata.lossLocation.county || "")}</county>
+    <propertyType>${escapeXml(metadata.lossLocation.propertyType)}</propertyType>
+    <yearBuilt>${metadata.lossLocation.yearBuilt ?? ""}</yearBuilt>
+    <squareFootage>${metadata.lossLocation.squareFootage ?? ""}</squareFootage>
+    ${metadata.lossLocation.latitude != null ? `<latitude>${metadata.lossLocation.latitude}</latitude>` : ""}
+    ${metadata.lossLocation.longitude != null ? `<longitude>${metadata.lossLocation.longitude}</longitude>` : ""}
+  </LOSS_LOCATION>`;
+
+  const lossDetailsXml = `
+  <LOSS_DETAILS>
+    <causeOfLoss>${escapeXml(metadata.lossDetails.causeOfLoss)}</causeOfLoss>
+    <catastrophicIndicator>${metadata.lossDetails.catastrophicIndicator ? "true" : "false"}</catastrophicIndicator>
+    <salvageOpportunity>${metadata.lossDetails.salvageOpportunity ? "true" : "false"}</salvageOpportunity>
+  </LOSS_DETAILS>`;
+
+  const coverageXml = `
+  <COVERAGE>
+    <coverageALimit>${metadata.coverage.coverageALimit.toFixed(2)}</coverageALimit>
+    <coverageBLimit>${metadata.coverage.coverageBLimit.toFixed(2)}</coverageBLimit>
+    <coverageCLimit>${metadata.coverage.coverageCLimit.toFixed(2)}</coverageCLimit>
+    <coverageDLimit>${metadata.coverage.coverageDLimit.toFixed(2)}</coverageDLimit>
+    <coverageELimit>${metadata.coverage.coverageELimit.toFixed(2)}</coverageELimit>
+    <coverageFLimit>${metadata.coverage.coverageFLimit.toFixed(2)}</coverageFLimit>
+    <deductibleType>${escapeXml(metadata.coverage.deductibleType)}</deductibleType>
+    <deductibleAmount>${metadata.coverage.deductibleAmount.toFixed(2)}</deductibleAmount>
+    <coinsurancePercentage>${metadata.coverage.coinsurancePercentage}</coinsurancePercentage>
+  </COVERAGE>`;
+
+  const roofInfoXml = metadata.roofInfo
+    ? `
+  <ROOF_INFO>
+    <roofType>${escapeXml(metadata.roofInfo.roofType)}</roofType>
+    <roofAge>${metadata.roofInfo.roofAge}</roofAge>
+    <roofMaterial>${escapeXml(metadata.roofInfo.roofMaterial)}</roofMaterial>
+    <roofSlope>${escapeXml(metadata.roofInfo.roofSlope)}</roofSlope>
+    <squareFootage>${metadata.roofInfo.squareFootage}</squareFootage>
+    <condition>${escapeXml(metadata.roofInfo.condition)}</condition>
+  </ROOF_INFO>`
+    : "";
+
+  const adjusterInfoXml = `
+  <ADJUSTER_INFO>
+    <name>${escapeXml(metadata.adjusterInfo.name)}</name>
+    <company>${escapeXml(metadata.adjusterInfo.company)}</company>
+    <licenseNumber>${escapeXml(metadata.adjusterInfo.licenseNumber || "")}</licenseNumber>
+    <licenseState>${escapeXml(metadata.adjusterInfo.licenseState || "")}</licenseState>
+    <phoneNumber>${escapeXml(metadata.adjusterInfo.phoneNumber || "")}</phoneNumber>
+    <email>${escapeXml(metadata.adjusterInfo.email || "")}</email>
+  </ADJUSTER_INFO>`;
+
+  const contactsXml = `
+  <CONTACTS>
+    <CONTACT type="INSURED">
+      <name>${escapeXml(metadata.insuredInfo.name)}</name>
+      <address>${escapeXml(metadata.insuredInfo.address)}</address>
+      <city>${escapeXml(metadata.insuredInfo.city)}</city>
+      <state>${metadata.insuredInfo.state}</state>
+      <zip>${metadata.insuredInfo.zip}</zip>
+      <homePhone>${escapeXml(metadata.insuredInfo.homePhone || "")}</homePhone>
+      <cellPhone>${escapeXml(metadata.insuredInfo.cellPhone || "")}</cellPhone>
+      <email>${escapeXml(metadata.insuredInfo.email || "")}</email>
+    </CONTACT>
+    <CONTACT type="ADJUSTER">
+      <name>${escapeXml(metadata.adjusterInfo.name)}</name>
+      <company>${escapeXml(metadata.adjusterInfo.company)}</company>
+      <email>${escapeXml(metadata.adjusterInfo.email || "")}</email>
+    </CONTACT>
+    <CONTACT type="INSPECTOR">
+      <name>${escapeXml(metadata.inspectorInfo.name)}</name>
+      <company>${escapeXml(metadata.inspectorInfo.company)}</company>
+      <inspectionDate>${metadata.inspectorInfo.inspectionDate}</inspectionDate>
+      <email>${escapeXml(metadata.inspectorInfo.email || "")}</email>
+    </CONTACT>
+  </CONTACTS>`;
+
+  let notesSection = "";
   if (isSupplemental) {
     notesSection = `
   <NOTES>
-    <NOTE type="SUPPLEMENTAL" date="${new Date().toISOString().split('T')[0]}">
-      <TEXT>${escapeXml(supplementalReason || 'Supplemental claim')}</TEXT>
+    <NOTE type="SUPPLEMENTAL" date="${new Date().toISOString().split("T")[0]}">
+      <TEXT>${escapeXml(supplementalReason || "Supplemental claim")}</TEXT>
     </NOTE>
   </NOTES>`;
   }
@@ -202,50 +360,49 @@ function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[], isS
   return `<?xml version="1.0" encoding="UTF-8"?>
 <XACTDOC>
   <XACTNET_INFO>
-    <transactionId>${transactionId}</transactionId>
+    <transactionId>${metadata.transactionId}</transactionId>
     <carrierId>CLAIMSIQ</carrierId>
-    <carrierName>Claims IQ</carrierName>
+    <carrierName>${escapeXml(metadata.carrierName)}</carrierName>
     <CONTROL_POINTS>
       <CONTROL_POINT name="ASSIGNMENT" status="COMPLETE"/>
-      <CONTROL_POINT name="${estimateType}" status="COMPLETE"/>
+      <CONTROL_POINT name="${metadata.estimateType}" status="COMPLETE"/>
     </CONTROL_POINTS>
     <SUMMARY>
-      <totalRCV>${summary.totalRCV.toFixed(2)}</totalRCV>
-      <totalACV>${summary.totalACV.toFixed(2)}</totalACV>
-      <totalDepreciation>${summary.totalDepreciation.toFixed(2)}</totalDepreciation>
-      <deductible>${(briefing?.coverageSnapshot?.deductible || 0).toFixed ? (briefing?.coverageSnapshot?.deductible || 0).toFixed(2) : "0.00"}</deductible>
-      <lineItemCount>${lineItems.length}</lineItemCount>
+      <totalRCV>${metadata.summary.totalRCV.toFixed(2)}</totalRCV>
+      <totalACV>${metadata.summary.totalACV.toFixed(2)}</totalACV>
+      <totalDepreciation>${metadata.summary.totalDepreciation.toFixed(2)}</totalDepreciation>
+      <totalMaterial>${metadata.summary.totalMaterial.toFixed(2)}</totalMaterial>
+      <totalLabor>${metadata.summary.totalLabor.toFixed(2)}</totalLabor>
+      <totalEquipment>${metadata.summary.totalEquipment.toFixed(2)}</totalEquipment>
+      <deductible>${metadata.coverage.deductibleAmount.toFixed(2)}</deductible>
+      <lineItemCount>${metadata.summary.lineItemCount}</lineItemCount>
     </SUMMARY>
   </XACTNET_INFO>
-  <CONTACTS>
-    <CONTACT type="INSURED">
-      <name>${escapeXml(claim?.insuredName || "")}</name>
-      <address>${escapeXml(claim?.propertyAddress || "")}</address>
-      <city>${escapeXml(claim?.city || "")}</city>
-      <state>${claim?.state || ""}</state>
-      <zip>${claim?.zip || ""}</zip>
-    </CONTACT>
-    <CONTACT type="ADJUSTER">
-      <name>Claims IQ Inspector</name>
-    </CONTACT>
-  </CONTACTS>
+${contactsXml}
   <ADM>
-    <dateOfLoss>${claim?.dateOfLoss || ""}</dateOfLoss>
+    <dateOfLoss>${metadata.peril.dateOfLoss}</dateOfLoss>
     <dateInspected>${new Date().toISOString().split("T")[0]}</dateInspected>
     <COVERAGE_LOSS>
-      <claimNumber>${escapeXml(claim?.claimNumber || "")}</claimNumber>
-      <policyNumber>${escapeXml(briefing?.coverageSnapshot?.policyNumber || claim?.policyNumber || "")}</policyNumber>
+      <claimNumber>${escapeXml(metadata.claimNumber)}</claimNumber>
+      <policyNumber>${escapeXml(metadata.policyNumber)}</policyNumber>
     </COVERAGE_LOSS>
     <PARAMS>
-      <priceList>USNATNL</priceList>
-      <laborEfficiency>100</laborEfficiency>
-      <depreciationType>${claim?.perilType === "water" ? "Recoverable" : "Standard"}</depreciationType>
+      <priceList>${escapeXml(metadata.priceListId)}</priceList>
+      <laborEfficiency>${metadata.laborEfficiency}</laborEfficiency>
+      <depreciationType>${escapeXml(metadata.depreciationType)}</depreciationType>
     </PARAMS>
-  </ADM>${notesSection}
+  </ADM>
+${perilXml}
+${lossLocationXml}
+${lossDetailsXml}
+${coverageXml}
+${roofInfoXml}
+${adjusterInfoXml}
+${notesSection}
 </XACTDOC>`;
 }
 
-function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = []): string {
+function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = [], claim?: any): string {
   const roomGroups: { [key: string]: LineItemXML[] } = {};
   lineItems.forEach((item) => {
     const roomKey = item.room || "Unassigned";
@@ -281,11 +438,7 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
     itemGroupsXml += `        <GROUP type="room" name="${escapeXml(roomName)}"${isSketchRoom ? ' source="Sketch" isRoom="1"' : ""}>\n`;
     itemGroupsXml += `          <ITEMS>\n`;
 
-    const tradeToCategory: Record<string, string> = {
-      MIT: "WTR", DEM: "DEM", DRY: "DRY", PNT: "PNT", FLR: "FLR",
-      INS: "INS", CAR: "FRM", CAB: "CAB", CTR: "CTR", RFG: "RFG",
-      WIN: "WIN", EXT: "SDG", ELE: "ELE", PLM: "PLM", HVAC: "HVA", GEN: "GEN",
-    };
+    const perilType = claim?.perilType;
     const actionToAct: Record<string, string> = {
       "R&R": "&", "Detach & Reset": "O", "Repair": "R", "Paint": "P",
       "Clean": "C", "Tear Off": "-", "Labor Only": "L", "Install": "+",
@@ -294,13 +447,13 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
     roomItems.forEach((item, idx) => {
       const origItem = originalItems.find((oi: any) => oi.id === item.id);
       const tradeCode = origItem?.tradeCode || "";
-      const category = tradeToCategory[tradeCode] || item.category.substring(0, 3).toUpperCase();
+      const category = resolveCategory(tradeCode, perilType) || (item.category || "").substring(0, 3).toUpperCase() || "GEN";
       const act = item.provenance === "supplemental_new" ? "ADD" :
         item.provenance === "supplemental_modified" ? "MOD" :
         actionToAct[item.action] || "&";
       const selector = origItem?.xactCode ? String(origItem.xactCode).split("-").slice(-1)[0] || "1/2++" : "1/2++";
 
-      itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(act)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>\n`;
+      itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(act)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" equipment="${(item.equipment ?? 0).toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}" depreciationPct="${(item.depreciationPercentage ?? 0).toFixed(2)}" depreciationAmt="${(item.depreciationAmount ?? 0).toFixed(2)}"/>\n`;
     });
 
     itemGroupsXml += `          </ITEMS>\n`;
