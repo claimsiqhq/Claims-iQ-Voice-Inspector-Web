@@ -257,6 +257,10 @@ export async function validateScopeCompleteness(
   const waterIssues = validateWaterClassificationWarnings(session, scopeItems);
   issues.push(...waterIssues);
 
+  // ── 10. Companion post-auto-add validation ─────────
+  const companionIssues = await validateCompanionsPostAutoAdd(storage, sessionId);
+  issues.push(...companionIssues);
+
   // ── Calculate score ────────────────────────────────
   const errors = issues.filter(i => i.severity === "error");
   const warnings = issues.filter(i => i.severity === "warning");
