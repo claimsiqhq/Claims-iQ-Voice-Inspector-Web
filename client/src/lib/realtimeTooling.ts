@@ -28,6 +28,16 @@ export function sendRealtimeToolRoundTrip(
   callId: string,
   result: Record<string, unknown>,
 ): void {
+  sendFunctionCallOutput(sendFn, callId, result);
+
+  sendFn(JSON.stringify({ type: "response.create" }));
+}
+
+export function sendFunctionCallOutput(
+  sendFn: (payload: string) => void,
+  callId: string,
+  result: Record<string, unknown>,
+): void {
   sendFn(JSON.stringify({
     type: "conversation.item.create",
     item: {
@@ -36,6 +46,4 @@ export function sendRealtimeToolRoundTrip(
       output: JSON.stringify(result),
     },
   }));
-
-  sendFn(JSON.stringify({ type: "response.create" }));
 }

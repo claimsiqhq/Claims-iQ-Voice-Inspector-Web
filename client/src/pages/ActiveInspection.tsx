@@ -47,7 +47,8 @@ import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
 import { normalizeOpeningDimensions, normalizeWallDirection, parseFeetValue } from "@/lib/openingToolNormalization";
-import { buildToolError, sendRealtimeToolRoundTrip } from "@/lib/realtimeTooling";
+import { buildToolError, sendFunctionCallOutput } from "@/lib/realtimeTooling";
+import { drainToolQueue, shouldQueueToolCall } from "@/lib/realtimeVoiceState";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -83,6 +84,16 @@ interface CameraMode {
   photoType: string;
   overlay: string;
 }
+
+interface PendingToolCall {
+  callId: string;
+  name: string;
+  argsString: string;
+  receivedAt: number;
+}
+
+const IMMEDIATE_TOOLS = new Set(["trigger_photo_capture"]);
+const ENABLE_MIC_GATING = true;
 
 const PHASES = [
   { id: 1, name: "Pre-Inspection" },
@@ -196,6 +207,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
   const hasGreetedRef = useRef(false);
   const elapsedRef = useRef(0);
+  const agentSpeakingRef = useRef(false);
+  const userSpeakingRef = useRef(false);
+  const activeAgentResponseIdRef = useRef<string | null>(null);
+  const pendingToolCallsRef = useRef<PendingToolCall[]>([]);
+  const isDrainingToolQueueRef = useRef(false);
   const elapsedInitialized = useRef(false);
   if (!elapsedInitialized.current) {
     elapsedInitialized.current = true;
@@ -298,6 +314,21 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isConnected, isPaused]);
 
+  useEffect(() => {
+    if (!ENABLE_MIC_GATING) return;
+    const stream = streamRef.current;
+    if (!stream) return;
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+    const shouldEnableMic = !agentSpeakingRef.current;
+    audioTrack.enabled = shouldEnableMic;
+    logger.info("VoiceTimeline", "mic.gating.updated", {
+      timestamp: new Date().toISOString(),
+      eventType: "mic.gating.updated",
+      enabled: shouldEnableMic,
+    });
+  }, [voiceState]);
+
   // Persist session state periodically (elapsed time, etc.)
   useEffect(() => {
     if (!sessionId || !isConnected) return;
@@ -327,6 +358,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }).catch(() => {});
     } catch {}
   }, [getAuthHeaders]);
+
+  const logVoiceTimeline = useCallback((eventType: string, details: Record<string, unknown> = {}) => {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      eventType,
+      ...details,
+    };
+    logger.info("VoiceTimeline", eventType, payload);
+    sendLogToServer("voice_timeline", "call", payload);
+  }, [sendLogToServer]);
+
+  const sendResponseCreateSafely = useCallback((reason: string, details: Record<string, unknown> = {}) => {
+    if (!dcRef.current || dcRef.current.readyState !== "open") return;
+    if (agentSpeakingRef.current) {
+      logVoiceTimeline("response.create.blocked.agent_speaking", { reason, ...details });
+      return;
+    }
+    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+    logVoiceTimeline("response.create.sent", { reason, ...details });
+  }, [logVoiceTimeline]);
 
   const refreshEstimate = useCallback(async () => {
     if (!sessionId) return;
@@ -552,7 +603,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     throw lastError || new Error("Request failed after retries");
   }, []);
 
-  const executeToolCall = useCallback(async (event: any) => {
+  const executeToolCall = useCallback(async (event: any, options?: { suppressResponseCreate?: boolean }) => {
     const { name, arguments: argsString, call_id } = event;
     let args: any;
     try {
@@ -564,7 +615,15 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
     const sendToolRoundTrip = (payload: Record<string, unknown>) => {
       if (!dcRef.current || dcRef.current.readyState !== "open") return;
-      sendRealtimeToolRoundTrip((message) => dcRef.current?.send(message), call_id, payload);
+      sendFunctionCallOutput((message) => dcRef.current?.send(message), call_id, payload);
+      logVoiceTimeline("tool.function_call_output.sent", { call_id, name });
+      if (!options?.suppressResponseCreate) {
+        if (agentSpeakingRef.current) {
+          logVoiceTimeline("response.create.deferred.agent_speaking", { call_id, name });
+          return;
+        }
+        sendResponseCreateSafely("tool_round_trip", { call_id, name });
+      }
     };
 
     const toolValidationError = (message: string, details?: Record<string, unknown>, hint?: string) =>
@@ -1983,24 +2042,92 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     logger.info("VoiceTool", `◀ ${name}`, { call_id, result });
     sendLogToServer(name, "result", { call_id, result });
     sendToolRoundTrip(result);
-  }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry, sendLogToServer]);
+  }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry, sendLogToServer, logVoiceTimeline]);
+
+  const flushPendingToolCalls = useCallback(async () => {
+    if (isDrainingToolQueueRef.current) return;
+    if (agentSpeakingRef.current) {
+      logVoiceTimeline("tool.queue.drain.skipped.agent_speaking", { queued: pendingToolCallsRef.current.length });
+      return;
+    }
+    if (!dcRef.current || dcRef.current.readyState !== "open") return;
+    if (pendingToolCallsRef.current.length === 0) return;
+
+    isDrainingToolQueueRef.current = true;
+    logVoiceTimeline("tool.queue.drain.start", { queued: pendingToolCallsRef.current.length });
+    try {
+      await drainToolQueue(pendingToolCallsRef.current, async (queuedCall) => {
+        logVoiceTimeline("tool.queue.execute", { call_id: queuedCall.callId, name: queuedCall.name, queuedForMs: Date.now() - queuedCall.receivedAt });
+        await executeToolCall({
+          name: queuedCall.name,
+          arguments: queuedCall.argsString,
+          call_id: queuedCall.callId,
+        }, { suppressResponseCreate: true });
+      });
+      if (!agentSpeakingRef.current && dcRef.current?.readyState === "open") {
+        sendResponseCreateSafely("tool_queue_drained", { queuedExecuted: true });
+      }
+    } finally {
+      isDrainingToolQueueRef.current = false;
+      logVoiceTimeline("tool.queue.drain.done", { remaining: pendingToolCallsRef.current.length });
+    }
+  }, [executeToolCall, logVoiceTimeline, sendResponseCreateSafely]);
+
+  const queueOrExecuteToolCall = useCallback((event: any) => {
+    const callId = event.call_id || event.id || `call_${Date.now()}`;
+    const toolName = event.name || "unknown_tool";
+    const argsString = event.arguments || "{}";
+
+    if (IMMEDIATE_TOOLS.has(toolName)) {
+      logVoiceTimeline("tool.execute.immediate_tool", { call_id: callId, name: toolName });
+      void executeToolCall({ ...event, call_id: callId, arguments: argsString });
+      return;
+    }
+
+    if (shouldQueueToolCall(agentSpeakingRef.current, false)) {
+      pendingToolCallsRef.current.push({
+        callId,
+        name: toolName,
+        argsString,
+        receivedAt: Date.now(),
+      });
+      logVoiceTimeline("tool.queued.agent_speaking", { call_id: callId, name: toolName, queued: pendingToolCallsRef.current.length });
+      return;
+    }
+
+    logVoiceTimeline("tool.execute.immediate", { call_id: callId, name: toolName });
+    void executeToolCall({ ...event, call_id: callId, arguments: argsString });
+  }, [executeToolCall, logVoiceTimeline, sendResponseCreateSafely]);
 
   const handleRealtimeEvent = useCallback((event: any) => {
     switch (event.type) {
       case "input_audio_buffer.speech_started":
+        userSpeakingRef.current = true;
+        logVoiceTimeline("speech.user.started", { response_id: event.response_id || null });
         setVoiceState("listening");
         break;
 
       case "input_audio_buffer.speech_stopped":
+        userSpeakingRef.current = false;
+        logVoiceTimeline("speech.user.stopped", { response_id: event.response_id || null });
         setVoiceState("processing");
         break;
 
       case "response.audio.delta":
+        if (!agentSpeakingRef.current) {
+          logVoiceTimeline("speech.agent.started", { response_id: event.response_id || null });
+        }
+        agentSpeakingRef.current = true;
+        activeAgentResponseIdRef.current = event.response_id || activeAgentResponseIdRef.current;
         setVoiceState("speaking");
         break;
 
       case "response.audio.done":
+        agentSpeakingRef.current = false;
+        logVoiceTimeline("speech.agent.stopped", { response_id: event.response_id || activeAgentResponseIdRef.current });
+        activeAgentResponseIdRef.current = null;
         setVoiceState("idle");
+        void flushPendingToolCalls();
         break;
 
       case "conversation.item.input_audio_transcription.completed":
@@ -2032,7 +2159,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     }),
                   },
                 }));
-                dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                logVoiceTimeline("tool.function_call_output.sent", { call_id: pendingCall.call_id, name: "trigger_photo_capture" });
+                sendResponseCreateSafely("photo_capture_skipped_by_voice", { call_id: pendingCall.call_id });
               }
               pendingPhotoCallRef.current = null;
               addTranscriptEntry("agent", "Photo capture skipped.");
@@ -2055,10 +2183,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         break;
 
       case "response.function_call_arguments.done":
-        executeToolCall(event);
+        queueOrExecuteToolCall(event);
         break;
 
       case "response.done":
+        logVoiceTimeline("response.done", { response_id: event.response?.id || event.response_id || null });
         break;
 
       case "error":
@@ -2071,7 +2200,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }, 5000);
         break;
     }
-  }, [addTranscriptEntry, executeToolCall]);
+  }, [addTranscriptEntry, flushPendingToolCalls, logVoiceTimeline, queueOrExecuteToolCall]);
 
   const connectVoice = useCallback(async () => {
     if (!sessionId || isConnectingRef.current) return;
@@ -2110,7 +2239,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         audio.srcObject = event.streams[0];
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
       streamRef.current = stream;
       pc.addTrack(stream.getTracks()[0]);
 
@@ -2380,7 +2516,8 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           output: JSON.stringify(photoResult),
         },
       }));
-      dcRef.current.send(JSON.stringify({ type: "response.create" }));
+      logVoiceTimeline("tool.function_call_output.sent", { call_id: pendingCall.call_id, name: "trigger_photo_capture" });
+      sendResponseCreateSafely("photo_capture_completed", { call_id: pendingCall.call_id });
     }
     pendingPhotoCallRef.current = null;
 
@@ -3374,7 +3511,8 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                         }),
                       },
                     }));
-                    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                    logVoiceTimeline("tool.function_call_output.sent", { call_id: pendingCall.call_id, name: "trigger_photo_capture" });
+                    sendResponseCreateSafely("photo_capture_cancelled", { call_id: pendingCall.call_id });
                   }
                   pendingPhotoCallRef.current = null;
                 }}
