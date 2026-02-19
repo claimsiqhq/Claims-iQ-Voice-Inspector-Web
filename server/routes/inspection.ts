@@ -2048,43 +2048,71 @@ Respond in JSON format:
       const moistureReadings = await storage.getMoistureReadingsForSession(sessionId);
 
       const perilType = claim?.perilType || "unknown";
-      const checklist: Array<{ item: string; satisfied: boolean; evidence?: string }> = [];
+      const checklist: Array<{ item: string; satisfied: boolean; evidence?: string; weight?: number }> = [];
 
-      // Universal items
-      checklist.push({
-        item: "Property overview photos (4 corners)",
-        satisfied: allPhotos.filter(p => p.photoType === "overview").length >= 4,
-        evidence: `${allPhotos.filter(p => p.photoType === "overview").length} overview photos`,
+      // Helper: interior rooms (contents-first validation)
+      const interiorRooms = rooms.filter(r => r.roomType?.startsWith("interior_"));
+      const interiorRoomsWithDocs = interiorRooms.filter(r => {
+        const hasDamage = allDamages.some(d => d.roomId === r.id);
+        const hasLineItem = allLineItems.some(li => li.roomId === r.id);
+        return hasDamage || hasLineItem;
       });
+
+      // ── TIER 1: Core / Contents (validated first, higher weight)
       checklist.push({
         item: "At least one room/area documented",
         satisfied: rooms.length > 0,
         evidence: `${rooms.length} rooms created`,
+        weight: 1.5,
+      });
+      checklist.push({
+        item: "At least one interior room documented",
+        satisfied: interiorRooms.length > 0,
+        evidence: interiorRooms.length > 0 ? `${interiorRooms.length} interior rooms` : undefined,
+        weight: 1.5,
+      });
+      checklist.push({
+        item: "Interior rooms have damages or line items",
+        satisfied: interiorRoomsWithDocs.length > 0 || interiorRooms.length === 0,
+        evidence: interiorRoomsWithDocs.length > 0 ? `${interiorRoomsWithDocs.length} interior rooms documented` : undefined,
+        weight: 1.5,
       });
       checklist.push({
         item: "At least one damage observation recorded",
         satisfied: allDamages.length > 0,
         evidence: `${allDamages.length} damage observations`,
+        weight: 1.5,
       });
       checklist.push({
         item: "At least one line item in estimate",
         satisfied: allLineItems.length > 0,
         evidence: `${allLineItems.length} line items`,
+        weight: 1.5,
       });
 
-      // Peril-specific items
+      // ── TIER 2: Exterior / Overview (lower weight until core is satisfied)
+      checklist.push({
+        item: "Property overview photos (4 corners)",
+        satisfied: allPhotos.filter(p => p.photoType === "overview").length >= 4,
+        evidence: `${allPhotos.filter(p => p.photoType === "overview").length} overview photos`,
+        weight: 0.8,
+      });
+
+      // Peril-specific items (exterior items get lower weight for contents-first scoring)
       if (perilType === "hail") {
         const testSquarePhotos = allPhotos.filter(p => p.photoType === "test_square");
         checklist.push({
           item: "Roof test square photos",
           satisfied: testSquarePhotos.length >= 2,
           evidence: `${testSquarePhotos.length} test square photos`,
+          weight: 0.8,
         });
         checklist.push({
           item: "Soft metal inspection documented (gutters, AC, vents)",
           satisfied: allDamages.some(d => d.damageType === "dent" || d.damageType === "hail_impact"),
           evidence: allDamages.filter(d => d.damageType === "dent" || d.damageType === "hail_impact").length > 0
             ? "Hail/dent damage recorded" : undefined,
+          weight: 0.8,
         });
       }
 
@@ -2096,6 +2124,7 @@ Respond in JSON format:
           evidence: elevationRooms.length > 0
             ? `${elevationRooms.length} elevations: ${elevationRooms.map(r => r.name).join(", ")}`
             : undefined,
+          weight: 0.8,
         });
         const roofRooms = rooms.filter(r => r.roomType === "exterior_roof_slope");
         checklist.push({
@@ -2104,6 +2133,7 @@ Respond in JSON format:
           evidence: roofRooms.length > 0
             ? `${roofRooms.length} slopes: ${roofRooms.map(r => r.name).join(", ")}`
             : undefined,
+          weight: 0.8,
         });
       }
 
@@ -2112,13 +2142,20 @@ Respond in JSON format:
           item: "Moisture readings recorded",
           satisfied: moistureReadings.length >= 3,
           evidence: `${moistureReadings.length} moisture readings`,
+          weight: 1.0,
         });
         checklist.push({
           item: "Water entry point documented",
           satisfied: allDamages.some(d => d.damageType === "water_intrusion"),
           evidence: allDamages.some(d => d.damageType === "water_intrusion")
             ? "Water intrusion recorded" : undefined,
+          weight: 1.0,
         });
+      }
+
+      // Normalize weights: items without weight use 1.0
+      for (const c of checklist) {
+        if (c.weight === undefined) c.weight = 1.0;
       }
 
       // Scope gap detection
@@ -2147,13 +2184,20 @@ Respond in JSON format:
         }
       }
 
-      const satisfiedCount = checklist.filter(c => c.satisfied).length;
-      const completenessScore = checklist.length > 0
-        ? Math.round((satisfiedCount / checklist.length) * 100) : 0;
+      // Weighted scoring: contents-first items (weight 1.5) count more than exterior (weight 0.8)
+      const totalWeight = checklist.reduce((sum, c) => sum + (c.weight ?? 1), 0);
+      const satisfiedWeight = checklist
+        .filter(c => c.satisfied)
+        .reduce((sum, c) => sum + (c.weight ?? 1), 0);
+      const completenessScore = totalWeight > 0
+        ? Math.round((satisfiedWeight / totalWeight) * 100) : 0;
+
+      // Strip weight from response (UI doesn't need it)
+      const checklistForResponse = checklist.map(({ weight, ...rest }) => rest);
 
       res.json({
         completenessScore,
-        checklist,
+        checklist: checklistForResponse,
         scopeGaps,
         missingPhotos,
         summary: {

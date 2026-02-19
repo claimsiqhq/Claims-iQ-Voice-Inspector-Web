@@ -175,7 +175,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [isPaused, setIsPaused] = useState(false);
   const [showProgressMap, setShowProgressMap] = useState(false);
   const [showProgressTracker, setShowProgressTracker] = useState(false);
-  const [sketchCollapsed, setSketchCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [sketchCollapsed, setSketchCollapsed] = useState(false);
   const [sketchExpanded, setSketchExpanded] = useState(false);
   const [sketchEditMode, setSketchEditMode] = useState(false);
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);

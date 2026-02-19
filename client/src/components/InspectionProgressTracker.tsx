@@ -75,6 +75,7 @@ export default function InspectionProgressTracker({
   onRefresh,
 }: ProgressTrackerProps) {
   const [completenessData, setCompletenessData] = useState<CompletenessData | null>(null);
+  const [fetchedRooms, setFetchedRooms] = useState<typeof rooms>([]);
   const [expandedSection, setExpandedSection] = useState<string | null>("phases");
   const [loading, setLoading] = useState(false);
 
@@ -89,15 +90,22 @@ export default function InspectionProgressTracker({
     return headers;
   }, []);
 
-  const fetchCompleteness = useCallback(async () => {
+  const fetchProgressData = useCallback(async () => {
     if (!sessionId) return;
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/completeness`, { headers });
-      if (res.ok) {
-        const data = await res.json();
+      const [completenessRes, roomsRes] = await Promise.all([
+        fetch(`/api/inspection/${sessionId}/completeness`, { headers }),
+        fetch(`/api/inspection/${sessionId}/rooms`, { headers }),
+      ]);
+      if (completenessRes.ok) {
+        const data = await completenessRes.json();
         setCompletenessData(data);
+      }
+      if (roomsRes.ok) {
+        const roomsData = await roomsRes.json();
+        setFetchedRooms(roomsData);
       }
     } catch {} finally {
       setLoading(false);
@@ -106,16 +114,18 @@ export default function InspectionProgressTracker({
 
   useEffect(() => {
     if (isOpen && sessionId) {
-      fetchCompleteness();
+      fetchProgressData();
     }
-  }, [isOpen, sessionId, fetchCompleteness]);
+  }, [isOpen, sessionId, fetchProgressData]);
 
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const completedRooms = rooms.filter((r) => r.status === "complete").length;
-  const totalRooms = rooms.length;
+  // Use fetched rooms (full list from server) when available; ensures interiors show even if parent filtered by structure
+  const displayRooms = fetchedRooms.length > 0 ? fetchedRooms : rooms;
+  const completedRooms = displayRooms.filter((r) => r.status === "complete").length;
+  const totalRooms = displayRooms.length;
   const roomProgress = totalRooms > 0 ? Math.round((completedRooms / totalRooms) * 100) : 0;
 
   const overallScore = completenessData?.completenessScore ?? 0;
@@ -468,10 +478,10 @@ export default function InspectionProgressTracker({
                       className="overflow-hidden"
                     >
                       <div className="px-5 pb-4 space-y-1.5">
-                        {rooms.length === 0 ? (
+                        {displayRooms.length === 0 ? (
                           <p className="text-xs text-muted-foreground py-2">No rooms created yet.</p>
                         ) : (
-                          rooms.map((room) => (
+                          displayRooms.map((room) => (
                             <div
                               key={room.id}
                               className={cn(
@@ -519,7 +529,7 @@ export default function InspectionProgressTracker({
             <div className="px-5 py-3 border-t border-border bg-muted/30">
               <button
                 onClick={() => {
-                  fetchCompleteness();
+                  fetchProgressData();
                   onRefresh?.();
                 }}
                 disabled={loading}
