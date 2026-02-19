@@ -42,11 +42,17 @@ describe("depreciationEngine", () => {
         checkWaterDepreciationOverride("RFG", { category: 2, waterClass: 3 })
       ).toBe(50);
       expect(
-        checkWaterDepreciationOverride("FLR", { category: 2, waterClass: 4 })
+        checkWaterDepreciationOverride("FLR", { category: 2, waterClass: 3 })
       ).toBe(50);
       expect(
         checkWaterDepreciationOverride("EXT", { category: 2, waterClass: 3 })
       ).toBe(50);
+    });
+
+    it("returns 0 for Class 4 (structural) regardless of trade", () => {
+      expect(
+        checkWaterDepreciationOverride("FLR", { category: 2, waterClass: 4 })
+      ).toBe(0);
     });
 
     it("returns undefined when no water classification", () => {
@@ -101,7 +107,7 @@ describe("depreciationEngine", () => {
 
   describe("lookupLifeExpectancy", () => {
     it("returns life for roofing keywords", () => {
-      expect(lookupLifeExpectancy("roofing", "architectural shingles")).toBe(30);
+      expect(lookupLifeExpectancy("roofing", "laminated/architectural shingles")).toBe(30);
       expect(lookupLifeExpectancy("rfg", "metal roofing")).toBe(50);
     });
 
