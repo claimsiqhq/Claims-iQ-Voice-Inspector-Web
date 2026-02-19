@@ -2193,7 +2193,6 @@ Respond in JSON format:
 
       // Process photo analysis for damage suggestions (PROMPT-18 Part B)
       let damageSuggestions: Array<{ description: string; damageType: string; severity: string; notes: string; confidence: number }> = [];
-      const sessionId = parseInt(param(req.params.sessionId));
       const photo = await storage.getPhoto(photoId);
       if (photo?.roomId && analysis.damageVisible && analysis.damageVisible.length > 0) {
         try {
