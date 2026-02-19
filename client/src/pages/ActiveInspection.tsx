@@ -1832,45 +1832,44 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const flowContext = flowStepNames.length > 0
             ? `\n\nINSPECTION FLOW (${activeFlow.name} — ${activeFlow.perilType}):\n${flowStepNames.join("\n")}\n`
             : "";
+          const hierarchyInfo = tokenData.hierarchySummary
+            ? `\nDOCUMENTED SO FAR: ${tokenData.hierarchySummary}`
+            : "";
 
           if (previousTranscript) {
             const completedInfo = completedPhasesFromServer.length > 0
               ? `\nCOMPLETED PHASES: ${completedPhasesFromServer.join(", ")} (these are finished — do NOT repeat them).`
               : "";
-            const resumeInstructions = `You are RESUMING an inspection that was previously interrupted.
 
-SESSION STATE: You were on Phase ${serverPhase}, working on structure "${serverStructure}".${completedInfo}${flowContext}
+            dc.send(JSON.stringify({
+              type: "response.create",
+              response: {
+                instructions: `You are RESUMING an inspection. Here is everything you need — do NOT call get_inspection_state, you already have the data.
+
+SESSION STATE: Phase ${serverPhase}, structure "${serverStructure}".${completedInfo}${hierarchyInfo}${flowContext}
 PREVIOUS TRANSCRIPT (last portion):
 ---
 ${previousTranscript}
 ---
 
-Execute these steps in order:
-1) Silently call get_inspection_state to understand current progress and confirm the phase.
-2) Based on the inspection state and transcript, determine exactly where the adjuster left off — the specific phase, structure, room, and what was being documented.
-3) Greet the adjuster: "Welcome back. Last time we were on Phase ${serverPhase}, working on [specific area/room]. Shall we pick up where we left off?"
-4) Wait for the adjuster to confirm before proceeding.
-5) If they confirm, briefly explain what you'll be continuing with (the current phase name and what's left), then resume from that exact point.
-6) If they want to go somewhere else, accommodate their request.
-7) Do NOT restart from Phase 1 or re-do completed phases (${completedPhasesFromServer.length > 0 ? `Phases ${completedPhasesFromServer.join(", ")} are done` : "none completed yet"}) unless explicitly asked.`;
+CRITICAL RULES:
+- Review the transcript carefully. Any step that was COMPLETED or SKIPPED must NOT be repeated. If the property verification photo was already taken or skipped, do NOT trigger it again.
+- Do NOT call any tools before speaking. Just greet the adjuster directly.
 
-            dc.send(JSON.stringify({
-              type: "response.create",
-              response: { instructions: resumeInstructions },
+YOUR GREETING: Say "Welcome back. We were on [describe where you left off based on the transcript and session state]. Shall we pick up where we left off?" Then WAIT for their response before doing anything else.`,
+              },
             }));
           } else {
-            const freshInstructions = `Do NOT introduce yourself or make small talk.${flowContext}
-Execute these steps in order:
-1) Silently call get_inspection_state.
-2) If no structures exist, silently call create_structure for 'Main Dwelling'.
-3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state Phase 1 of the inspection flow.${flowStepNames.length > 0 ? ` The flow is "${activeFlow.name}" with ${flowStepNames.length} phases.` : ""}
-4) Explain what you'll be doing in Phase 1 in one sentence.
-5) Then call trigger_photo_capture for the property verification photo.
-6) Follow the inspection flow phases in order. When completing each phase, call set_inspection_context to advance to the next phase.`;
-
             dc.send(JSON.stringify({
               type: "response.create",
-              response: { instructions: freshInstructions },
+              response: {
+                instructions: `This is a NEW inspection.${flowContext}
+Say "One moment while I set things up" then immediately call get_inspection_state. After the tool result comes back:
+1) If no structures exist, call create_structure for "Main Dwelling".
+2) Then greet the adjuster with a brief welcome and explain Phase 1.${flowStepNames.length > 0 ? ` The flow is "${activeFlow.name}" with ${flowStepNames.length} phases.` : ""}
+3) Call trigger_photo_capture for the property verification photo.
+4) Follow the inspection flow phases in order. Call set_inspection_context when advancing phases.`,
+              },
             }));
           }
         }
