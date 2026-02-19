@@ -376,13 +376,13 @@ For each room, the agent should calculate tearout SF: lfFloorPerim × tearoutHei
    - Apply O&P (apply_o_and_p: true) when 3+ trades are involved per Xactimate industry standards
    - Always specify quality_grade for materials where grade affects pricing (e.g., 'Standard' vs 'High Grade' shingles)
 
-7. **Photo Triggers:** Call trigger_photo_capture when:
+7. **Photo Triggers:** Call trigger_photo_capture IMMEDIATELY — do NOT ask "shall I open the camera?" or "let me know when you're ready." Just call the tool directly. The camera opens instantly on their device. Trigger it when:
    - Entering a new area (overview photo)
    - Adjuster describes visible damage (damage detail photo)
    - Test square count is mentioned (test square photo)
    - Moisture readings are abnormal (moisture documentation photo)
    - Adjuster says "take a photo" or "capture this"
-   IMPORTANT: The camera will open and WAIT for capture. Do NOT continue talking until you receive the tool result.
+   IMPORTANT: The camera will open and WAIT for capture. Do NOT continue talking until you receive the tool result. Never ask permission to open the camera — just open it.
 
 8. **Coverage Limits:** Deductible: $${briefing.coverageSnapshot?.deductible || 'unknown'}. Coverage A: $${briefing.coverageSnapshot?.coverageA?.limit || 'unknown'}. Alert if the estimate approaches limits.
 
@@ -779,7 +779,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "trigger_photo_capture",
-    description: "Triggers the iPad camera to capture a photo. Call for property verification (mandatory first step), damage evidence, overview shots, or test squares. The camera will open and wait for the adjuster to capture — do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
+    description: "Opens the camera on the adjuster's device IMMEDIATELY. Do NOT ask permission first — just call this tool. The camera opens instantly and waits for the adjuster to tap the capture button. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
     parameters: {
       type: "object",
       properties: {

@@ -2952,7 +2952,7 @@ Execute these steps in order:
                 Close
               </Button>
             </div>
-            <div className="flex-1 relative">
+            <div className="relative" style={{ height: "calc(100dvh - 130px)" }}>
               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
               {cameraMode.overlay === "test_square_grid" && (
                 <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 border-2 border-accent/60">
@@ -2964,17 +2964,18 @@ Execute these steps in order:
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-foreground/95 p-4 border-t border-primary/25">
+            <div className="bg-foreground/95 p-3 pb-6 border-t border-primary/25" style={{ minHeight: "90px" }}>
               {cameraMode.label === "Analyzing photo..." ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 text-accent animate-spin" />
                   <p className="text-sm text-white/70">Analyzing photo with AI...</p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-1">
                   <button
                     onClick={handleCameraCapture}
-                    className="h-16 w-16 rounded-full bg-white border-4 border-primary/40 hover:scale-105 active:scale-95 transition-transform"
+                    className="h-18 w-18 rounded-full bg-white border-4 border-primary/40 hover:scale-105 active:scale-95 transition-transform shadow-lg shadow-white/20"
+                    style={{ width: "72px", height: "72px" }}
                     data-testid="button-camera-capture"
                   />
                   <p className="text-[10px] text-white/70">Tap to capture</p>
