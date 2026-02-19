@@ -1,0 +1,123 @@
+POST https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos 403 (Forbidden)
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:214 Fetch failed loading: POST "https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos".
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765
+injected.js:37 [Photo] Upload attempt 1 failed: 403 {success: false, error: {…}, meta: {…}}
+(anonymous) @ injected.js:37
+handleCameraCapture @ ActiveInspection.tsx:2794
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:214 Fetch failed loading: POST "https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos".
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765
+injected.js:214  POST https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos 403 (Forbidden)
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:37 [Photo] Upload attempt 2 failed: 403 {success: false, error: {…}, meta: {…}}
+(anonymous) @ injected.js:37
+handleCameraCapture @ ActiveInspection.tsx:2794
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:214 Fetch failed loading: POST "https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos".
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765
+injected.js:214  POST https://74d9f0a6-fd67-4339-9011-587cd7203dc7-00-3a0ye92ukvh36.worf.replit.dev/api/inspection/14/photos 403 (Forbidden)
+apply @ injected.js:214
+handleCameraCapture @ ActiveInspection.tsx:2785
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:37 [Photo] Upload attempt 3 failed: 403 {success: false, error: {…}, meta: {…}}
+(anonymous) @ injected.js:37
+handleCameraCapture @ ActiveInspection.tsx:2794
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+injected.js:37 [Photo] Capture error: Photo upload failed (403) Error: Photo upload failed (403)
+    at handleCameraCapture (ActiveInspection.tsx:2803:17)
+(anonymous) @ injected.js:37
+handleCameraCapture @ ActiveInspection.tsx:2877
+await in handleCameraCapture
+executeDispatch @ react-dom_client.js?v=2c7fdf93:13622
+runWithFiberInDEV @ react-dom_client.js?v=2c7fdf93:997
+processDispatchQueue @ react-dom_client.js?v=2c7fdf93:13658
+(anonymous) @ react-dom_client.js?v=2c7fdf93:14071
+batchedUpdates$1 @ react-dom_client.js?v=2c7fdf93:2626
+dispatchEventForPluginEventSystem @ react-dom_client.js?v=2c7fdf93:13763
+dispatchEvent @ react-dom_client.js?v=2c7fdf93:16784
+dispatchDiscreteEvent @ react-dom_client.js?v=2c7fdf93:16765Understand this error
+6Fetch finished loading: POST "<URL>".
+5
