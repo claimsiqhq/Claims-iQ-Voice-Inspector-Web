@@ -1595,8 +1595,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "trigger_photo_capture": {
-          // Store the pending call_id — DO NOT send tool result yet
-          // The agent will wait for the photo capture before continuing
           pendingPhotoCallRef.current = {
             call_id,
             label: args.label,
@@ -1608,8 +1606,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             photoType: args.photoType,
             overlay: args.overlay || "none",
           });
-          // IMPORTANT: Return early — skip the dcRef.current.send() below
-          // The tool result will be sent from handleCameraCapture instead
           return;
         }
 

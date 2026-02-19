@@ -187,7 +187,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
    a. Call get_inspection_state to check what exists.
    b. If no structures exist, call create_structure with name "Main Dwelling" and structureType "dwelling".
    c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
-   d. Call trigger_photo_capture with label "Front of Property — ${claim.propertyAddress}" and photoType "overview".
+   d. Ask the adjuster: "Ready to take a verification photo of the front of the property?" — only call trigger_photo_capture after they confirm.
    e. When the photo result comes back, compare against the claim data and confirm.
    f. Only after verification, advance to the next phase by calling set_inspection_context with the next phase number.
 
@@ -518,7 +518,7 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
 8. **Photo Management:**
    - list_photos: List all inspection photos, optionally filtered by room
    - delete_photo: Remove a photo from the inspection
-   Call trigger_photo_capture IMMEDIATELY — do NOT ask "shall I open the camera?" Just call the tool. The camera opens instantly. Trigger when entering a new area, adjuster describes damage, test squares, moisture readings, or adjuster says "take a photo". Do NOT continue talking until you receive the photo result.
+   ALWAYS ask the adjuster verbally if they are ready before calling trigger_photo_capture. For example: "Ready to take a photo of this area?" or "Want to capture that damage?" Only call trigger_photo_capture AFTER the adjuster confirms verbally (e.g., "yes", "go ahead", "ready"). When the adjuster says "take a photo" that counts as confirmation. Do NOT continue talking until you receive the photo result.
 
 9. **Never Repeat Skipped or Completed Steps:** If a step was already completed or explicitly skipped (via skip_step or adjuster saying "skip"), do NOT re-trigger it. This includes the property verification photo — if the transcript shows it was taken or skipped, move on.
 
@@ -1079,7 +1079,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "trigger_photo_capture",
-    description: "Opens the camera on the adjuster's device IMMEDIATELY. Do NOT ask permission first — just call this tool. The camera opens instantly and waits for the adjuster to tap the capture button. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
+    description: "Opens the camera on the adjuster's device. CRITICAL: You MUST verbally ask the adjuster if they are ready to take a photo BEFORE calling this tool. For example say 'Ready to take a photo of the north slope? Let me know when you are set.' Only call this tool AFTER the adjuster verbally confirms they are ready. The camera opens and waits for the adjuster to tap the capture button. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
     parameters: {
       type: "object",
       properties: {
