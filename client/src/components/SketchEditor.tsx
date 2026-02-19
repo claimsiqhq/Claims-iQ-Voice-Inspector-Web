@@ -1312,11 +1312,8 @@ export default function SketchEditor({
   if (!hasAnyRooms) {
     return (
       <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
-        <div className="flex items-center justify-center p-8 text-slate-500 text-sm flex-col gap-2">
-          <span>No rooms yet. Add rooms first.</span>
-          <span className="text-[10px] text-red-400 font-mono">
-            DEBUG: props.rooms={rooms.length}, hierarchyRooms={hierarchyRooms.length}, interior={interiorRooms.length}, elev={elevationRooms.length}, struct="{structureName}", hierarchy={hierarchyData ? `${hierarchyData.structures?.length} structs` : "loading"}
-          </span>
+        <div className="flex items-center justify-center p-8 text-slate-500 text-sm">
+          No rooms yet. Add rooms first.
         </div>
       </div>
     );
