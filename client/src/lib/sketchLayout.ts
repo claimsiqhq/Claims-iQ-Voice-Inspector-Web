@@ -52,6 +52,16 @@ export function bfsLayout(
 
   function getRoomSize(r: (typeof rooms)[0]): { w: number; h: number } {
     const d = r.dimensions as any;
+    if (d?.length && d?.width) {
+      const scaleW = minW / (d.length * scale);
+      const scaleH = minH / (d.width * scale);
+      const needsUpscale = scaleW > 1 || scaleH > 1;
+      if (needsUpscale) {
+        const upscale = Math.max(scaleW, scaleH);
+        return { w: d.length * scale * upscale, h: d.width * scale * upscale };
+      }
+      return { w: d.length * scale, h: d.width * scale };
+    }
     const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
     const h = d?.width ? Math.max(d.width * scale, minH) : minH;
     return { w, h };
@@ -131,8 +141,23 @@ export function bfsLayout(
 
     for (const r of unplaced) {
       const d = r.dimensions as any;
-      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
-      const h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      let w: number, h: number;
+      if (d?.length && d?.width) {
+        const scaleW = minW / (d.length * scale);
+        const scaleH = minH / (d.width * scale);
+        const needsUpscale = scaleW > 1 || scaleH > 1;
+        if (needsUpscale) {
+          const upscale = Math.max(scaleW, scaleH);
+          w = d.length * scale * upscale;
+          h = d.width * scale * upscale;
+        } else {
+          w = d.length * scale;
+          h = d.width * scale;
+        }
+      } else {
+        w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
+        h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      }
 
       if (cx + w > 400 && cx > 0) {
         cx = 0;

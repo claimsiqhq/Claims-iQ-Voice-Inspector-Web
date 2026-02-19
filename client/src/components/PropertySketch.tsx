@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut, Maximize2, Move } from "lucide-react";
 
 /* ─── Types ─── */
 
@@ -108,6 +108,12 @@ function calcCeilingSF(dims: any): number {
 }
 function fmtSF(v: number): string {
   return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.round(v).toString();
+}
+function fmtDimFt(ft: number): string {
+  if (ft <= 0) return "";
+  const whole = Math.floor(ft);
+  const inches = Math.round((ft - whole) * 12);
+  return inches > 0 ? `${whole}'${inches}"` : `${whole}'0"`;
 }
 
 /* ─── Constants ─── */
@@ -406,6 +412,19 @@ function bfsLayout(
 
   function getRoomSize(r: HierarchyRoom): { w: number; h: number } {
     const d = r.dimensions as any;
+    if (d?.length && d?.width) {
+      // Use proportional scaling: pick the larger scale factor that ensures
+      // at least one dimension meets the minimum, then apply it to both
+      // dimensions to preserve the aspect ratio.
+      const scaleW = minW / (d.length * scale);
+      const scaleH = minH / (d.width * scale);
+      const needsUpscale = scaleW > 1 || scaleH > 1;
+      if (needsUpscale) {
+        const upscale = Math.max(scaleW, scaleH);
+        return { w: d.length * scale * upscale, h: d.width * scale * upscale };
+      }
+      return { w: d.length * scale, h: d.width * scale };
+    }
     const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
     const h = d?.width ? Math.max(d.width * scale, minH) : minH;
     return { w, h };
@@ -589,8 +608,23 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
 
     for (const r of unplaced) {
       const d = r.dimensions as any;
-      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
-      const h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      let w: number, h: number;
+      if (d?.length && d?.width) {
+        const scaleW = minW / (d.length * scale);
+        const scaleH = minH / (d.width * scale);
+        const needsUpscale = scaleW > 1 || scaleH > 1;
+        if (needsUpscale) {
+          const upscale = Math.max(scaleW, scaleH);
+          w = d.length * scale * upscale;
+          h = d.width * scale * upscale;
+        } else {
+          w = d.length * scale;
+          h = d.width * scale;
+        }
+      } else {
+        w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
+        h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      }
 
       if (cx + w > usable && cx > 0) {
         cx = 0;
@@ -737,95 +771,232 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
   };
 }
 
-/* ─── Roof Plan Section ─── */
+/* ─── Roof Plan Section (Geometric) ─── */
+
+function roofSlopeDir(name: string): "north" | "south" | "east" | "west" | null {
+  const n = name.toLowerCase();
+  if (n.includes("north") || n.includes("rear") || n.includes("back")) return "north";
+  if (n.includes("south") || n.includes("front")) return "south";
+  if (n.includes("east") || n.includes("right")) return "east";
+  if (n.includes("west") || n.includes("left")) return "west";
+  return null;
+}
 
 function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
   slopes: HierarchyRoom[]; svgW: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
 }) {
-  const pw = Math.min(svgW * 0.6, 180);
-  const ph = pw * 0.6;
-  const ox = (svgW - pw) / 2;
-  const sectionH = ph + 32;
+  type Dir = "north" | "south" | "east" | "west";
 
-  const quadrants: Record<string, { x: number; y: number; anchor: "start" | "middle" | "end" }> = {
-    north: { x: pw / 2, y: 12, anchor: "middle" },
-    south: { x: pw / 2, y: ph - 8, anchor: "middle" },
-    east: { x: pw - 10, y: ph / 2, anchor: "end" },
-    west: { x: 10, y: ph / 2, anchor: "start" },
-    front: { x: pw / 2, y: ph - 8, anchor: "middle" },
-    rear: { x: pw / 2, y: 12, anchor: "middle" },
-    left: { x: 10, y: ph / 2, anchor: "start" },
-    right: { x: pw - 10, y: ph / 2, anchor: "end" },
-  };
-
-  function getSlopePosition(room: RoomData, idx: number) {
-    const n = room.name.toLowerCase();
-    for (const [key, pos] of Object.entries(quadrants)) {
-      if (n.includes(key)) return pos;
-    }
-    const fallback = [quadrants.north, quadrants.east, quadrants.south, quadrants.west];
-    return fallback[idx % 4];
+  /* 1 ─ Map slopes to compass directions */
+  const dirSlopes = new Map<Dir, HierarchyRoom>();
+  const unmapped: HierarchyRoom[] = [];
+  for (const s of slopes) {
+    const dir = roofSlopeDir(s.name);
+    if (dir && !dirSlopes.has(dir)) dirSlopes.set(dir, s);
+    else unmapped.push(s);
   }
+  const allDirs: Dir[] = ["north", "south", "east", "west"];
+  const freeDirs = allDirs.filter(d => !dirSlopes.has(d));
+  for (let i = 0; i < unmapped.length && i < freeDirs.length; i++) {
+    dirSlopes.set(freeDirs[i], unmapped[i]);
+  }
+
+  /* 2 ─ Determine roof type (hip vs gable) */
+  const hasNS = dirSlopes.has("north") || dirSlopes.has("south");
+  const hasEW = dirSlopes.has("east") || dirSlopes.has("west");
+  // Explicit shapeType from any slope overrides inference
+  const explicitHip = slopes.some(s => s.shapeType === "hip");
+  const explicitGable = slopes.some(s => s.shapeType === "gable");
+  const isHip = explicitHip || (!explicitGable && hasNS && hasEW && slopes.length >= 3);
+
+  /* 3 ─ Compute building footprint (ft) from slope dimensions */
+  let bldgW = 0; // east-west (eave of N/S slopes)
+  let bldgD = 0; // north-south (eave of E/W slopes)
+  dirSlopes.forEach((slope, dir) => {
+    const d = slope.dimensions as any;
+    if (!d?.length) return;
+    if (dir === "north" || dir === "south") bldgW = Math.max(bldgW, d.length);
+    else bldgD = Math.max(bldgD, d.length);
+  });
+  if (bldgW === 0 && bldgD === 0) { bldgW = 42; bldgD = 28; }
+  else if (bldgW === 0) bldgW = bldgD * 1.5;
+  else if (bldgD === 0) bldgD = bldgW * 0.65;
+
+  /* 4 ─ SVG sizing (proportional to building aspect) */
+  const maxPW = Math.min(svgW * 0.68, 210);
+  const aspect = bldgW / bldgD;
+  let pw: number, ph: number;
+  if (aspect >= 1) {
+    pw = maxPW;
+    ph = pw / aspect;
+    if (ph > maxPW * 0.7) { ph = maxPW * 0.7; pw = ph * aspect; }
+  } else {
+    ph = maxPW * 0.7;
+    pw = ph * aspect;
+    if (pw > maxPW) { pw = maxPW; ph = pw / aspect; }
+  }
+  pw = Math.max(pw, 100);
+  ph = Math.max(ph, 60);
+  const ox = (svgW - pw) / 2;
+
+  /* 5 ─ Ridge geometry */
+  const ridgeCy = ph / 2;
+  let rX1: number, rX2: number;
+  if (isHip) {
+    const hipInset = Math.min(ph / 2, pw * 0.25);
+    rX1 = hipInset; rX2 = pw - hipInset;
+    if (rX2 <= rX1 + 2) { rX1 = pw / 2; rX2 = pw / 2; } // pyramid
+  } else {
+    rX1 = 0; rX2 = pw;
+  }
+  const ridgeLine = { x1: rX1, y1: ridgeCy, x2: rX2, y2: ridgeCy };
+  const isPyramid = isHip && (rX2 - rX1) <= 2;
+
+  /* 6 ─ Hip lines (corners → ridge endpoints) */
+  const hipLines = isHip ? [
+    { x1: 0, y1: 0, x2: rX1, y2: ridgeCy },
+    { x1: pw, y1: 0, x2: rX2, y2: ridgeCy },
+    { x1: 0, y1: ph, x2: rX1, y2: ridgeCy },
+    { x1: pw, y1: ph, x2: rX2, y2: ridgeCy },
+  ] : [];
+
+  /* 7 ─ Facet polygons + label centers */
+  type FI = { poly: string; cx: number; cy: number };
+  const fm = new Map<Dir, FI>();
+  if (isHip && !isPyramid) {
+    fm.set("north", { poly: `0,0 ${pw},0 ${rX2},${ridgeCy} ${rX1},${ridgeCy}`, cx: pw / 2, cy: ridgeCy * 0.4 });
+    fm.set("south", { poly: `0,${ph} ${pw},${ph} ${rX2},${ridgeCy} ${rX1},${ridgeCy}`, cx: pw / 2, cy: ph - ridgeCy * 0.4 });
+    fm.set("east", { poly: `${pw},0 ${pw},${ph} ${rX2},${ridgeCy}`, cx: (pw + rX2) / 2, cy: ph / 2 });
+    fm.set("west", { poly: `0,0 0,${ph} ${rX1},${ridgeCy}`, cx: rX1 / 2, cy: ph / 2 });
+  } else if (isPyramid) {
+    const cx = pw / 2, cy = ph / 2;
+    fm.set("north", { poly: `0,0 ${pw},0 ${cx},${cy}`, cx: pw / 2, cy: cy * 0.38 });
+    fm.set("south", { poly: `0,${ph} ${pw},${ph} ${cx},${cy}`, cx: pw / 2, cy: ph - cy * 0.38 });
+    fm.set("east", { poly: `${pw},0 ${pw},${ph} ${cx},${cy}`, cx: pw - cx * 0.32, cy: ph / 2 });
+    fm.set("west", { poly: `0,0 0,${ph} ${cx},${cy}`, cx: cx * 0.32, cy: ph / 2 });
+  } else {
+    fm.set("north", { poly: `0,0 ${pw},0 ${pw},${ph / 2} 0,${ph / 2}`, cx: pw / 2, cy: ph * 0.25 });
+    fm.set("south", { poly: `0,${ph / 2} ${pw},${ph / 2} ${pw},${ph} 0,${ph}`, cx: pw / 2, cy: ph * 0.75 });
+  }
+
+  const dimOff = 10;
+  const sectionH = ph + 56;
 
   return {
     height: sectionH,
     render: (yOff: number) => (
       <g key="roofplan" transform={`translate(0, ${yOff})`}>
         <text x={8} y={9} fontSize="6" fontFamily={MONO} fontWeight="700" fill={SECTION_COLOR} letterSpacing="0.8">ROOF PLAN</text>
-        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{slopes.length} facets</text>
+        <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>
+          {slopes.length} facet{slopes.length !== 1 ? "s" : ""} {"\u2022"} {isHip ? "hip" : "gable"}
+        </text>
         <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
 
-        <g transform={`translate(${ox}, 16)`}>
-          <rect x={0} y={0} width={pw} height={ph}
-            fill="rgba(120,53,15,0.03)" stroke="#92400E" strokeWidth={1} />
-
-          <line x1={pw * 0.2} y1={ph / 2} x2={pw * 0.8} y2={ph / 2}
-            stroke="#B45309" strokeWidth={1.5} />
-          <text x={pw / 2} y={ph / 2 - 4} textAnchor="middle" fontSize="5" fontFamily={MONO} fill="#B45309">RIDGE</text>
-
-          <line x1={0} y1={0} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
-          <line x1={pw} y1={0} x2={pw * 0.8} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
-          <line x1={0} y1={ph} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
-          <line x1={pw} y1={ph} x2={pw * 0.8} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
-
-          {slopes.map((slope, i) => {
-            const pos = getSlopePosition(slope, i);
+        <g transform={`translate(${ox}, 22)`}>
+          {/* Clickable facet fill polygons */}
+          {Array.from(dirSlopes.entries()).map(([dir, slope]) => {
+            const fp = fm.get(dir);
+            if (!fp) return null;
             const isCurrent = slope.id === currentRoomId;
-            const label = truncate(slope.name, 14);
-            const pitchText = slope.pitch ? `${slope.pitch} pitch` : "";
-            const facetText = slope.facetLabel || "";
-            const subText = [facetText, pitchText].filter(Boolean).join(" \u2022 ") || "slope";
+            return (
+              <polygon key={`fill-${slope.id}`} points={fp.poly}
+                fill={isCurrent ? "rgba(198,165,78,0.12)" : "rgba(120,53,15,0.04)"}
+                stroke="none"
+                onClick={() => onRoomClick?.(slope.id)}
+                style={{ cursor: onRoomClick ? "pointer" : "default" }} />
+            );
+          })}
+
+          {/* Eave outline (building perimeter) */}
+          <rect x={0} y={0} width={pw} height={ph} fill="none" stroke="#78350F" strokeWidth={2} />
+
+          {/* Ridge line or point */}
+          {!isPyramid && (
+            <line x1={ridgeLine.x1} y1={ridgeLine.y1} x2={ridgeLine.x2} y2={ridgeLine.y2}
+              stroke="#78350F" strokeWidth={2} />
+          )}
+          {isPyramid && <circle cx={rX1} cy={ridgeCy} r={2} fill="#78350F" />}
+          <text x={(rX1 + rX2) / 2} y={ridgeCy - 5}
+            textAnchor="middle" fontSize="4" fontFamily={MONO} fill="#78350F" fontWeight="600" letterSpacing="0.5">
+            RIDGE
+          </text>
+
+          {/* Hip lines */}
+          {hipLines.map((hl, i) => (
+            <line key={`hip-${i}`} x1={hl.x1} y1={hl.y1} x2={hl.x2} y2={hl.y2}
+              stroke="#92400E" strokeWidth={0.8} strokeDasharray="4,2" />
+          ))}
+
+          {/* Facet labels */}
+          {Array.from(dirSlopes.entries()).map(([dir, slope]) => {
+            const fp = fm.get(dir);
+            if (!fp) return null;
+            const isCurrent = slope.id === currentRoomId;
+            const fl = slope.facetLabel || "";
+            const pt = slope.pitch ? `${slope.pitch}` : "";
+            const nm = truncate(slope.name, 12);
+            const d = slope.dimensions as any;
+            const area = (d?.length && d?.width) ? Math.round(d.length * d.width) : 0;
 
             return (
-              <g key={slope.id} onClick={() => onRoomClick?.(slope.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-                <text x={pos.x} y={pos.y} textAnchor={pos.anchor}
-                  fontSize="6" fontFamily={FONT} fontWeight="600"
+              <g key={`lbl-${slope.id}`}
+                onClick={() => onRoomClick?.(slope.id)}
+                style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+                <text x={fp.cx} y={fp.cy - 3} textAnchor="middle"
+                  fontSize="5" fontFamily={FONT} fontWeight="600"
                   fill={isCurrent ? CURRENT_STROKE : "#475569"}>
-                  {label}
+                  {fl ? `${fl} ` : ""}{nm}
                 </text>
-                <text x={pos.x} y={pos.y + 8} textAnchor={pos.anchor}
-                  fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
-                  {subText}
+                <text x={fp.cx} y={fp.cy + 5} textAnchor="middle"
+                  fontSize="4" fontFamily={MONO} fill={DIM_COLOR}>
+                  {[pt, area > 0 ? `${fmtSF(area)} SF` : ""].filter(Boolean).join(" \u2022 ")}
                 </text>
-
                 {slope.damageCount > 0 && (
                   <>
-                    <circle cx={pos.x + (pos.anchor === "start" ? 50 : pos.anchor === "end" ? -50 : 35)} cy={pos.y - 3} r={4} fill={DAMAGE_COLOR} opacity={0.9} />
-                    <text x={pos.x + (pos.anchor === "start" ? 50 : pos.anchor === "end" ? -50 : 35)} y={pos.y - 2.5} textAnchor="middle" dominantBaseline="middle" fontSize="4.5" fill="white" fontWeight="bold">{slope.damageCount}</text>
+                    <circle cx={fp.cx + (dir === "east" || dir === "west" ? 0 : 22)} cy={fp.cy + (dir === "east" || dir === "west" ? -14 : -5)} r={4} fill={DAMAGE_COLOR} opacity={0.9} />
+                    <text x={fp.cx + (dir === "east" || dir === "west" ? 0 : 22)} y={fp.cy + (dir === "east" || dir === "west" ? -14 : -5)}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize="4.5" fill="white" fontWeight="bold">{slope.damageCount}</text>
                   </>
                 )}
-
-                {(slope as HierarchyRoom).annotations?.slice(0, 2).map((ann, ai) => (
-                  <text key={ann.id}
-                    x={pos.x} y={pos.y + 16 + ai * 8}
-                    textAnchor={pos.anchor}
-                    fontSize="4.5" fontFamily={MONO} fill={ANNOTATION_COLOR} fontWeight="600">
+                {(slope as HierarchyRoom).annotations?.slice(0, 1).map((ann) => (
+                  <text key={ann.id} x={fp.cx} y={fp.cy + 12}
+                    textAnchor="middle" fontSize="3.5" fontFamily={MONO} fill={ANNOTATION_COLOR} fontWeight="600">
                     {ann.label}: {ann.value}
                   </text>
                 ))}
               </g>
             );
           })}
+
+          {/* Bottom eave dimension (building width) */}
+          {bldgW > 0 && (
+            <g>
+              <line x1={0} y1={ph + dimOff - 3} x2={0} y2={ph + dimOff + 3} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <line x1={pw} y1={ph + dimOff - 3} x2={pw} y2={ph + dimOff + 3} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <line x1={0} y1={ph + dimOff} x2={pw} y2={ph + dimOff} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <text x={pw / 2} y={ph + dimOff + 8} textAnchor="middle"
+                fontSize="4.5" fontFamily={MONO} fill={DIM_TEXT_COLOR}>{fmtDimFt(bldgW)}</text>
+            </g>
+          )}
+          {/* Left eave dimension (building depth) */}
+          {bldgD > 0 && (
+            <g>
+              <line x1={-dimOff - 3} y1={0} x2={-dimOff + 3} y2={0} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <line x1={-dimOff - 3} y1={ph} x2={-dimOff + 3} y2={ph} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <line x1={-dimOff} y1={0} x2={-dimOff} y2={ph} stroke={DIM_LINE_COLOR} strokeWidth={0.4} />
+              <text x={-dimOff - 2} y={ph / 2} textAnchor="middle"
+                fontSize="4.5" fontFamily={MONO} fill={DIM_TEXT_COLOR}
+                transform={`rotate(-90, ${-dimOff - 2}, ${ph / 2})`}>{fmtDimFt(bldgD)}</text>
+            </g>
+          )}
+
+          {/* Compass indicator */}
+          <g transform={`translate(${pw + 14}, 12)`}>
+            <line x1={0} y1={8} x2={0} y2={-8} stroke={DIM_COLOR} strokeWidth={0.6} />
+            <polygon points="0,-8 -2.5,-4 2.5,-4" fill={DIM_COLOR} />
+            <text x={0} y={-11} textAnchor="middle" fontSize="4" fontFamily={MONO} fill={DIM_COLOR} fontWeight="700">N</text>
+          </g>
         </g>
       </g>
     ),
@@ -1122,6 +1293,60 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
 
+  // Zoom/pan state for the non-edit view
+  const [zoomViewBox, setZoomViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const effectiveViewBox = zoomViewBox || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+
+  const handleZoomIn = useCallback(() => {
+    setZoomViewBox((prev) => {
+      const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+      const nw = v.w * 0.8;
+      const nh = v.h * 0.8;
+      return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
+    });
+  }, [svgW, layout.totalHeight]);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomViewBox((prev) => {
+      const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+      const nw = v.w * 1.25;
+      const nh = v.h * 1.25;
+      return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
+    });
+  }, [svgW, layout.totalHeight]);
+
+  const handleFitView = useCallback(() => {
+    setZoomViewBox(null);
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+    (e.target as Element)?.setPointerCapture?.(e.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isPanning) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const v = zoomViewBox || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+    const dx = (e.clientX - panStart.x) * (v.w / rect.width);
+    const dy = (e.clientY - panStart.y) * (v.h / rect.height);
+    setZoomViewBox({ ...v, x: v.x - dx, y: v.y - dy });
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, [isPanning, panStart, zoomViewBox, svgW, layout.totalHeight]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    setIsPanning(false);
+    (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+  }, []);
+
   if (sectionsFilter && sectionsFilter.length > 0 && layout.sections.length === 0) return null;
 
   if (totalRooms === 0 && rooms.length === 0) {
@@ -1146,6 +1371,19 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
           </p>
           {!compact && (
           <div className="flex items-center gap-2">
+            {!compact && (
+              <div className="flex items-center gap-0.5">
+                <button onClick={handleZoomIn} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom In">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleZoomOut} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom Out">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleFitView} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Fit to Content">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <p className="text-[10px] text-slate-400 font-mono">
               {structures.length > 1 ? `${structures.length} structures \u00B7 ` : ""}
               {totalRooms} area{totalRooms !== 1 ? "s" : ""}
@@ -1189,9 +1427,20 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
       </div>
 
       <svg
-        viewBox={`0 0 ${svgW} ${layout.totalHeight}`}
+        ref={svgRef}
+        viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className="w-full"
-        style={{ ...(expanded ? {} : { maxHeight: 500 }), userSelect: 'none', WebkitUserSelect: 'none' }}
+        style={{
+          ...(expanded ? {} : { maxHeight: 500 }),
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          cursor: isPanning ? 'grabbing' : (zoomViewBox ? 'grab' : 'default'),
+          touchAction: 'none',
+        }}
+        onPointerDown={!compact ? handlePointerDown : undefined}
+        onPointerMove={!compact ? handlePointerMove : undefined}
+        onPointerUp={!compact ? handlePointerUp : undefined}
+        onPointerCancel={!compact ? handlePointerUp : undefined}
       >
         <defs>
           <pattern id="sketchGrid" width="10" height="10" patternUnits="userSpaceOnUse">
