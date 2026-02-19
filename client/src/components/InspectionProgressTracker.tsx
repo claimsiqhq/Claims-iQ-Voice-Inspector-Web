@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabaseClient";
+import { getAuthHeaders as getGlobalAuthHeaders } from "@/lib/queryClient";
 
 interface ProgressTrackerProps {
   sessionId: number | null;
@@ -79,22 +79,11 @@ export default function InspectionProgressTracker({
   const [expandedSection, setExpandedSection] = useState<string | null>("phases");
   const [loading, setLoading] = useState(false);
 
-  const getAuthHeaders = useCallback(async () => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    try {
-      if (!supabase) return headers;
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {}
-    return headers;
-  }, []);
-
   const fetchProgressData = useCallback(async () => {
     if (!sessionId) return;
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
+      const headers = { ...(await getGlobalAuthHeaders()), "Content-Type": "application/json" };
       const [completenessRes, roomsRes] = await Promise.all([
         fetch(`/api/inspection/${sessionId}/completeness`, { headers }),
         fetch(`/api/inspection/${sessionId}/rooms`, { headers }),
@@ -110,7 +99,7 @@ export default function InspectionProgressTracker({
     } catch {} finally {
       setLoading(false);
     }
-  }, [sessionId, getAuthHeaders]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (isOpen && sessionId) {

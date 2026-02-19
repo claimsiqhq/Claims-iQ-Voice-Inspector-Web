@@ -427,8 +427,19 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
   app.get("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
-      const rooms = await storage.getRooms(sessionId);
-      res.json(rooms);
+      const [rooms, damages] = await Promise.all([
+        storage.getRooms(sessionId),
+        storage.getDamagesForSession(sessionId),
+      ]);
+      const damageCountByRoom = new Map<number, number>();
+      for (const d of damages) {
+        damageCountByRoom.set(d.roomId, (damageCountByRoom.get(d.roomId) || 0) + 1);
+      }
+      const enriched = rooms.map(r => ({
+        ...r,
+        damageCount: damageCountByRoom.get(r.id) || r.damageCount || 0,
+      }));
+      res.json(enriched);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }

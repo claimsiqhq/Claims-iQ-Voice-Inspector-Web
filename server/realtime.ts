@@ -809,6 +809,7 @@ export const realtimeTools = [
     parameters: {
       type: "object",
       properties: {
+        roomName: { type: "string", description: "Room name to attach the line item to. Optional if a room is already selected in context." },
         category: { type: "string", enum: ["Roofing", "Siding", "Soffit/Fascia", "Gutters", "Windows", "Doors", "Drywall", "Painting", "Flooring", "Plumbing", "Electrical", "HVAC", "Debris", "General", "Fencing", "Cabinetry"] },
         action: { type: "string", enum: ["R&R", "Detach & Reset", "Repair", "Paint", "Clean", "Tear Off", "Labor Only", "Install"] },
         description: { type: "string", description: "Detailed item, e.g., 'Laminated composition shingles' or '6-inch aluminum fascia'" },
@@ -903,10 +904,11 @@ export const realtimeTools = [
   {
     type: "function",
     name: "log_moisture_reading",
-    description: "Records a moisture meter reading at a specific location.",
+    description: "Records a moisture meter reading at a specific location. If a room is currently selected the reading attaches to it; otherwise provide roomName.",
     parameters: {
       type: "object",
       properties: {
+        roomName: { type: "string", description: "Room name to attach the reading to. Optional if a room is already selected in context." },
         location: { type: "string", description: "Where the reading was taken. Use North/South/East/West: 'north wall base', 'south wall, 6 inches from floor'" },
         reading: { type: "number", description: "Moisture percentage reading" },
         materialType: { type: "string", enum: ["drywall", "wood_framing", "subfloor", "concrete", "carpet_pad", "insulation"] },
@@ -1067,6 +1069,7 @@ export const realtimeTools = [
     parameters: {
       type: "object",
       properties: {
+        roomName: { type: "string", description: "Room name to log the damage in. Optional if a room is already selected in context." },
         photoId: { type: "integer", description: "The ID of the photo that produced the suggestion" },
         damageType: {
           type: "string",

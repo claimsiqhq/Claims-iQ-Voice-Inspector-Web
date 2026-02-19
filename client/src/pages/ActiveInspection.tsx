@@ -1138,8 +1138,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           let finalUnit = unit || "EA";
           let finalWasteFactor = wasteFactor || 0;
           let isCodeUpgradeItem = false;
+          let catalogWarning: string | undefined;
 
-          // If catalogCode provided, look it up and use catalog pricing
           if (catalogCode) {
             try {
               const catalogHeaders = await getAuthHeaders();
@@ -1148,7 +1148,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 const catalogItems = await catalogRes.json();
                 const matched = catalogItems.find((item: any) => item.code === catalogCode);
                 if (matched) {
-                  // Auto-detect code upgrade items from catalog
                   if (matched.isCodeUpgrade) {
                     isCodeUpgradeItem = true;
                   }
@@ -1169,24 +1168,37 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       finalUnit = matched.unit || "EA";
                       finalWasteFactor = matched.defaultWasteFactor || 0;
                     }
+                  } else {
+                    catalogWarning = `Pricing lookup failed for ${catalogCode}; using provided price $${unitPrice || 0}.`;
                   }
+                } else {
+                  catalogWarning = `Catalog code "${catalogCode}" not found; using provided price $${unitPrice || 0}.`;
                 }
               }
             } catch (e) {
               logger.warn("Voice", "Catalog lookup failed, falling back to provided price", e);
+              catalogWarning = `Catalog lookup error for ${catalogCode}; using provided price $${unitPrice || 0}.`;
             }
           }
 
-          // Code upgrade items default to "Paid When Incurred"
           const effectiveDepType = isCodeUpgradeItem
             ? "Paid When Incurred"
             : (depreciationType || "Recoverable");
 
+          let lineRoomId = args.roomId || currentRoomId;
+          if (!lineRoomId && args.roomName) {
+            const freshLineRooms = await fetchFreshRooms();
+            const foundLineRoom = freshLineRooms.find(r => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || freshLineRooms.find(r => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (foundLineRoom) lineRoomId = foundLineRoom.id;
+          }
+
           const qty = quantity || 1;
           const totalPrice = qty * finalUnitPrice * (1 + (finalWasteFactor || 0) / 100);
 
-          const lineBody = {
-            roomId: currentRoomId,
+          const lineBody: Record<string, any> = {
+            roomId: lineRoomId,
+            damageId: args.damageId || null,
             category: category || "General",
             action: action || null,
             description,
@@ -1197,6 +1209,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             totalPrice,
             depreciationType: effectiveDepType,
             wasteFactor: finalWasteFactor,
+            coverageBucket: args.coverageBucket || args.coverage_bucket || undefined,
+            qualityGrade: args.quality_grade || undefined,
+            applyOAndP: args.apply_o_and_p || undefined,
+            age: args.age || undefined,
+            lifeExpectancy: args.lifeExpectancy || undefined,
           };
           const lineRes = await resilientMutation(
             "POST",
@@ -1216,6 +1233,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             unitPrice: finalUnitPrice,
             totalPrice,
             description,
+            ...(catalogWarning ? { warning: catalogWarning } : {}),
           };
           break;
         }
@@ -1351,21 +1369,34 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "log_moisture_reading": {
-          if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let moistureRoomId = currentRoomId;
+          if (args.roomName) {
+            const freshMoistureRooms = await fetchFreshRooms();
+            const foundMoistureRoom = freshMoistureRooms.find(r => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || freshMoistureRooms.find(r => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (foundMoistureRoom) moistureRoomId = foundMoistureRoom.id;
+          }
+          if (!moistureRoomId) { result = { success: false, error: "No room selected. Specify roomName or select a room first." }; break; }
           const moistureHeaders = await getAuthHeaders();
-          await fetch(`/api/inspection/${sessionId}/moisture`, {
+          const moistureRes = await fetch(`/api/inspection/${sessionId}/moisture`, {
             method: "POST",
             headers: moistureHeaders,
             body: JSON.stringify({
-              roomId: currentRoomId,
+              roomId: moistureRoomId,
               location: args.location,
               reading: args.reading,
               materialType: args.materialType,
               dryStandard: args.dryStandard,
             }),
           });
-          const status = args.reading > 17 ? "wet" : args.reading > 14 ? "caution" : "dry";
-          result = { success: true, reading: args.reading, status };
+          if (!moistureRes.ok) {
+            const moistureErr = await moistureRes.json().catch(() => ({}));
+            result = { success: false, error: moistureErr.message || "Failed to log moisture reading" };
+            break;
+          }
+          const moistureStatus = args.reading > 17 ? "wet" : args.reading > 14 ? "caution" : "dry";
+          result = { success: true, reading: args.reading, status: moistureStatus, location: args.location };
           break;
         }
 
@@ -1432,8 +1463,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "confirm_damage_suggestion": {
-          if (!sessionId || !currentRoomId) {
-            result = { success: false, error: "No room selected" };
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let confirmRoomId = currentRoomId;
+          if (args.roomName) {
+            const freshConfirmRooms = await fetchFreshRooms();
+            const foundConfirmRoom = freshConfirmRooms.find(r => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || freshConfirmRooms.find(r => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (foundConfirmRoom) confirmRoomId = foundConfirmRoom.id;
+          }
+          if (!confirmRoomId) {
+            result = { success: false, error: "No room selected. Specify roomName or select a room first." };
             break;
           }
           if (!args.confirmed) {
@@ -1445,7 +1484,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             method: "POST",
             headers: confirmHeaders,
             body: JSON.stringify({
-              roomId: currentRoomId,
+              roomId: confirmRoomId,
               description: `Photo-detected ${args.damageType}${args.location ? ` at ${args.location}` : ""}`,
               damageType: args.damageType,
               severity: args.severity || "moderate",
@@ -1665,7 +1704,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   updateBody.totalPrice = String((newQty * newUp * (1 + waste / 100)).toFixed(2));
                 }
               }
-            } catch (e) { /* recalc best effort */ }
+            } catch (e) {
+              logger.warn("Voice", "Price recalculation failed, total may be stale", e);
+            }
           }
           const updateLiHeaders = await getAuthHeaders();
           const updateLiRes = await fetch(`/api/inspection/${sessionId}/line-items/${updateLiId}`, {
