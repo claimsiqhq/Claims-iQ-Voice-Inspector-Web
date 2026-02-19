@@ -75,12 +75,16 @@ const MIN_H = 32;
 const HIT_PADDING = 12;
 const HANDLE_SIZE = 12;
 
-function categorizeInterior(rooms: RoomData[], structureName?: string): RoomData[] {
+function categorizeByStructure(rooms: RoomData[], structureName?: string): RoomData[] {
+  if (!structureName) return rooms.filter(r => !r.parentRoomId);
+  return rooms.filter(r => !r.parentRoomId && (r.structure || "Main Dwelling") === structureName);
+}
+
+function categorizeInterior(rooms: RoomData[]): RoomData[] {
   return rooms.filter((r) => {
     if (r.parentRoomId) return false;
-    if (structureName && (r.structure || "Main Dwelling") !== structureName) return false;
-    const vt = r.viewType || "";
-    const rt = r.roomType || "";
+    const vt = (r.viewType || "").toLowerCase();
+    const rt = (r.roomType || "").toLowerCase();
     if (vt === "roof_plan" || rt === "exterior_roof_slope") return false;
     if (vt === "elevation" || rt.startsWith("exterior_elevation_")) return false;
     if (vt === "exterior_other" || (rt.startsWith("exterior_") && !rt.includes("elevation") && !rt.includes("roof"))) return false;
@@ -88,15 +92,14 @@ function categorizeInterior(rooms: RoomData[], structureName?: string): RoomData
   });
 }
 
-function categorizeRoofElevExterior(rooms: RoomData[], structureName?: string): { roofSlopes: RoomData[]; elevations: RoomData[]; otherExterior: RoomData[] } {
+function categorizeRoofElevExterior(rooms: RoomData[]): { roofSlopes: RoomData[]; elevations: RoomData[]; otherExterior: RoomData[] } {
   const roofSlopes: RoomData[] = [];
   const elevations: RoomData[] = [];
   const otherExterior: RoomData[] = [];
   for (const r of rooms) {
     if (r.parentRoomId) continue;
-    if (structureName && (r.structure || "Main Dwelling") !== structureName) continue;
-    const vt = r.viewType || "";
-    const rt = r.roomType || "";
+    const vt = (r.viewType || "").toLowerCase();
+    const rt = (r.roomType || "").toLowerCase();
     if (vt === "roof_plan" || rt === "exterior_roof_slope") roofSlopes.push(r);
     else if (vt === "elevation" || rt.startsWith("exterior_elevation_")) elevations.push(r);
     else if (vt === "exterior_other" || (rt.startsWith("exterior_") && !rt.includes("elevation") && !rt.includes("roof"))) otherExterior.push(r);
@@ -239,33 +242,16 @@ export default function SketchEditor({
     refetchInterval: 10000,
   });
 
-  const hierarchyRooms = useMemo(() => {
-    if (!hierarchyData?.structures) {
-      console.log("[SketchEditor] no hierarchy yet, falling back to rooms prop:", rooms.length);
-      return rooms;
+  const structureRooms = useMemo(() => {
+    if (hierarchyData?.structures) {
+      const struct = hierarchyData.structures.find(s => s.name === structureName) || hierarchyData.structures[0];
+      if (struct && struct.rooms.length > 0) return struct.rooms as RoomData[];
     }
-    console.log("[SketchEditor] hierarchy structures:", hierarchyData.structures.map(s => ({ name: s.name, roomCount: s.rooms.length })));
-    console.log("[SketchEditor] looking for structureName:", structureName);
-    const struct = hierarchyData.structures.find(s => s.name === structureName) || hierarchyData.structures[0];
-    if (!struct) {
-      console.log("[SketchEditor] no struct found, falling back to rooms prop");
-      return rooms;
-    }
-    console.log("[SketchEditor] found struct:", struct.name, "rooms:", struct.rooms.length);
-    if (struct.rooms.length > 0) {
-      const r = struct.rooms[0] as any;
-      console.log("[SketchEditor] sample room keys:", Object.keys(r));
-      console.log("[SketchEditor] sample room:", { id: r.id, name: r.name, viewType: r.viewType, view_type: r.view_type, roomType: r.roomType, room_type: r.room_type, parentRoomId: r.parentRoomId, parent_room_id: r.parent_room_id });
-    }
-    return struct.rooms as RoomData[];
+    return categorizeByStructure(rooms, structureName);
   }, [hierarchyData, structureName, rooms]);
 
-  const interiorRooms = useMemo(() => {
-    const result = categorizeInterior(hierarchyRooms);
-    console.log("[SketchEditor] interiorRooms:", result.length, "from", hierarchyRooms.length, "total");
-    return result;
-  }, [hierarchyRooms]);
-  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(hierarchyRooms), [hierarchyRooms]);
+  const interiorRooms = useMemo(() => categorizeInterior(structureRooms), [structureRooms]);
+  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(structureRooms), [structureRooms]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
 
