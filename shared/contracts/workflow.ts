@@ -26,15 +26,17 @@ export const WORKFLOW_STEPS: Record<WorkflowPhase, string[]> = {
   export: ["export.validate", "export.generate"],
 };
 
+const GLOBAL_TOOLS = ["get_workflow_state", "set_phase", "set_context", "trigger_photo_capture", "analyze_photo", "get_inspection_state"];
+
 export const PHASE_ALLOWED_TOOLS: Record<WorkflowPhase, string[]> = {
-  briefing: ["get_workflow_state", "set_phase"],
-  inspection_setup: ["get_workflow_state", "set_phase", "set_context", "create_structure", "get_inspection_state"],
-  interior_rooms: ["get_workflow_state", "set_phase", "set_context", "create_room", "create_sub_area", "update_room", "get_inspection_state"],
-  openings: ["get_workflow_state", "set_phase", "set_context", "add_opening", "update_opening", "delete_opening", "get_inspection_state"],
-  elevations: ["get_workflow_state", "set_phase", "set_context", "create_room", "add_opening", "add_sketch_annotation"],
-  roof: ["get_workflow_state", "set_phase", "set_context", "create_room", "add_damage", "add_sketch_annotation", "log_test_square"],
-  photos_damage: ["get_workflow_state", "set_phase", "set_context", "trigger_photo_capture", "add_damage", "confirm_damage", "analyze_photo"],
-  scope_build: ["get_workflow_state", "set_phase", "set_context", "add_line_item", "update_line_item", "validate_scope"],
-  review: ["get_workflow_state", "set_phase", "set_context", "validate_scope", "run_workflow_gates"],
-  export: ["get_workflow_state", "set_phase", "run_workflow_gates", "export_esx"],
+  briefing: [...GLOBAL_TOOLS],
+  inspection_setup: [...GLOBAL_TOOLS, "create_structure"],
+  interior_rooms: [...GLOBAL_TOOLS, "create_room", "create_sub_area", "update_room"],
+  openings: [...GLOBAL_TOOLS, "add_opening", "update_opening", "delete_opening"],
+  elevations: [...GLOBAL_TOOLS, "create_room", "add_opening", "add_sketch_annotation"],
+  roof: [...GLOBAL_TOOLS, "create_room", "add_damage", "add_sketch_annotation", "log_test_square"],
+  photos_damage: [...GLOBAL_TOOLS, "add_damage", "confirm_damage"],
+  scope_build: [...GLOBAL_TOOLS, "add_line_item", "update_line_item", "validate_scope"],
+  review: [...GLOBAL_TOOLS, "validate_scope", "run_workflow_gates"],
+  export: [...GLOBAL_TOOLS, "run_workflow_gates", "export_esx"],
 };
