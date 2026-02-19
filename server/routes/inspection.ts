@@ -76,6 +76,14 @@ const roomOpeningCreateSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+const damageUpdateSchema = z.object({
+  description: z.string().optional(),
+  damageType: z.string().optional(),
+  severity: z.string().optional(),
+  location: z.string().optional(),
+  measurements: z.any().optional(),
+});
+
 const openingCreateSchema = z.object({
   roomId: z.number().int().positive(),
   openingType: z.enum(["window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "door", "sliding_door", "french_door"]),
@@ -118,6 +126,8 @@ const openingUpdateSchema = z.object({
   quantity: z.number().int().positive().optional(),
   label: z.string().max(50).nullable().optional(),
   openingType: z.enum(["door", "window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "sliding_door", "french_door"]).optional(),
+  opensInto: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 const lineItemCreateSchema = z.object({
@@ -786,6 +796,23 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.patch("/api/adjacencies/:id", authenticateRequest, async (req, res) => {
+    try {
+      const updates = z.object({
+        wallDirectionA: z.string().optional(),
+        wallDirectionB: z.string().optional(),
+        sharedWallLengthFt: z.number().optional(),
+        openingId: z.number().nullable().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateAdjacency(Number(req.params.id), updates);
+      if (!updated) return res.status(404).json({ error: "Adjacency not found" });
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Update Room Dimensions (for DIM_VARS recalculation) ──
   app.patch("/api/rooms/:roomId/dimensions", authenticateRequest, async (req, res) => {
     try {
@@ -1048,6 +1075,26 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         ? await storage.getDamages(roomId)
         : await storage.getDamagesForSession(sessionId);
       res.json(damages);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/damages/:damageId", authenticateRequest, async (req, res) => {
+    try {
+      const updates = damageUpdateSchema.parse(req.body);
+      const updated = await storage.updateDamage(Number(req.params.damageId), updates);
+      if (!updated) return res.status(404).json({ error: "Damage not found" });
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/damages/:damageId", authenticateRequest, async (req, res) => {
+    try {
+      await storage.deleteDamage(Number(req.params.damageId));
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
@@ -1467,6 +1514,32 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.patch("/api/inspection/:sessionId/test-squares/:id", authenticateRequest, async (req, res) => {
+    try {
+      const updates = z.object({
+        hailHits: z.number().optional(),
+        windCreases: z.number().optional(),
+        pitch: z.string().optional(),
+        result: z.string().optional(),
+        notes: z.string().nullable().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateTestSquare(Number(req.params.id), updates);
+      if (!updated) return res.status(404).json({ error: "Test square not found" });
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/test-squares/:id", authenticateRequest, async (req, res) => {
+    try {
+      await storage.deleteTestSquare(Number(req.params.id));
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Scope Assembly ─────────────────────────────────
 
   app.post("/api/inspection/:sessionId/scope/assemble", authenticateRequest, async (req, res) => {
@@ -1630,6 +1703,18 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const item = await storage.updateScopeItem(id, updates as any);
       if (item) await storage.recalculateScopeSummary(sessionId);
       res.json(item);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/scope/items/:id", authenticateRequest, async (req, res) => {
+    try {
+      await storage.deleteScopeItem(Number(req.params.id));
+      const sessionId = Number(req.params.sessionId);
+      await storage.recalculateScopeSummary(sessionId);
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
@@ -2114,6 +2199,31 @@ Respond in JSON format:
         ? await storage.getMoistureReadings(roomId)
         : await storage.getMoistureReadingsForSession(sessionId);
       res.json(readings);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/moisture/:id", authenticateRequest, async (req, res) => {
+    try {
+      const updates = z.object({
+        location: z.string().optional(),
+        reading: z.number().optional(),
+        materialType: z.string().optional(),
+        dryStandard: z.number().nullable().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateMoistureReading(Number(req.params.id), updates);
+      if (!updated) return res.status(404).json({ error: "Moisture reading not found" });
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/moisture/:id", authenticateRequest, async (req, res) => {
+    try {
+      await storage.deleteMoistureReading(Number(req.params.id));
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }

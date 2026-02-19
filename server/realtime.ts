@@ -83,12 +83,15 @@ export function buildSystemInstructions(briefing: any, claim: Claim, flow?: Insp
 ## 5-Level Sketch Hierarchy (CRITICAL)
 You are building an Xactimate-compatible property sketch. Every entity MUST follow this strict hierarchy:
 
-**L1 — Structure** (use create_structure)
+**L1 — Structure** (use create_structure, update_structure, delete_structure)
 Every property has at least one structure. Common structures: "Main Dwelling", "Detached Garage", "Shed", "Fence", "Pool House".
+- update_structure: Rename a structure or change its type
+- delete_structure: Remove an entire structure (set cascade=true to also remove all rooms)
 RULE: You MUST create a structure BEFORE creating any rooms under it. At session start, always create "Main Dwelling" first.
 
-**L2 — Room / Area** (use create_room)
+**L2 — Room / Area** (use create_room, delete_room)
 Rooms belong to a structure. Each room MUST have a viewType:
+- delete_room: Remove a room and all its contents (openings, annotations, damage, moisture readings)
 - "interior" → bedrooms, bathrooms, kitchen, living room, hallways, laundry, attic, basement
 - "roof_plan" → roof slopes/facets: "North Slope", "South Slope", "East Slope", "West Slope"
 - "elevation" → exterior elevations: "Front Elevation", "Left Elevation", "Right Elevation", "Rear Elevation"
@@ -101,8 +104,9 @@ RULE: For roof facets, set facetLabel (e.g., "F1", "F2") and pitch (e.g., "6/12"
 Sub-areas are child rooms attached to a parent: closets, pantries, dormers, bay windows, extensions, bump-outs.
 RULE: Always specify the parent room name and attachmentType.
 
-**L4 — Openings / Deductions** (use add_opening)
+**L4 — Openings / Deductions** (use add_opening, update_opening, delete_opening)
 Doors, windows, sliding doors, french doors, archways, missing walls on specific walls of a room.
+- update_opening now also accepts: opensInto (room name), notes
 RULE: Use wallDirection with North, South, East, or West when the adjuster specifies a wall. These are the standard terms — when they say "north wall", "south side", "east wall", "west wall", use wallDirection: "north", "south", "east", or "west" respectively. For exterior elevations, front=north, rear=south, left=west, right=east.
 These create deductions in the Xactimate estimate (wall area minus opening area).
 
@@ -511,7 +515,10 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
 
 7. **Smart Macros:** When the adjuster confirms a standard repair scope (e.g., "full roof replacement"), use apply_smart_macro to add all required line items at once. Always confirm: "I'll add the full roof replacement bundle — tear off, shingles, felt, ice barrier, drip edge, ridge vent. Sound right?"
 
-8. **Photo Triggers:** Call trigger_photo_capture IMMEDIATELY — do NOT ask "shall I open the camera?" Just call the tool. The camera opens instantly. Trigger when entering a new area, adjuster describes damage, test squares, moisture readings, or adjuster says "take a photo". Do NOT continue talking until you receive the photo result.
+8. **Photo Management:**
+   - list_photos: List all inspection photos, optionally filtered by room
+   - delete_photo: Remove a photo from the inspection
+   Call trigger_photo_capture IMMEDIATELY — do NOT ask "shall I open the camera?" Just call the tool. The camera opens instantly. Trigger when entering a new area, adjuster describes damage, test squares, moisture readings, or adjuster says "take a photo". Do NOT continue talking until you receive the photo result.
 
 9. **Never Repeat Skipped or Completed Steps:** If a step was already completed or explicitly skipped (via skip_step or adjuster saying "skip"), do NOT re-trigger it. This includes the property verification photo — if the transcript shows it was taken or skipped, move on.
 
@@ -552,23 +559,38 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
     When the adjuster reports pitch: "That's a [pitch] roof — I'll add the [moderate/high] steep charge for this slope. How many squares does this slope cover?"
     IMPORTANT: Steep charges are per-slope, not per-roof. A hip roof with four slopes at 8/12 gets four separate steep charge line items.
 
-17. **Auto-Scope Intelligence:** When you call add_damage, the system may auto-generate scope line items based on the damage type, severity, surface, and peril. The tool result will include an "autoScope" object when items are created:
+17. **Damage CRUD:** In addition to add_damage, you can:
+   - update_damage: Correct a damage observation's description, type, severity, or location
+   - delete_damage: Remove a damage observation (linked line items keep their data but lose the damage link)
+
+18. **Scope CRUD:** In addition to creating scope items, you can:
+   - delete_scope_item: Remove a scope item from the estimate (soft delete — recoverable)
+
+19. **Test Square CRUD:** In addition to log_test_square, you can:
+   - update_test_square: Correct a test square's hit count, pitch, or result
+   - delete_test_square: Remove a test square result
+
+20. **Moisture CRUD:** In addition to log_moisture_reading, you can:
+   - update_moisture_reading: Correct a moisture reading value or location
+   - delete_moisture_reading: Remove a moisture reading
+
+21. **Auto-Scope Intelligence:** When you call add_damage, the system may auto-generate scope line items based on the damage type, severity, surface, and peril. The tool result will include an "autoScope" object when items are created:
     autoScope.itemsCreated — number of items generated
     autoScope.summary — formatted list of items with codes, quantities, and prices
     autoScope.warnings — any issues (e.g., "No catalog match for surface type")
     When autoScope is present: Acknowledge the auto-generated items naturally. If warnings exist, mention them. Do NOT read every line item in detail unless the adjuster asks. Summarize. If autoScope.itemsCreated is 0, say: "I wasn't able to auto-scope that damage automatically. Let's add line items manually — what do you need?"
 
-18. **Photo Intelligence Awareness:** When a photo is captured, the system runs AI analysis. The tool result from trigger_photo_capture may include damageSuggestions[], qualityScore, analysisNotes. When damageSuggestions are present: Acknowledge what the camera saw. If confidence is high (>0.8), offer to log it. If moderate (0.5-0.8), be tentative. If low (<0.5), mention it but don't push. NEVER auto-log damage from photo analysis without adjuster confirmation. If qualityScore is below 50, suggest retaking.
+22. **Photo Intelligence Awareness:** When a photo is captured, the system runs AI analysis. The tool result from trigger_photo_capture may include damageSuggestions[], qualityScore, analysisNotes. When damageSuggestions are present: Acknowledge what the camera saw. If confidence is high (>0.8), offer to log it. If moderate (0.5-0.8), be tentative. If low (<0.5), mention it but don't push. NEVER auto-log damage from photo analysis without adjuster confirmation. If qualityScore is below 50, suggest retaking.
 
-19. **Phase Transition Protocol:** Before advancing to the next phase, the backend validates completeness. When you receive phase validation results (through set_inspection_context or request_phase_validation), the result may include warnings[], missingItems[], completionScore. If warnings exist: Read them conversationally. Ask: "Do you want to address these now, or proceed anyway?" Common warning responses: "No property verification photo" → offer trigger_photo_capture for address_verification; "Damages documented but no line items" → offer to review scope gaps; "Drywall without painting" → suggest adding paint finish items; "Elevated moisture but no mitigation" → suggest extraction/mitigation items. If completionScore is below 60, gently note it.
+23. **Phase Transition Protocol:** Before advancing to the next phase, the backend validates completeness. When you receive phase validation results (through set_inspection_context or request_phase_validation), the result may include warnings[], missingItems[], completionScore. If warnings exist: Read them conversationally. Ask: "Do you want to address these now, or proceed anyway?" Common warning responses: "No property verification photo" → offer trigger_photo_capture for address_verification; "Damages documented but no line items" → offer to review scope gaps; "Drywall without painting" → suggest adding paint finish items; "Elevated moisture but no mitigation" → suggest extraction/mitigation items. If completionScore is below 60, gently note it.
 
-20. **Catalog Intelligence:** When adding line items, you can provide a catalogCode parameter. The system will look up Xactimate-compatible pricing from the trade catalog. If you know the Xactimate code for an item (e.g., RFG-SHIN-AR for architectural shingles), always provide it via catalogCode. For common items, suggest catalog codes when the adjuster describes work. When auto-scope generates items, they already include catalog codes and pricing.
+24. **Catalog Intelligence:** When adding line items, you can provide a catalogCode parameter. The system will look up Xactimate-compatible pricing from the trade catalog. If you know the Xactimate code for an item (e.g., RFG-SHIN-AR for architectural shingles), always provide it via catalogCode. For common items, suggest catalog codes when the adjuster describes work. When auto-scope generates items, they already include catalog codes and pricing.
 
-21. **Completeness Coaching:** You can check overall inspection completeness at any time using get_completeness. This returns overallScore, scopeGaps[], missingPhotos[], recommendations[]. Use this proactively: Before phase 6 (Evidence Review), check completeness and address gaps. Before phase 7 (Estimate Assembly), verify all damages have scope items. Before completing the inspection, run a final completeness check. If the adjuster seems ready to wrap up early, gently mention: "Let me do a quick completeness check before we finalize..." and use get_completeness.
+25. **Completeness Coaching:** You can check overall inspection completeness at any time using get_completeness. This returns overallScore, scopeGaps[], missingPhotos[], recommendations[]. Use this proactively: Before phase 6 (Evidence Review), check completeness and address gaps. Before phase 7 (Estimate Assembly), verify all damages have scope items. Before completing the inspection, run a final completeness check. If the adjuster seems ready to wrap up early, gently mention: "Let me do a quick completeness check before we finalize..." and use get_completeness.
 
-22. **Error Recovery:** When a tool result includes success: false: Do NOT panic or apologize excessively. Stay calm and professional. If "No room selected": "Hmm, I need to know which room we're in first. Can you tell me where we are?" If "No session": "It looks like there might be a connection issue. Let me try that again." If server error: "That didn't go through — I'll retry now." Retry once immediately. If it fails again, do NOT abandon the request or say you're giving up. Acknowledge and keep ownership: "I still have your request. I'm going to save the exact details and retry in a moment." Then either retry with the same arguments or ask one focused clarification only if required to proceed. Never argue about standard vs non-standard dimensions when the adjuster provided a measurement. If catalog lookup fails: "I couldn't find the catalog price for that one, but I've added it with the price you mentioned. We can verify it later." NEVER expose raw error messages to the adjuster. Translate them into conversational English.
+26. **Error Recovery:** When a tool result includes success: false: Do NOT panic or apologize excessively. Stay calm and professional. If "No room selected": "Hmm, I need to know which room we're in first. Can you tell me where we are?" If "No session": "It looks like there might be a connection issue. Let me try that again." If server error: "That didn't go through — I'll retry now." Retry once immediately. If it fails again, do NOT abandon the request or say you're giving up. Acknowledge and keep ownership: "I still have your request. I'm going to save the exact details and retry in a moment." Then either retry with the same arguments or ask one focused clarification only if required to proceed. Never argue about standard vs non-standard dimensions when the adjuster provided a measurement. If catalog lookup fails: "I couldn't find the catalog price for that one, but I've added it with the price you mentioned. We can verify it later." NEVER expose raw error messages to the adjuster. Translate them into conversational English.
 
-23. **Skip Steps (Password Protected):** Adjuster must say "123" before skipping. Do NOT reveal the password. After hearing it: "Override confirmed." Then call skip_step.
+27. **Skip Steps (Password Protected):** Adjuster must say "123" before skipping. Do NOT reveal the password. After hearing it: "Override confirmed." Then call skip_step.
 \${capabilityText}`;
 }
 
@@ -643,6 +665,36 @@ export const realtimeTools = [
       },
       required: ["name", "structureType"]
     }
+  },
+  {
+    type: "function" as const,
+    name: "update_structure",
+    description: "Update a structure's name or type.",
+    parameters: {
+      type: "object",
+      properties: {
+        structureName: { type: "string", description: "Current name of the structure" },
+        structureId: { type: "number", description: "ID of the structure (alternative to name)" },
+        newName: { type: "string", description: "New name for the structure" },
+        structureType: { type: "string", description: "New structure type (dwelling, detached_garage, shed, etc.)" },
+      },
+      required: [],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_structure",
+    description: "Delete a structure from the inspection. If cascade is true, all rooms under this structure are also deleted. If cascade is false and rooms exist, the deletion will fail. Always confirm with the adjuster first.",
+    parameters: {
+      type: "object",
+      properties: {
+        structureName: { type: "string", description: "Name of the structure to delete" },
+        structureId: { type: "number", description: "ID of the structure (alternative to name)" },
+        cascade: { type: "boolean", description: "If true, delete all rooms under this structure too" },
+        confirm: { type: "boolean", description: "Must be true to proceed" },
+      },
+      required: ["confirm"],
+    },
   },
   {
     type: "function",
@@ -746,6 +798,20 @@ export const realtimeTools = [
       },
       required: ["name", "parentRoomName", "attachmentType"]
     }
+  },
+  {
+    type: "function" as const,
+    name: "delete_room",
+    description: "Delete a room from the inspection. This also removes all openings, annotations, damages, and moisture readings in the room. Line items and scope items keep their data but lose the room link. Always confirm with the adjuster before deleting.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string", description: "Name of the room to delete" },
+        roomId: { type: "number", description: "ID of the room to delete (alternative to roomName)" },
+        confirm: { type: "boolean", description: "Must be true to proceed with deletion" },
+      },
+      required: ["confirm"],
+    },
   },
   {
     type: "function",
@@ -910,6 +976,37 @@ export const realtimeTools = [
       },
       required: ["description", "damageType"]
     }
+  },
+  {
+    type: "function" as const,
+    name: "update_damage",
+    description: "Update an existing damage observation. Change description, type, severity, or location.",
+    parameters: {
+      type: "object",
+      properties: {
+        damageId: { type: "number", description: "ID of the damage to update" },
+        roomName: { type: "string", description: "Room name to search for the damage (alternative to damageId)" },
+        description: { type: "string", description: "Updated damage description" },
+        damageType: { type: "string", description: "Updated damage type (e.g., 'water', 'impact', 'wear')" },
+        severity: { type: "string", description: "Updated severity ('minor', 'moderate', 'severe')" },
+        location: { type: "string", description: "Updated location within the room" },
+      },
+      required: [],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_damage",
+    description: "Delete a damage observation. WARNING: This also disconnects any linked line items and photos (they keep their data but lose the damage link).",
+    parameters: {
+      type: "object",
+      properties: {
+        damageId: { type: "number", description: "ID of the damage to delete" },
+        roomName: { type: "string", description: "Room name to search for damage (alternative to damageId)" },
+        damageType: { type: "string", description: "Filter: damage type to narrow the search" },
+      },
+      required: [],
+    },
   },
   {
     type: "function",
@@ -1101,6 +1198,101 @@ export const realtimeTools = [
       },
       required: ["hail_hits", "pitch"]
     }
+  },
+  {
+    type: "function" as const,
+    name: "update_test_square",
+    description: "Update an existing test square result (correct hail hit count, wind creases, pitch, or result).",
+    parameters: {
+      type: "object",
+      properties: {
+        testSquareId: { type: "number", description: "ID of the test square to update" },
+        hailHits: { type: "number", description: "Corrected hail hit count" },
+        windCreases: { type: "number", description: "Corrected wind crease count" },
+        pitch: { type: "string", description: "Corrected roof pitch" },
+        result: { type: "string", description: "Updated result ('pass' or 'fail')" },
+        notes: { type: "string", description: "Updated notes" },
+      },
+      required: ["testSquareId"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_test_square",
+    description: "Delete a test square result.",
+    parameters: {
+      type: "object",
+      properties: {
+        testSquareId: { type: "number", description: "ID of the test square to delete" },
+      },
+      required: ["testSquareId"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "update_moisture_reading",
+    description: "Correct a moisture reading value, location, or material type.",
+    parameters: {
+      type: "object",
+      properties: {
+        readingId: { type: "number", description: "ID of the moisture reading to update" },
+        location: { type: "string", description: "Updated location description" },
+        reading: { type: "number", description: "Corrected moisture reading value" },
+        materialType: { type: "string", description: "Corrected material type" },
+        dryStandard: { type: "number", description: "Corrected dry standard" },
+      },
+      required: ["readingId"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_moisture_reading",
+    description: "Delete a moisture reading.",
+    parameters: {
+      type: "object",
+      properties: {
+        readingId: { type: "number", description: "ID of the moisture reading to delete" },
+      },
+      required: ["readingId"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_scope_item",
+    description: "Remove a scope item from the estimate. The item is soft-deleted and can be recovered.",
+    parameters: {
+      type: "object",
+      properties: {
+        scopeItemId: { type: "number", description: "ID of the scope item to remove" },
+        description: { type: "string", description: "Description of the item (for confirmation)" },
+      },
+      required: ["scopeItemId"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "list_photos",
+    description: "List all photos taken during the inspection, optionally filtered by room.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string", description: "Filter photos by room name" },
+      },
+      required: [],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "delete_photo",
+    description: "Delete a photo from the inspection.",
+    parameters: {
+      type: "object",
+      properties: {
+        photoId: { type: "number", description: "ID of the photo to delete" },
+        confirm: { type: "boolean", description: "Must be true to proceed" },
+      },
+      required: ["photoId", "confirm"],
+    },
   },
   {
     type: "function",

@@ -2063,6 +2063,316 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        // ── Update Damage ──────────────────────────
+        case "update_damage": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let updateDamageId = args.damageId;
+          if (!updateDamageId && args.roomName) {
+            const udRooms = await fetchFreshRooms();
+            const udRoom = udRooms.find((r: any) => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || udRooms.find((r: any) => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (udRoom) {
+              const udHeaders = await getAuthHeaders();
+              const udDamagesRes = await fetch(`/api/inspection/${sessionId}/damages?roomId=${udRoom.id}`, { headers: udHeaders });
+              if (udDamagesRes.ok) {
+                const udDamages = await udDamagesRes.json();
+                if (udDamages.length === 1) updateDamageId = udDamages[0].id;
+                else if (udDamages.length > 1) {
+                  result = { success: false, error: `Multiple damages in ${udRoom.name}. Specify damageId.`, damages: udDamages.map((d: any) => ({ id: d.id, description: d.description, damageType: d.damageType })) };
+                  break;
+                }
+              }
+            }
+          }
+          if (!updateDamageId) { result = { success: false, error: "Could not resolve damage. Provide damageId or roomName." }; break; }
+          const udBody: Record<string, any> = {};
+          if (args.description) udBody.description = args.description;
+          if (args.damageType) udBody.damageType = args.damageType;
+          if (args.severity) udBody.severity = args.severity;
+          if (args.location) udBody.location = args.location;
+          const udPatchHeaders = await getAuthHeaders();
+          const udPatchRes = await fetch(`/api/inspection/${sessionId}/damages/${updateDamageId}`, {
+            method: "PATCH", headers: udPatchHeaders, body: JSON.stringify(udBody),
+          });
+          if (!udPatchRes.ok) {
+            const udErr = await udPatchRes.json().catch(() => ({}));
+            result = { success: false, error: udErr.error || "Failed to update damage" };
+            break;
+          }
+          const udUpdated = await udPatchRes.json();
+          result = { success: true, damage: udUpdated, message: `Updated damage #${updateDamageId}.` };
+          break;
+        }
+
+        // ── Delete Damage ──────────────────────────
+        case "delete_damage": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let delDamageId = args.damageId;
+          if (!delDamageId && args.roomName) {
+            const ddRooms = await fetchFreshRooms();
+            const ddRoom = ddRooms.find((r: any) => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || ddRooms.find((r: any) => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (ddRoom) {
+              const ddHeaders = await getAuthHeaders();
+              const ddDamagesRes = await fetch(`/api/inspection/${sessionId}/damages?roomId=${ddRoom.id}`, { headers: ddHeaders });
+              if (ddDamagesRes.ok) {
+                let ddDamages = await ddDamagesRes.json();
+                if (args.damageType) ddDamages = ddDamages.filter((d: any) => d.damageType === args.damageType);
+                if (ddDamages.length === 1) delDamageId = ddDamages[0].id;
+                else if (ddDamages.length > 1) {
+                  result = { success: false, error: `Multiple damages found. Specify damageId.`, damages: ddDamages.map((d: any) => ({ id: d.id, description: d.description })) };
+                  break;
+                }
+              }
+            }
+          }
+          if (!delDamageId) { result = { success: false, error: "Could not resolve damage. Provide damageId or roomName." }; break; }
+          const ddDelHeaders = await getAuthHeaders();
+          const ddDelRes = await fetch(`/api/inspection/${sessionId}/damages/${delDamageId}`, {
+            method: "DELETE", headers: ddDelHeaders,
+          });
+          if (!ddDelRes.ok) {
+            result = { success: false, error: "Failed to delete damage" };
+            break;
+          }
+          result = { success: true, message: `Deleted damage #${delDamageId}. Linked line items and photos keep their data but lose the damage link.` };
+          break;
+        }
+
+        // ── Update Test Square ──────────────────────────
+        case "update_test_square": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.testSquareId) { result = { success: false, error: "testSquareId is required" }; break; }
+          const utsBody: Record<string, any> = {};
+          if (args.hailHits !== undefined) utsBody.hailHits = args.hailHits;
+          if (args.windCreases !== undefined) utsBody.windCreases = args.windCreases;
+          if (args.pitch) utsBody.pitch = args.pitch;
+          if (args.result) utsBody.result = args.result;
+          if (args.notes !== undefined) utsBody.notes = args.notes;
+          const utsHeaders = await getAuthHeaders();
+          const utsRes = await fetch(`/api/inspection/${sessionId}/test-squares/${args.testSquareId}`, {
+            method: "PATCH", headers: utsHeaders, body: JSON.stringify(utsBody),
+          });
+          if (!utsRes.ok) {
+            const utsErr = await utsRes.json().catch(() => ({}));
+            result = { success: false, error: utsErr.error || "Failed to update test square" };
+            break;
+          }
+          const utsUpdated = await utsRes.json();
+          result = { success: true, testSquare: utsUpdated, message: `Updated test square #${args.testSquareId}.` };
+          break;
+        }
+
+        // ── Delete Test Square ──────────────────────────
+        case "delete_test_square": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.testSquareId) { result = { success: false, error: "testSquareId is required" }; break; }
+          const dtsHeaders = await getAuthHeaders();
+          const dtsRes = await fetch(`/api/inspection/${sessionId}/test-squares/${args.testSquareId}`, {
+            method: "DELETE", headers: dtsHeaders,
+          });
+          if (!dtsRes.ok) {
+            result = { success: false, error: "Failed to delete test square" };
+            break;
+          }
+          result = { success: true, message: `Deleted test square #${args.testSquareId}.` };
+          break;
+        }
+
+        // ── Update Moisture Reading ──────────────────────────
+        case "update_moisture_reading": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.readingId) { result = { success: false, error: "readingId is required" }; break; }
+          const umrBody: Record<string, any> = {};
+          if (args.location) umrBody.location = args.location;
+          if (args.reading !== undefined) umrBody.reading = args.reading;
+          if (args.materialType) umrBody.materialType = args.materialType;
+          if (args.dryStandard !== undefined) umrBody.dryStandard = args.dryStandard;
+          const umrHeaders = await getAuthHeaders();
+          const umrRes = await fetch(`/api/inspection/${sessionId}/moisture/${args.readingId}`, {
+            method: "PATCH", headers: umrHeaders, body: JSON.stringify(umrBody),
+          });
+          if (!umrRes.ok) {
+            const umrErr = await umrRes.json().catch(() => ({}));
+            result = { success: false, error: umrErr.error || "Failed to update moisture reading" };
+            break;
+          }
+          const umrUpdated = await umrRes.json();
+          result = { success: true, reading: umrUpdated, message: `Updated moisture reading #${args.readingId}.` };
+          break;
+        }
+
+        // ── Delete Moisture Reading ──────────────────────────
+        case "delete_moisture_reading": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.readingId) { result = { success: false, error: "readingId is required" }; break; }
+          const dmrHeaders = await getAuthHeaders();
+          const dmrRes = await fetch(`/api/inspection/${sessionId}/moisture/${args.readingId}`, {
+            method: "DELETE", headers: dmrHeaders,
+          });
+          if (!dmrRes.ok) {
+            result = { success: false, error: "Failed to delete moisture reading" };
+            break;
+          }
+          result = { success: true, message: `Deleted moisture reading #${args.readingId}.` };
+          break;
+        }
+
+        // ── Delete Scope Item ──────────────────────────
+        case "delete_scope_item": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.scopeItemId) { result = { success: false, error: "scopeItemId is required" }; break; }
+          const dsiHeaders = await getAuthHeaders();
+          const dsiRes = await fetch(`/api/inspection/${sessionId}/scope/items/${args.scopeItemId}`, {
+            method: "DELETE", headers: dsiHeaders,
+          });
+          if (!dsiRes.ok) {
+            result = { success: false, error: "Failed to delete scope item" };
+            break;
+          }
+          result = { success: true, message: `Removed scope item #${args.scopeItemId} (soft-deleted — recoverable).` };
+          break;
+        }
+
+        // ── Delete Room ──────────────────────────
+        case "delete_room": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.confirm) { result = { success: false, error: "Deletion requires confirm=true" }; break; }
+          let deleteRoomId = args.roomId;
+          if (!deleteRoomId && args.roomName) {
+            const drRooms = await fetchFreshRooms();
+            const drRoom = drRooms.find((r: any) => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || drRooms.find((r: any) => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (drRoom) deleteRoomId = drRoom.id;
+          }
+          if (!deleteRoomId) { result = { success: false, error: "Could not find room. Provide roomId or roomName." }; break; }
+          const drHeaders = await getAuthHeaders();
+          const drRes = await fetch(`/api/inspection/${sessionId}/rooms/${deleteRoomId}`, {
+            method: "DELETE", headers: drHeaders,
+          });
+          if (!drRes.ok) {
+            const drErr = await drRes.json().catch(() => ({}));
+            result = { success: false, error: drErr.message || "Failed to delete room" };
+            break;
+          }
+          await refreshRooms();
+          result = { success: true, message: `Deleted room #${deleteRoomId} and all its contents (openings, annotations, damages, moisture readings). Line items and scope items retain data but lost room link.` };
+          break;
+        }
+
+        // ── Update Structure ──────────────────────────
+        case "update_structure": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          let usStructureId = args.structureId;
+          if (!usStructureId && args.structureName) {
+            const usHeaders = await getAuthHeaders();
+            const usStructRes = await fetch(`/api/inspection/${sessionId}/structures`, { headers: usHeaders });
+            if (usStructRes.ok) {
+              const usStructures = await usStructRes.json();
+              const usMatch = usStructures.find((s: any) => s.name.toLowerCase() === args.structureName.toLowerCase())
+                || usStructures.find((s: any) => s.name.toLowerCase().includes(args.structureName.toLowerCase()));
+              if (usMatch) usStructureId = usMatch.id;
+            }
+          }
+          if (!usStructureId) { result = { success: false, error: "Could not find structure. Provide structureId or structureName." }; break; }
+          const usBody: Record<string, any> = {};
+          if (args.newName) usBody.name = args.newName;
+          if (args.structureType) usBody.structureType = args.structureType;
+          const usPatchHeaders = await getAuthHeaders();
+          const usPatchRes = await fetch(`/api/inspection/${sessionId}/structures/${usStructureId}`, {
+            method: "PATCH", headers: usPatchHeaders, body: JSON.stringify(usBody),
+          });
+          if (!usPatchRes.ok) {
+            const usErr = await usPatchRes.json().catch(() => ({}));
+            result = { success: false, error: usErr.message || "Failed to update structure" };
+            break;
+          }
+          const usUpdated = await usPatchRes.json();
+          result = { success: true, structure: usUpdated, message: `Updated structure #${usStructureId}.` };
+          break;
+        }
+
+        // ── Delete Structure ──────────────────────────
+        case "delete_structure": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.confirm) { result = { success: false, error: "Deletion requires confirm=true" }; break; }
+          let dsStructureId = args.structureId;
+          if (!dsStructureId && args.structureName) {
+            const dsHeaders = await getAuthHeaders();
+            const dsStructRes = await fetch(`/api/inspection/${sessionId}/structures`, { headers: dsHeaders });
+            if (dsStructRes.ok) {
+              const dsStructures = await dsStructRes.json();
+              const dsMatch = dsStructures.find((s: any) => s.name.toLowerCase() === args.structureName.toLowerCase())
+                || dsStructures.find((s: any) => s.name.toLowerCase().includes(args.structureName.toLowerCase()));
+              if (dsMatch) dsStructureId = dsMatch.id;
+            }
+          }
+          if (!dsStructureId) { result = { success: false, error: "Could not find structure. Provide structureId or structureName." }; break; }
+          const cascade = args.cascade === true;
+          const dsDelHeaders = await getAuthHeaders();
+          const dsDelRes = await fetch(`/api/inspection/${sessionId}/structures/${dsStructureId}?cascade=${cascade}`, {
+            method: "DELETE", headers: dsDelHeaders,
+          });
+          if (!dsDelRes.ok) {
+            const dsErr = await dsDelRes.json().catch(() => ({}));
+            result = { success: false, error: dsErr.message || "Failed to delete structure" };
+            break;
+          }
+          await refreshRooms();
+          result = { success: true, message: `Deleted structure #${dsStructureId}${cascade ? " and all its rooms" : ""}.` };
+          break;
+        }
+
+        // ── List Photos ──────────────────────────
+        case "list_photos": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const lpHeaders = await getAuthHeaders();
+          const lpRes = await fetch(`/api/inspection/${sessionId}/photos`, { headers: lpHeaders });
+          if (!lpRes.ok) {
+            result = { success: false, error: "Failed to fetch photos" };
+            break;
+          }
+          let lpPhotos = await lpRes.json();
+          if (args.roomName) {
+            const lpRooms = await fetchFreshRooms();
+            const lpRoom = lpRooms.find((r: any) => r.name.toLowerCase() === args.roomName.toLowerCase())
+              || lpRooms.find((r: any) => r.name.toLowerCase().includes(args.roomName.toLowerCase()));
+            if (lpRoom) lpPhotos = lpPhotos.filter((p: any) => p.roomId === lpRoom.id);
+          }
+          result = {
+            success: true,
+            count: lpPhotos.length,
+            photos: lpPhotos.map((p: any) => ({
+              id: p.id,
+              caption: p.caption || p.autoTag || "No caption",
+              photoType: p.photoType,
+              roomId: p.roomId,
+            })),
+            message: lpPhotos.length > 0
+              ? `Found ${lpPhotos.length} photo(s).`
+              : "No photos found.",
+          };
+          break;
+        }
+
+        // ── Delete Photo ──────────────────────────
+        case "delete_photo": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!args.photoId) { result = { success: false, error: "photoId is required" }; break; }
+          if (!args.confirm) { result = { success: false, error: "Deletion requires confirm=true" }; break; }
+          const dpHeaders = await getAuthHeaders();
+          const dpRes = await fetch(`/api/inspection/${sessionId}/photos/${args.photoId}`, {
+            method: "DELETE", headers: dpHeaders,
+          });
+          if (!dpRes.ok) {
+            const dpErr = await dpRes.json().catch(() => ({}));
+            result = { success: false, error: dpErr.message || "Failed to delete photo" };
+            break;
+          }
+          result = { success: true, message: `Deleted photo #${args.photoId}.` };
+          break;
+        }
+
         case "complete_inspection": {
           if (!sessionId) { result = { success: false }; break; }
           localStorage.removeItem(STORAGE_KEY);

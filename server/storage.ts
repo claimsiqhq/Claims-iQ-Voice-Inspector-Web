@@ -39,7 +39,7 @@ import {
   inspectionFlows, type InspectionFlow, type InsertInspectionFlow,
   inspectionSessionEvents, type InspectionSessionEvent, type InsertInspectionSessionEvent,
 } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -123,13 +123,14 @@ export interface IStorage {
   getOpening(id: number): Promise<RoomOpening | undefined>;
   getOpeningsForRoom(roomId: number): Promise<RoomOpening[]>;
   getOpeningsForSession(sessionId: number): Promise<RoomOpening[]>;
-  updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType">>): Promise<RoomOpening | undefined>;
+  updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType" | "opensInto" | "notes">>): Promise<RoomOpening | undefined>;
   deleteOpening(id: number): Promise<void>;
 
   // ── Room Adjacency ──────────────────────────
   createAdjacency(data: InsertRoomAdjacency): Promise<RoomAdjacency>;
   getAdjacenciesForRoom(roomId: number): Promise<RoomAdjacency[]>;
   getAdjacenciesForSession(sessionId: number): Promise<RoomAdjacency[]>;
+  updateAdjacency(id: number, updates: Partial<Pick<RoomAdjacency, 'wallDirectionA' | 'wallDirectionB' | 'sharedWallLengthFt' | 'openingId'>>): Promise<RoomAdjacency | undefined>;
   deleteAdjacency(id: number): Promise<void>;
   getAdjacentRooms(roomId: number): Promise<Array<{ adjacency: RoomAdjacency; room: InspectionRoom }>>;
   // Update room dimensions (specifically the jsonb `dimensions` column)
@@ -162,6 +163,8 @@ export interface IStorage {
   createDamage(data: InsertDamageObservation): Promise<DamageObservation>;
   getDamages(roomId: number): Promise<DamageObservation[]>;
   getDamagesForSession(sessionId: number): Promise<DamageObservation[]>;
+  updateDamage(id: number, updates: Partial<Pick<DamageObservation, 'description' | 'damageType' | 'severity' | 'location' | 'measurements'>>): Promise<DamageObservation | undefined>;
+  deleteDamage(id: number): Promise<void>;
 
   createLineItem(data: InsertLineItem): Promise<LineItem>;
   getLineItemById(id: number): Promise<LineItem | undefined>;
@@ -181,11 +184,15 @@ export interface IStorage {
   createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
   getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
   getMoistureReadingsForSession(sessionId: number): Promise<MoistureReading[]>;
+  updateMoistureReading(id: number, updates: Partial<Pick<MoistureReading, 'location' | 'reading' | 'materialType' | 'dryStandard'>>): Promise<MoistureReading | undefined>;
+  deleteMoistureReading(id: number): Promise<void>;
 
   // Test squares (forensic hail/wind documentation)
   createTestSquare(data: InsertTestSquare): Promise<TestSquare>;
   getTestSquares(sessionId: number): Promise<TestSquare[]>;
   getTestSquaresForRoom(roomId: number): Promise<TestSquare[]>;
+  updateTestSquare(id: number, updates: Partial<Pick<TestSquare, 'hailHits' | 'windCreases' | 'pitch' | 'result' | 'notes' | 'roomId'>>): Promise<TestSquare | undefined>;
+  deleteTestSquare(id: number): Promise<void>;
 
   addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript>;
   getTranscript(sessionId: number): Promise<VoiceTranscript[]>;
@@ -644,10 +651,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRoom(roomId: number): Promise<void> {
+    // Clean up adjacencies referencing this room (explicit for safety alongside FK cascade)
+    await db.delete(roomAdjacencies).where(
+      or(
+        eq(roomAdjacencies.roomIdA, roomId),
+        eq(roomAdjacencies.roomIdB, roomId),
+      )
+    );
+
     const childRooms = await db.select({ id: inspectionRooms.id }).from(inspectionRooms)
       .where(eq(inspectionRooms.parentRoomId, roomId));
     const childIds = childRooms.map(c => c.id);
     for (const childId of childIds) {
+      // Clean up adjacencies for child room
+      await db.delete(roomAdjacencies).where(
+        or(
+          eq(roomAdjacencies.roomIdA, childId),
+          eq(roomAdjacencies.roomIdB, childId),
+        )
+      );
       await db.delete(roomOpenings).where(eq(roomOpenings.roomId, childId));
       await db.delete(sketchAnnotations).where(eq(sketchAnnotations.roomId, childId));
     }
@@ -686,7 +708,7 @@ export class DatabaseStorage implements IStorage {
     return opening;
   }
 
-  async updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType">>): Promise<RoomOpening | undefined> {
+  async updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType" | "opensInto" | "notes">>): Promise<RoomOpening | undefined> {
     const [updated] = await db.update(roomOpenings).set(updates as any).where(eq(roomOpenings.id, id)).returning();
     return updated;
   }
@@ -718,6 +740,15 @@ export class DatabaseStorage implements IStorage {
   async getAdjacenciesForSession(sessionId: number): Promise<RoomAdjacency[]> {
     return db.select().from(roomAdjacencies)
       .where(eq(roomAdjacencies.sessionId, sessionId));
+  }
+
+  async updateAdjacency(id: number, updates: Partial<Pick<RoomAdjacency, 'wallDirectionA' | 'wallDirectionB' | 'sharedWallLengthFt' | 'openingId'>>): Promise<RoomAdjacency | undefined> {
+    const [updated] = await db
+      .update(roomAdjacencies)
+      .set(updates)
+      .where(eq(roomAdjacencies.id, id))
+      .returning();
+    return updated;
   }
 
   async deleteAdjacency(id: number): Promise<void> {
@@ -884,6 +915,20 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(damageObservations).where(eq(damageObservations.sessionId, sessionId));
   }
 
+  async updateDamage(id: number, updates: Partial<Pick<DamageObservation, 'description' | 'damageType' | 'severity' | 'location' | 'measurements'>>): Promise<DamageObservation | undefined> {
+    const [updated] = await db
+      .update(damageObservations)
+      .set(updates)
+      .where(eq(damageObservations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDamage(id: number): Promise<void> {
+    await db.delete(damageObservations).where(eq(damageObservations.id, id));
+    // FK cascade: lineItems.damageId → SET NULL, inspectionPhotos.damageId → SET NULL, scopeItems.damageId → SET NULL
+  }
+
   async createLineItem(data: InsertLineItem): Promise<LineItem> {
     const [item] = await db.insert(lineItems).values(data).returning();
     return item;
@@ -967,6 +1012,19 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(moistureReadings).where(eq(moistureReadings.sessionId, sessionId));
   }
 
+  async updateMoistureReading(id: number, updates: Partial<Pick<MoistureReading, 'location' | 'reading' | 'materialType' | 'dryStandard'>>): Promise<MoistureReading | undefined> {
+    const [updated] = await db
+      .update(moistureReadings)
+      .set(updates)
+      .where(eq(moistureReadings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMoistureReading(id: number): Promise<void> {
+    await db.delete(moistureReadings).where(eq(moistureReadings.id, id));
+  }
+
   async createTestSquare(data: InsertTestSquare): Promise<TestSquare> {
     const [sq] = await db.insert(testSquares).values(data).returning();
     return sq;
@@ -978,6 +1036,19 @@ export class DatabaseStorage implements IStorage {
 
   async getTestSquaresForRoom(roomId: number): Promise<TestSquare[]> {
     return db.select().from(testSquares).where(eq(testSquares.roomId, roomId));
+  }
+
+  async updateTestSquare(id: number, updates: Partial<Pick<TestSquare, 'hailHits' | 'windCreases' | 'pitch' | 'result' | 'notes' | 'roomId'>>): Promise<TestSquare | undefined> {
+    const [updated] = await db
+      .update(testSquares)
+      .set(updates)
+      .where(eq(testSquares.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTestSquare(id: number): Promise<void> {
+    await db.delete(testSquares).where(eq(testSquares.id, id));
   }
 
   async addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript> {
