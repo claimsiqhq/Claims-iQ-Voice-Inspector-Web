@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { generateESXFile } from '../server/esxGenerator';
+import { generateESXFile, generateESXFromData } from '../server/esxGenerator';
 import { createMockStorage } from './mocks/storage.mock';
 import { makeClaim, makeSession, makeRoom, makeLineItem } from './mocks/fixtures';
-import { createUnzip } from 'zlib';
-import { Readable } from 'stream';
 
 /**
  * Extract all file entries from a ZIP buffer and return their contents as strings.
@@ -219,5 +217,89 @@ describe('generateESXFile', () => {
     // Should have escaped & < > characters
     expect(xactdoc).toContain('&amp;');
     expect(xactdoc).toContain('&lt;');
+  });
+});
+
+describe('generateESXFromData - M/L/E and depreciation', () => {
+  const claim = makeClaim();
+  const session = makeSession();
+  const rooms = [makeRoom({ id: 1, name: 'Kitchen' })];
+  const lineItems = [
+    makeLineItem({
+      id: 1,
+      roomId: 1,
+      category: 'Drywall',
+      tradeCode: 'DRY',
+      xactCode: 'DRY-12-SF',
+      totalPrice: 165,
+      quantity: 100,
+      age: 5,
+    }),
+  ];
+
+  it('includes equipment in GENERIC_ROUGHDRAFT ITEM elements', async () => {
+    const result = await generateESXFromData({
+      claim,
+      session,
+      rooms,
+      lineItems,
+    });
+    const entries = await extractZipEntries(result);
+    const roughdraft = entries['GENERIC_ROUGHDRAFT.XML'] || '';
+    expect(roughdraft).toContain('equipment="');
+  });
+
+  it('includes depreciationPct and depreciationAmt in ITEM elements', async () => {
+    const result = await generateESXFromData({
+      claim,
+      session,
+      rooms,
+      lineItems,
+    });
+    const entries = await extractZipEntries(result);
+    const roughdraft = entries['GENERIC_ROUGHDRAFT.XML'] || '';
+    expect(roughdraft).toContain('depreciationPct="');
+    expect(roughdraft).toContain('depreciationAmt="');
+  });
+
+  it('includes PERIL and LOSS_LOCATION in XACTDOC', async () => {
+    const result = await generateESXFromData({
+      claim,
+      session,
+      rooms,
+      lineItems,
+    });
+    const entries = await extractZipEntries(result);
+    const xactdoc = entries['XACTDOC.XML'] || '';
+    expect(xactdoc).toContain('<PERIL>');
+    expect(xactdoc).toContain('<LOSS_LOCATION>');
+    expect(xactdoc).toContain('<LOSS_DETAILS>');
+    expect(xactdoc).toContain('<COVERAGE>');
+    expect(xactdoc).toContain('<ADJUSTER_INFO>');
+  });
+
+  it('uses Recoverable depreciation type for water claims', async () => {
+    const waterClaim = makeClaim({ perilType: 'water' });
+    const result = await generateESXFromData({
+      claim: waterClaim,
+      session,
+      rooms,
+      lineItems,
+    });
+    const entries = await extractZipEntries(result);
+    const xactdoc = entries['XACTDOC.XML'] || '';
+    expect(xactdoc).toContain('Recoverable');
+  });
+
+  it('throws when validation fails (missing claim number)', async () => {
+    const invalidClaim = makeClaim({ claimNumber: '' });
+    await expect(
+      generateESXFromData({
+        claim: invalidClaim,
+        session,
+        rooms,
+        lineItems,
+      })
+    ).rejects.toThrow(/ESX validation failed|Claim number/);
   });
 });
