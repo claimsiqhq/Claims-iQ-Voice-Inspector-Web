@@ -2496,7 +2496,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
   );
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-background text-foreground flex overflow-hidden relative" data-testid="active-inspection-page">
+    <div className="h-[calc(100vh-9rem)] bg-background text-foreground flex overflow-hidden relative" data-testid="active-inspection-page">
       {/* LEFT SIDEBAR - Desktop only */}
       {!isMobile && (
         <div className="w-72 bg-card border-r border-border flex flex-col z-20">
@@ -2789,70 +2789,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           </div>
           )}
 
-          {/* Mobile: Inspection Step Progress Card */}
-          {isMobile && !mobileTranscriptExpanded && (
-            <div className="flex-1 flex flex-col items-center justify-center px-4 py-3 min-h-0">
-              <div className="w-full max-w-sm space-y-3">
-                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-sm font-bold text-primary">{currentPhase}</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">{PHASES.find(p => p.id === currentPhase)?.name || "Inspection"}</p>
-                        <p className="text-[10px] text-muted-foreground">Phase {currentPhase} of {PHASES.length}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowProgressTracker(true)}
-                      className="text-[10px] text-primary font-medium"
-                      data-testid="button-view-checklist"
-                    >
-                      View All
-                    </button>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1.5 mb-3">
-                    <div
-                      className="bg-primary h-1.5 rounded-full transition-all"
-                      style={{ width: `${(currentPhase / PHASES.length) * 100}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-muted/50 rounded-lg px-3 py-2 text-center">
-                      <p className="text-lg font-bold text-foreground">{rooms.filter(r => r.status === "complete").length}/{rooms.length}</p>
-                      <p className="text-[10px] text-muted-foreground">Rooms Done</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg px-3 py-2 text-center">
-                      <p className="text-lg font-bold text-foreground">{rooms.reduce((sum, r) => sum + r.damageCount, 0)}</p>
-                      <p className="text-[10px] text-muted-foreground">Damages Found</p>
-                    </div>
-                  </div>
-                </div>
-
-                {currentArea && (
-                  <div className="bg-primary/5 rounded-xl border border-primary/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-primary" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">Currently in: {currentArea}</p>
-                        {(() => {
-                          const room = rooms.find(r => r.id === currentRoomId);
-                          return room ? (
-                            <p className="text-[10px] text-muted-foreground">
-                              {room.damageCount} damage{room.damageCount !== 1 ? "s" : ""} · {room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}
-                            </p>
-                          ) : null;
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Inline Floor Plan Sketch - bottom panel */}
+          {/* Inline Floor Plan Sketch - primary on mobile when rooms exist */}
           {(rooms.length > 0 || isConnected) && (
             <div
               className={cn(
@@ -2913,6 +2850,32 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Mobile: Compact progress strip below sketch (tap View All for full tracker) */}
+          {isMobile && !mobileTranscriptExpanded && (
+            <div className="flex-shrink-0 px-3 py-2 border-t border-border/50 bg-card/40">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-bold text-primary">{currentPhase}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium truncate">{PHASES.find(p => p.id === currentPhase)?.name || "Inspection"}</p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {rooms.filter(r => r.status === "complete").length}/{rooms.length} rooms · {rooms.reduce((sum, r) => sum + (r.damageCount ?? 0), 0)} damages
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowProgressTracker(true)}
+                  className="text-[10px] text-primary font-medium shrink-0"
+                  data-testid="button-view-checklist"
+                >
+                  View All
+                </button>
+              </div>
             </div>
           )}
 

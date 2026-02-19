@@ -101,12 +101,6 @@ export default function BottomNav() {
 
   const navItems = getNavItems();
 
-  const hideOnPaths = ["/inspection/"];
-  const shouldHide = hideOnPaths.some(
-    (p) => location.startsWith(p) && !location.includes("/review") && !location.includes("/export") && !location.includes("/scope")
-  );
-  if (shouldHide) return null;
-
   return (
     <nav
       data-testid="bottom-nav"
