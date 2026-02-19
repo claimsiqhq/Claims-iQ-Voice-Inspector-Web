@@ -3876,7 +3876,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                 Close
               </Button>
             </div>
-            <div className="relative" style={{ height: "calc(100dvh - 130px)" }}>
+            <div className="relative flex-1 min-h-0">
               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
               {cameraMode.overlay === "test_square_grid" && (
                 <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 border-2 border-accent/60">
@@ -3888,7 +3888,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-foreground/95 p-3 pb-6 border-t border-primary/25" style={{ minHeight: "90px" }}>
+            <div className="bg-foreground/95 p-4 pb-8 border-t border-primary/25 shrink-0">
               {cameraMode.label === "Analyzing photo..." ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 text-accent animate-spin" />
