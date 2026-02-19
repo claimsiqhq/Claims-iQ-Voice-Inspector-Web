@@ -46,7 +46,8 @@ import { apiRequest, resilientMutation, getAuthHeaders as getGlobalAuthHeaders }
 import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
-import { normalizeWallDirection, parseFeetValue } from "@/lib/openingToolNormalization";
+import { normalizeOpeningDimensions, normalizeWallDirection, parseFeetValue } from "@/lib/openingToolNormalization";
+import { buildToolError, sendRealtimeToolRoundTrip } from "@/lib/realtimeTooling";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
@@ -556,11 +557,24 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     let args: any;
     try {
       args = JSON.parse(argsString);
-    } catch (e) { logger.error("Voice", "Tool args parse error", e);
+    } catch (e) {
+      logger.error("Voice", "Tool args parse error", e);
       args = {};
     }
-    logger.info("VoiceTool", `▶ ${name}`, args);
-    sendLogToServer(name, "call", args);
+
+    const sendToolRoundTrip = (payload: Record<string, unknown>) => {
+      if (!dcRef.current || dcRef.current.readyState !== "open") return;
+      sendRealtimeToolRoundTrip((message) => dcRef.current?.send(message), call_id, payload);
+    };
+
+    const toolValidationError = (message: string, details?: Record<string, unknown>, hint?: string) =>
+      buildToolError("VALIDATION_ERROR", message, details, hint);
+
+    const toolApiError = (message: string, details?: Record<string, unknown>, hint?: string) =>
+      buildToolError("API_ERROR", message, details, hint);
+
+    logger.info("VoiceTool", `▶ ${name}`, { call_id, args });
+    sendLogToServer(name, "call", { call_id, args });
 
     let result: any;
 
@@ -871,9 +885,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }
 
         case "add_opening": {
-          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          if (!sessionId) { result = toolValidationError("No active inspection session.", { sessionId }, "Start or resume an inspection session, then retry add_opening."); break; }
           const freshRooms = await fetchFreshRooms();
-          // Match by exact name, then case-insensitive, then partial match, then roomId, then currentRoomId
           const openingRoomNameArg = (args.roomName || "").trim();
           let openingRoom = freshRooms.find(r => r.name === openingRoomNameArg);
           if (!openingRoom && openingRoomNameArg) {
@@ -889,49 +902,75 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             openingRoom = freshRooms.find(r => r.id === currentRoomId);
           }
           if (!openingRoom) {
-            const availableNames = freshRooms.map(r => r.name).join(", ");
-            result = { success: false, error: `Room "${args.roomName}" not found. Available rooms: ${availableNames}. Create a room first before adding openings.` };
+            const availableNames = freshRooms.map(r => r.name);
+            result = toolValidationError(
+              `Room "${args.roomName}" not found.`,
+              { roomName: args.roomName, availableRooms: availableNames },
+              "Use an existing roomName from availableRooms or call create_room first.",
+            );
             break;
           }
-          // Resolve width/height from new or legacy params, with sensible defaults by type
+
           const openType = (args.openingType || "").toLowerCase();
           const defaultW = openType.includes("overhead") || openType.includes("garage") ? 16
             : openType.includes("window") ? 3
             : openType.includes("missing") ? 8
             : openType.includes("french") || openType.includes("sliding") ? 6
-            : 3; // standard door
+            : 3;
           const defaultH = openType.includes("overhead") || openType.includes("garage") ? 8
             : openType.includes("window") ? 4
             : openType.includes("missing") ? 8
-            : 7; // standard door
-          const openWidthFt = parseFeetValue(args.widthFt) ?? parseFeetValue(args.width) ?? defaultW;
-          const openHeightFt = parseFeetValue(args.heightFt) ?? parseFeetValue(args.height) ?? defaultH;
+            : 7;
+
+          const { widthFt: normalizedWidthFt, heightFt: normalizedHeightFt } = normalizeOpeningDimensions(args, { widthFt: defaultW, heightFt: defaultH });
           const openQuantity = args.quantity || 1;
           const wallDirection = normalizeWallDirection(args.wallDirection);
+
+          logger.info("VoiceTool", "add_opening normalized args", {
+            call_id,
+            roomName: openingRoom.name,
+            openingType: args.openingType,
+            widthFt: normalizedWidthFt,
+            heightFt: normalizedHeightFt,
+            fromAliases: {
+              width: args.width,
+              height: args.height,
+              widthFt: args.widthFt,
+              heightFt: args.heightFt,
+            },
+          });
+
           const openHeaders = await getAuthHeaders();
+          const openPayload = {
+            openingType: args.openingType,
+            wallIndex: args.wallIndex ?? null,
+            wallDirection,
+            widthFt: normalizedWidthFt,
+            heightFt: normalizedHeightFt,
+            quantity: openQuantity,
+            label: args.label || `${args.openingType}${wallDirection ? ` on ${wallDirection} wall` : ""}`,
+            opensInto: args.opensInto || null,
+            goesToFloor: args.openingType === "overhead_door",
+            goesToCeiling: false,
+            notes: args.notes || null,
+          };
           const openRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, {
             method: "POST",
             headers: openHeaders,
-            body: JSON.stringify({
-              openingType: args.openingType,
-              wallIndex: args.wallIndex ?? null,
-              wallDirection,
-              widthFt: openWidthFt,
-              heightFt: openHeightFt,
-              quantity: openQuantity,
-              label: args.label || `${args.openingType}${wallDirection ? ` on ${wallDirection} wall` : ''}`,
-              opensInto: args.opensInto || null,
-              goesToFloor: args.openingType === "overhead_door",
-              goesToCeiling: false,
-              notes: args.notes || null,
-            }),
+            body: JSON.stringify(openPayload),
           });
+
+          logger.info("VoiceTool", "add_opening API response", { call_id, status: openRes.status, ok: openRes.ok, payload: openPayload });
           const opening = await openRes.json();
           if (!openRes.ok) {
-            result = { success: false, error: opening.message || "Failed to add opening" };
+            result = toolApiError(
+              opening.message || "Failed to add opening",
+              { status: openRes.status, response: opening, payload: openPayload },
+              "Retry add_opening with required fields: roomName, openingType, widthFt, heightFt.",
+            );
             break;
           }
-          // Calculate running deductions for confirmation
+
           const allOpeningsRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, { headers: openHeaders });
           const allOpenings = allOpeningsRes.ok ? await allOpeningsRes.json() : [];
           const totalDeductionSF = allOpenings.reduce(
@@ -944,8 +983,129 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           result = {
             success: true,
             openingId: opening.id,
-            message: `Added ${typeLabel}${qtyLabel} (${openWidthFt}' × ${openHeightFt}')${opensLabel ? ` opening ${opensLabel}` : ""} to "${openingRoom.name}". Total wall deductions for this room: ${totalDeductionSF.toFixed(0)} SF.`,
+            normalizedArgs: {
+              widthFt: normalizedWidthFt,
+              heightFt: normalizedHeightFt,
+              wallDirection,
+              quantity: openQuantity,
+            },
+            message: `Added ${typeLabel}${qtyLabel} (${normalizedWidthFt}' × ${normalizedHeightFt}')${opensLabel ? ` opening ${opensLabel}` : ""} to "${openingRoom.name}". Total wall deductions for this room: ${totalDeductionSF.toFixed(0)} SF.`,
           };
+          break;
+        }
+
+        case "update_opening": {
+          if (!sessionId) { result = toolValidationError("No active inspection session.", { sessionId }, "Start or resume an inspection session, then retry update_opening."); break; }
+          const headers = await getAuthHeaders();
+          const rooms = await fetchFreshRooms();
+
+          let targetRoom = null as any;
+          if (args.roomName) {
+            targetRoom = rooms.find((r) => r.name === args.roomName) || rooms.find((r) => r.name.toLowerCase() === String(args.roomName).toLowerCase());
+          }
+          if (!targetRoom && currentRoomId) targetRoom = rooms.find((r) => r.id === currentRoomId);
+          if (!targetRoom) {
+            result = toolValidationError("Unable to resolve room for update_opening.", { roomName: args.roomName }, "Provide roomName that exists or select a room first.");
+            break;
+          }
+
+          const openingsRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings`, { headers });
+          const openings = openingsRes.ok ? await openingsRes.json() : [];
+          const selectorType = (args.openingType || "").toLowerCase();
+          const selectorWall = normalizeWallDirection(args.wallDirection);
+          const matches = openings.filter((o: any) => {
+            if (args.openingId && o.id === args.openingId) return true;
+            const typeMatch = selectorType ? String(o.openingType || "").toLowerCase() === selectorType : true;
+            const wallMatch = selectorWall ? normalizeWallDirection(o.wallDirection) === selectorWall : true;
+            return typeMatch && wallMatch;
+          });
+          const index = Number.isInteger(args.index) ? Math.max(0, args.index) : 0;
+          const target = matches[index];
+          if (!target) {
+            result = toolValidationError(
+              "No opening matched update selector.",
+              { roomName: targetRoom.name, selector: { openingId: args.openingId, openingType: args.openingType, wallDirection: args.wallDirection, index: args.index }, openings },
+              "Provide openingId, or refine selector with openingType/wallDirection/index.",
+            );
+            break;
+          }
+
+          const patchBody: Record<string, unknown> = {};
+          if (args.openingType) patchBody.openingType = args.openingType;
+          if (args.wallDirection) patchBody.wallDirection = selectorWall;
+          if (args.wallIndex !== undefined) patchBody.wallIndex = args.wallIndex;
+          if (args.positionOnWall !== undefined) patchBody.positionOnWall = args.positionOnWall;
+          if (args.quantity !== undefined) patchBody.quantity = args.quantity;
+          if (args.label !== undefined) patchBody.label = args.label;
+          if (args.opensInto !== undefined) patchBody.opensInto = args.opensInto;
+          if (args.notes !== undefined) patchBody.notes = args.notes;
+          if (args.widthFt !== undefined || args.width !== undefined) patchBody.widthFt = parseFeetValue(args.widthFt) ?? parseFeetValue(args.width);
+          if (args.heightFt !== undefined || args.height !== undefined) patchBody.heightFt = parseFeetValue(args.heightFt) ?? parseFeetValue(args.height);
+
+          const patchRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings/${target.id}`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify(patchBody),
+          });
+          const patchJson = await patchRes.json();
+          if (!patchRes.ok) {
+            result = toolApiError(
+              patchJson.message || "Failed to update opening",
+              { status: patchRes.status, response: patchJson, patchBody, openingId: target.id },
+              "Retry update_opening with valid fields and converted widthFt/heightFt values.",
+            );
+            break;
+          }
+
+          await refreshRooms();
+          result = { success: true, openingId: target.id, updated: patchJson, message: `Updated opening ${target.id} in ${targetRoom.name}.` };
+          break;
+        }
+
+        case "delete_opening": {
+          if (!sessionId) { result = toolValidationError("No active inspection session.", { sessionId }, "Start or resume an inspection session, then retry delete_opening."); break; }
+          const headers = await getAuthHeaders();
+          const rooms = await fetchFreshRooms();
+          const targetRoom = rooms.find((r) => r.name === args.roomName) || rooms.find((r) => r.name.toLowerCase() === String(args.roomName || "").toLowerCase()) || rooms.find((r) => r.id === currentRoomId);
+          if (!targetRoom) {
+            result = toolValidationError("Unable to resolve room for delete_opening.", { roomName: args.roomName }, "Provide roomName that exists or select a room first.");
+            break;
+          }
+
+          const openingsRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings`, { headers });
+          const openings = openingsRes.ok ? await openingsRes.json() : [];
+          const selectorType = (args.openingType || "").toLowerCase();
+          const selectorWall = normalizeWallDirection(args.wallDirection);
+          const matches = openings.filter((o: any) => {
+            if (args.openingId && o.id === args.openingId) return true;
+            const typeMatch = selectorType ? String(o.openingType || "").toLowerCase() === selectorType : true;
+            const wallMatch = selectorWall ? normalizeWallDirection(o.wallDirection) === selectorWall : true;
+            return typeMatch && wallMatch;
+          });
+          const index = Number.isInteger(args.index) ? Math.max(0, args.index) : 0;
+          const target = matches[index];
+          if (!target) {
+            result = toolValidationError(
+              "No opening matched delete selector.",
+              { roomName: targetRoom.name, selector: { openingId: args.openingId, openingType: args.openingType, wallDirection: args.wallDirection, index: args.index }, openings },
+              "Provide openingId, or refine selector with openingType/wallDirection/index.",
+            );
+            break;
+          }
+
+          const delRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings/${target.id}`, { method: "DELETE", headers });
+          if (!delRes.ok) {
+            const err = await delRes.json().catch(() => ({}));
+            result = toolApiError(
+              err.message || "Failed to delete opening",
+              { status: delRes.status, response: err, openingId: target.id },
+              "Retry delete_opening with a valid openingId or selector.",
+            );
+            break;
+          }
+
+          await refreshRooms();
+          result = { success: true, openingId: target.id, message: `Deleted opening ${target.id} from ${targetRoom.name}.` };
           break;
         }
 
@@ -1811,23 +1971,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           result = { success: false, error: `Unknown tool: ${name}` };
       }
     } catch (error: any) {
-      result = { success: false, error: error.message };
+      logger.error("VoiceTool", `Tool execution error for ${name}`, error);
+      result = buildToolError(
+        "RUNTIME_ERROR",
+        error?.message || `Unhandled runtime error while executing ${name}`,
+        { name, call_id, stack: error?.stack },
+        "Fix invalid arguments and retry the same tool call.",
+      );
     }
 
-    logger.info("VoiceTool", `◀ ${name}`, result);
-    sendLogToServer(name, "result", result);
-
-    if (dcRef.current && dcRef.current.readyState === "open") {
-      dcRef.current.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id,
-          output: JSON.stringify(result),
-        },
-      }));
-      dcRef.current.send(JSON.stringify({ type: "response.create" }));
-    }
+    logger.info("VoiceTool", `◀ ${name}`, { call_id, result });
+    sendLogToServer(name, "result", { call_id, result });
+    sendToolRoundTrip(result);
   }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry, sendLogToServer]);
 
   const handleRealtimeEvent = useCallback((event: any) => {

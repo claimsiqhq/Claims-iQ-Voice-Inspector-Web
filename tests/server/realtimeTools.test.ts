@@ -93,6 +93,21 @@ describe("realtimeTools", () => {
     const tool = realtimeTools.find((t) => t.name === "request_phase_validation");
     expect(tool).toBeDefined();
   });
+
+  it("add_opening requires canonical widthFt/heightFt fields", () => {
+    const tool = realtimeTools.find((t) => t.name === "add_opening");
+    expect(tool).toBeDefined();
+    expect(tool!.parameters.required).toContain("widthFt");
+    expect(tool!.parameters.required).toContain("heightFt");
+    expect(tool!.parameters.properties.width).toBeDefined();
+    expect(tool!.parameters.properties.height).toBeDefined();
+  });
+
+  it("includes update_opening and delete_opening tools", () => {
+    expect(realtimeTools.find((t) => t.name === "update_opening")).toBeDefined();
+    expect(realtimeTools.find((t) => t.name === "delete_opening")).toBeDefined();
+  });
+
 });
 
 describe("buildSystemInstructions", () => {
@@ -169,6 +184,7 @@ describe("buildSystemInstructions", () => {
     expect(instructions).toContain("Photo Trigger");
     expect(instructions).toContain("Coverage");
     expect(instructions).toContain("Conversational");
+    expect(instructions.toLowerCase()).toContain("draw it anyway");
   });
 
   it("includes auto-scope intelligence section", () => {

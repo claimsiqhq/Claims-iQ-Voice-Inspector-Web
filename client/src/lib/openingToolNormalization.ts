@@ -1,3 +1,15 @@
+export interface OpeningDimensionInput {
+  widthFt?: unknown;
+  heightFt?: unknown;
+  width?: unknown;
+  height?: unknown;
+}
+
+export interface OpeningDimensionOutput {
+  widthFt: number;
+  heightFt: number;
+}
+
 export function parseFeetValue(value: unknown): number | undefined {
   if (typeof value === "number") {
     return Number.isFinite(value) && value > 0 ? value : undefined;
@@ -38,6 +50,13 @@ export function parseFeetValue(value: unknown): number | undefined {
   if (Number.isFinite(numeric) && numeric > 0) return numeric;
 
   return undefined;
+}
+
+export function normalizeOpeningDimensions(args: OpeningDimensionInput, defaults: OpeningDimensionOutput): OpeningDimensionOutput {
+  const widthFt = parseFeetValue(args.widthFt) ?? parseFeetValue(args.width) ?? defaults.widthFt;
+  const heightFt = parseFeetValue(args.heightFt) ?? parseFeetValue(args.height) ?? defaults.heightFt;
+
+  return { widthFt, heightFt };
 }
 
 export function normalizeWallDirection(value: unknown): string | null {

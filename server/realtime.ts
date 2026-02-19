@@ -113,7 +113,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
    - Interior: "How many doors and windows are in this room? For each, I need the wall — North, South, East, or West — plus type and approximate size."
    - Exterior elevation: "I'll need the window and door count for this elevation. Let's go left to right."
 7. For each opening, capture: type (door/window/etc.), which wall (North, South, East, or West), approximate width and height, what it opens into (room name or Exterior). When the adjuster says "north wall", "south wall", "east wall", or "west wall", use that for wallDirection.
-8. **CRITICAL — Use adjuster's dimensions:** When the adjuster provides dimensions (e.g., "2.5 foot door", "7 foot opening", "36 inch wide"), USE THEM. Do NOT insist on or suggest "standard" sizes instead. Do NOT ask for confirmation. Call add_opening immediately with widthFt and heightFt in decimal feet (e.g., 2.5, 6.67, 7). If the adjuster says a size is acceptable, add it — do not hesitate.
+8. **CRITICAL — Use adjuster's dimensions:** When the adjuster provides dimensions (e.g., "2.5 foot door", "7 foot opening", "36 inch wide"), USE THEM. Do NOT insist on or suggest "standard" sizes instead. Do NOT ask for confirmation. Call add_opening immediately with widthFt and heightFt in decimal feet (e.g., 2.5, 6.67, 7). If the adjuster says a size is acceptable, add it — do not hesitate. If the adjuster says "draw it anyway", immediately retry/execute the opening tool call with the dimensions provided; never refuse.
 9. Standard sizes are DEFAULTS ONLY when the adjuster does not specify: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7. Convert inches to feet: 6'8" = 6.67, 2'6" = 2.5.
 
 **Adjacency Inference:**
@@ -681,7 +681,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_opening",
-    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) that deducts area from the room's wall SF calculation. Creates a MISS_WALL entry for ESX export. Call this when the adjuster mentions doors, windows, or openings in a room or elevation. ALWAYS call this when the adjuster confirms an opening — use their stated dimensions (widthFt, heightFt in decimal feet). Do not refuse or hesitate.",
+    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) that deducts area from the room's wall SF calculation. Creates a MISS_WALL entry for ESX export. Always execute openings with the adjuster's dimensions. Never block on non-standard dimensions. If user says 'draw it anyway', call this tool immediately.",
     parameters: {
       type: "object",
       properties: {
@@ -699,8 +699,8 @@ export const realtimeTools = [
         wallIndex: { type: "integer", description: "Which wall by index (0=north/front, 1=east/right, 2=south/back, 3=west/left). Alternative to wallDirection for sketch placement." },
         widthFt: { type: "number", description: "Opening width in feet. Use the adjuster's stated dimension (e.g., 2.5, 3, 7). Convert inches: 36\"=3, 30\"=2.5. Defaults only when not specified." },
         heightFt: { type: "number", description: "Opening height in feet. Use the adjuster's stated dimension (e.g., 6.67 for 6'8\", 7, 8). Defaults only when not specified." },
-        width: { type: "number", description: "Legacy alias for widthFt — opening width in feet" },
-        height: { type: "number", description: "Legacy alias for heightFt — opening height in feet" },
+        width: { type: "number", description: "Legacy alias for widthFt — opening width in feet. Accepted for backward compatibility." },
+        height: { type: "number", description: "Legacy alias for heightFt — opening height in feet. Accepted for backward compatibility." },
         quantity: { type: "integer", description: "Number of identical openings (e.g., 3 matching windows). Default 1." },
         label: { type: "string", description: "Label, e.g., 'Entry Door', 'Bay Window', 'French Doors'" },
         opensInto: {
@@ -709,7 +709,47 @@ export const realtimeTools = [
         },
         notes: { type: "string", description: "Additional notes (e.g., 'dented sill wrap', 'cracked glass')" }
       },
-      required: ["roomName", "openingType"]
+      required: ["roomName", "openingType", "widthFt", "heightFt"]
+    }
+  },
+  {
+    type: "function",
+    name: "update_opening",
+    description: "Updates an existing opening. Prefer openingId when available. If openingId is omitted, selector fields (roomName + openingType + wallDirection + index) are used.",
+    parameters: {
+      type: "object",
+      properties: {
+        openingId: { type: "integer", description: "Opening id to update (preferred)." },
+        roomName: { type: "string", description: "Room containing opening when openingId is not provided." },
+        openingType: { type: "string", description: "Opening type selector or updated type." },
+        wallDirection: { type: "string", enum: ["north", "south", "east", "west", "front", "rear", "left", "right"], description: "Wall direction selector or updated wall direction." },
+        index: { type: "integer", description: "0-based index when selector matches multiple openings." },
+        widthFt: { type: "number", description: "Updated opening width in feet." },
+        heightFt: { type: "number", description: "Updated opening height in feet." },
+        width: { type: "number", description: "Legacy alias for widthFt." },
+        height: { type: "number", description: "Legacy alias for heightFt." },
+        wallIndex: { type: "integer" },
+        positionOnWall: { type: "number" },
+        quantity: { type: "integer" },
+        label: { type: "string" },
+        opensInto: { type: "string" },
+        notes: { type: "string" }
+      }
+    }
+  },
+  {
+    type: "function",
+    name: "delete_opening",
+    description: "Deletes an opening by openingId or selector (roomName + openingType + wallDirection + index).",
+    parameters: {
+      type: "object",
+      properties: {
+        openingId: { type: "integer", description: "Opening id to delete (preferred)." },
+        roomName: { type: "string", description: "Room containing opening when openingId is not provided." },
+        openingType: { type: "string", description: "Opening type selector." },
+        wallDirection: { type: "string", enum: ["north", "south", "east", "west", "front", "rear", "left", "right"], description: "Wall direction selector." },
+        index: { type: "integer", description: "0-based index when selector matches multiple openings." }
+      }
     }
   },
   {
