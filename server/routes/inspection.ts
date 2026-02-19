@@ -2080,7 +2080,22 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "imageBase64 is required" });
       }
 
-      // Call GPT-4o Vision to analyze the photo
+      const sessionId = parseInt(param(req.params.sessionId));
+      let addressContext = "";
+      if (expectedPhotoType === "address_verification") {
+        try {
+          const session = await storage.getInspectionSession(sessionId);
+          if (session) {
+            const claim = await storage.getClaim(session.claimId);
+            if (claim) {
+              addressContext = `\n\nADDRESS VERIFICATION REQUIRED: The expected property address is "${claim.propertyAddress}, ${claim.city}, ${claim.state} ${claim.zip}". You MUST check if any address numbers, street signs, or mailbox numbers visible in this photo match the expected address. If the visible address does NOT match, set matchesExpected to false and explain the mismatch in matchExplanation. Also include an "addressVerification" field in your response with: { "expectedAddress": "the claim address", "visibleAddress": "what you can read", "matches": true/false, "confidence": 0.0-1.0, "notes": "details" }.`;
+            }
+          }
+        } catch (e) {
+          logger.error("VisionAPI", "Failed to fetch claim for address verification", { error: e });
+        }
+      }
+
       const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -2096,7 +2111,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 1. A brief description of what you see (1-2 sentences)
 2. Any visible damage (type, severity, location in frame)
 3. Whether this photo matches the expected capture: "${expectedLabel}" (type: ${expectedPhotoType})
-4. Photo quality assessment (lighting, focus, framing)
+4. Photo quality assessment (lighting, focus, framing)${addressContext}
 Respond in JSON format:
 {
   "description": "string",
@@ -2125,7 +2140,7 @@ Respond in JSON format:
               ]
             }
           ],
-          max_tokens: 500,
+          max_tokens: 700,
           response_format: { type: "json_object" },
         }),
       });
