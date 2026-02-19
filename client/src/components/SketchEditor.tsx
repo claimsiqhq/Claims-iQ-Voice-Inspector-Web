@@ -1319,7 +1319,6 @@ export default function SketchEditor({
 
   const hasAnyRooms = structureRooms.length > 0;
   const hasInteriorRooms = interiorRooms.length > 0;
-  const hasElevationRooms = elevationRooms.length > 0;
 
   if (!hasAnyRooms) {
     return (
@@ -1750,6 +1749,7 @@ export default function SketchEditor({
 
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {!isElevView ? (
+          hasInteriorRooms ? (
           <>
             <div
               className="relative flex-shrink-0 min-h-[400px] overflow-hidden"
@@ -1789,6 +1789,28 @@ export default function SketchEditor({
               className="flex-shrink-0 border-t border-slate-200"
             />
           </>
+          ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8">
+            <Home className="w-10 h-10 text-slate-300" />
+            <p className="text-sm text-slate-500 text-center">No interior rooms in this structure.</p>
+            <p className="text-xs text-slate-400 text-center">Switch to the <strong>Elevations</strong> tab to create front, left, right, or rear elevations, or add interior rooms via the voice session.</p>
+            <button
+              onClick={() => setViewMode("elevations")}
+              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              Go to Elevations
+            </button>
+            <PropertySketch
+              sessionId={sessionId}
+              rooms={rooms}
+              currentRoomId={selectedRoomId ?? currentRoomId}
+              sections={["roof", "elevations", "exterior"]}
+              structureName={structureName}
+              compact
+              className="flex-shrink-0 border-t border-slate-200 w-full"
+            />
+          </div>
+          )
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
             {!activeElevRoom ? (

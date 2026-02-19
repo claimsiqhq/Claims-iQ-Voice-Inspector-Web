@@ -2997,7 +2997,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   </div>
                   {sketchEditMode && (
                     <span className="text-[10px] text-muted-foreground hidden sm:inline">
-                      Drag corners to resize · Add doors/windows from toolbar
+                      Interior: drag corners to resize · Elevations: pick Add Door/Window, then click wall
                     </span>
                   )}
                 </div>
