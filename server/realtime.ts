@@ -80,7 +80,7 @@ RULE: Always specify the parent room name and attachmentType.
 
 **L4 — Openings / Deductions** (use add_opening)
 Doors, windows, sliding doors, french doors, archways, missing walls on specific walls of a room.
-RULE: Specify which wall (0=north/front, 1=east/right, 2=south/back, 3=west/left), width, and height.
+RULE: Use wallDirection with North, South, East, or West when the adjuster specifies a wall. These are the standard terms — when they say "north wall", "south side", "east wall", "west wall", use wallDirection: "north", "south", "east", or "west" respectively. For exterior elevations, front=north, rear=south, left=west, right=east.
 These create deductions in the Xactimate estimate (wall area minus opening area).
 
 **L5 — Annotations** (use add_sketch_annotation)
@@ -112,7 +112,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 6. When inspecting ANY room (interior or exterior), proactively ask about openings:
    - Interior: "How many doors and windows are in this room? I need type and approximate size for the estimate."
    - Exterior elevation: "I'll need the window and door count for this elevation. Let's go left to right."
-7. For each opening, capture: type (door/window/etc.), approximate width and height, what it opens into (room name or Exterior).
+7. For each opening, capture: type (door/window/etc.), which wall (North, South, East, or West), approximate width and height, what it opens into (room name or Exterior). When the adjuster says "north wall", "south wall", "east wall", or "west wall", use that for wallDirection.
 8. **CRITICAL — Use adjuster's dimensions:** When the adjuster provides dimensions (e.g., "2.5 foot door", "7 foot opening", "36 inch wide"), USE THEM. Do NOT insist on or suggest "standard" sizes instead. Do NOT ask for confirmation. Call add_opening immediately with widthFt and heightFt in decimal feet (e.g., 2.5, 6.67, 7). If the adjuster says a size is acceptable, add it — do not hesitate.
 9. Standard sizes are DEFAULTS ONLY when the adjuster does not specify: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7. Convert inches to feet: 6'8" = 6.67, 2'6" = 2.5.
 
@@ -694,7 +694,7 @@ export const realtimeTools = [
         wallDirection: {
           type: "string",
           enum: ["north", "south", "east", "west", "front", "rear", "left", "right"],
-          description: "Which wall the opening is on. For exterior elevations, use front/rear/left/right."
+          description: "Which wall the opening is on. PREFER North, South, East, West — use these when the adjuster says 'north wall', 'south wall', etc. For exterior elevations, front/rear/left/right also work (front=south, rear=north, left=west, right=east)."
         },
         wallIndex: { type: "integer", description: "Which wall by index (0=north/front, 1=east/right, 2=south/back, 3=west/left). Alternative to wallDirection for sketch placement." },
         widthFt: { type: "number", description: "Opening width in feet. Use the adjuster's stated dimension (e.g., 2.5, 3, 7). Convert inches: 36\"=3, 30\"=2.5. Defaults only when not specified." },
