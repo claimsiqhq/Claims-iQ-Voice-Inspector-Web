@@ -835,7 +835,10 @@ export class DatabaseStorage implements IStorage {
 
     const result = [];
     for (const struct of allStructures) {
-      const structRooms = topLevelRooms.filter(r => r.structureId === struct.id);
+      const structRooms = topLevelRooms.filter(r =>
+        r.structureId === struct.id ||
+        (!r.structureId && (r.structure || "Main Dwelling") === struct.name)
+      );
       const enrichedRooms = [];
 
       for (const room of structRooms) {

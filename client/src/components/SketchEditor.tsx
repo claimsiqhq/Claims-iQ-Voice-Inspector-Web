@@ -1307,13 +1307,25 @@ export default function SketchEditor({
     }
   }, [viewMode, activeElevation, activeElevRoom?.id]);
 
-  const hasAnyRooms = interiorRooms.length > 0 || elevationRooms.length > 0;
+  const hasAnyRooms = structureRooms.length > 0;
+  const hasEditableRooms = interiorRooms.length > 0 || elevationRooms.length > 0;
 
   if (!hasAnyRooms) {
     return (
       <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
         <div className="flex items-center justify-center p-8 text-slate-500 text-sm">
           No rooms yet. Add rooms first.
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasEditableRooms) {
+    return (
+      <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
+        <div className="flex flex-col items-center justify-center p-8 text-slate-500 text-sm gap-2 text-center">
+          <p>This structure has {structureRooms.length} roof or exterior area{structureRooms.length !== 1 ? "s" : ""}.</p>
+          <p className="text-xs">The sketch editor supports interior rooms and elevations. Add interior rooms via the voice session, or switch to a structure that has them.</p>
         </div>
       </div>
     );
