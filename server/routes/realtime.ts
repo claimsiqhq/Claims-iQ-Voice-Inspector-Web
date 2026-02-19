@@ -121,7 +121,7 @@ export function realtimeRouter() {
       const flowSteps = inspectionFlow ? (inspectionFlow.steps as any[]) || [] : [];
 
       let hierarchySummary: string | null = null;
-      if (sessionId && transcriptSummary) {
+      if (sessionId) {
         try {
           const hierarchy = await storage.getInspectionHierarchy(sessionId);
           const parts: string[] = [];
