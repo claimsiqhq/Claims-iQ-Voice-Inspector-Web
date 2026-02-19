@@ -2768,21 +2768,39 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           .replace(/\s+/g, "_")
           .substring(0, 40);
         const photoHeaders = await getAuthHeaders();
-        const saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
-          method: "POST",
-          headers: photoHeaders,
-          body: JSON.stringify({
-            roomId: currentRoomId,
-            imageBase64: dataUrl,
-            autoTag: sanitizedTag,
-            caption: cameraMode.label,
-            photoType: cameraMode.photoType,
-          }),
+        const photoBody = JSON.stringify({
+          roomId: currentRoomId,
+          imageBase64: dataUrl,
+          autoTag: sanitizedTag,
+          caption: cameraMode.label,
+          photoType: cameraMode.photoType,
         });
-        const savedPhoto = await saveRes.json();
 
-        if (!saveRes.ok || !savedPhoto.photoId) {
-          throw new Error(savedPhoto.message || "Photo upload failed");
+        let saveRes: Response | null = null;
+        let savedPhoto: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
+              method: "POST",
+              headers: photoHeaders,
+              body: photoBody,
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            savedPhoto = await saveRes.json();
+            if (saveRes.ok && savedPhoto.photoId) break;
+            console.error(`[Photo] Upload attempt ${attempt + 1} failed:`, saveRes.status, savedPhoto);
+          } catch (retryErr: any) {
+            console.error(`[Photo] Upload attempt ${attempt + 1} error:`, retryErr.message);
+            if (attempt === 2) throw retryErr;
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
+        }
+
+        if (!saveRes || !saveRes.ok || !savedPhoto?.photoId) {
+          throw new Error(savedPhoto?.message || `Photo upload failed (${saveRes?.status})`);
         }
 
         let analysis: any = null;
@@ -2856,6 +2874,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         }
       } catch (e: any) {
         logger.error("Voice", "Camera capture error", e);
+        console.error("[Photo] Capture error:", e.message, e);
         photoResult = { success: false, message: e.message };
       }
     }

@@ -87,7 +87,7 @@ export async function ensureStorageBuckets() {
     await supabase.storage.createBucket(PHOTOS_BUCKET, {
       public: false,
       fileSizeLimit: 25 * 1024 * 1024,
-      allowedMimeTypes: ["image/jpeg", "image/png", "image/heic"],
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/heic", "image/webp"],
     });
     logger.info("Supabase", `Created storage bucket: ${PHOTOS_BUCKET}`);
   }
