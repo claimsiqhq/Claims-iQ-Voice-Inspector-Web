@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { authenticateRequest } from "../auth";
 import { buildSystemInstructions, realtimeTools } from "../realtime";
 import { logger } from "../logger";
+import { getAllowedTools, getWorkflowState, initSessionWorkflow } from "../workflow/orchestrator";
 
 export function realtimeRouter() {
   const router = Router();
@@ -49,7 +50,14 @@ export function realtimeRouter() {
         verbosityHint = '\n\nThe adjuster prefers detailed explanations. Narrate what you observe, explain your reasoning for suggested items, and provide thorough guidance at each step.';
       }
 
-      const instructions = buildSystemInstructions(briefing, claim, inspectionFlow || undefined) + verbosityHint;
+      let workflowState = sessionId ? await getWorkflowState(Number(sessionId)) : null;
+      if (sessionId && !workflowState) {
+        workflowState = await initSessionWorkflow({ claimId: Number(claimId), sessionId: Number(sessionId), peril: perilType });
+      }
+      const workflowHint = workflowState
+        ? `\n\n## WORKFLOW CONTRACT\nCurrent Phase: ${workflowState.phase}\nStep: ${workflowState.stepId}\nAllowed tools now: ${getAllowedTools(workflowState).join(", ")}\nRules: tool-first, talk-after. If a tool is not allowed, ask to move step or call set_phase. Never execute tools out of context.`
+        : "";
+      const instructions = buildSystemInstructions(briefing, claim, inspectionFlow || undefined) + workflowHint + verbosityHint;
 
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -149,6 +157,7 @@ export function realtimeRouter() {
         sessionPhase: session?.currentPhase || 1,
         completedPhases: session?.completedPhases || [],
         sessionStructure: session?.currentStructure || "Main Dwelling",
+        workflow: workflowState ? { phase: workflowState.phase, stepId: workflowState.stepId, allowedTools: getAllowedTools(workflowState) } : null,
         activeFlow: inspectionFlow ? {
           id: inspectionFlow.id,
           name: inspectionFlow.name,

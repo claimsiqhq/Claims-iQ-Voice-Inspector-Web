@@ -21,7 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "qa:e2e": "DATABASE_URL=postgres://localhost:5432/test vitest run tests/e2e/claim_to_export.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

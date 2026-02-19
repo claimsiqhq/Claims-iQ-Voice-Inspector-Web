@@ -37,6 +37,7 @@ import {
   type ScopeSummary, type InsertScopeSummary,
   userSettings, type UserSettings,
   inspectionFlows, type InspectionFlow, type InsertInspectionFlow,
+  inspectionSessionEvents, type InspectionSessionEvent, type InsertInspectionSessionEvent,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -188,6 +189,8 @@ export interface IStorage {
 
   addTranscript(data: InsertVoiceTranscript): Promise<VoiceTranscript>;
   getTranscript(sessionId: number): Promise<VoiceTranscript[]>;
+  addSessionEvent(data: InsertInspectionSessionEvent): Promise<InspectionSessionEvent>;
+  getSessionEvents(sessionId: number, since?: string): Promise<InspectionSessionEvent[]>;
 
   getScopeLineItems(): Promise<ScopeLineItem[]>;
   getScopeLineItemByCode(code: string): Promise<ScopeLineItem | undefined>;
@@ -664,7 +667,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRoomOpenings(roomId: number): Promise<RoomOpening[]> {
-    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId));
+    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId)).orderBy(roomOpenings.id);
   }
 
   async deleteRoomOpening(id: number): Promise<void> {
@@ -689,11 +692,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOpeningsForRoom(roomId: number): Promise<RoomOpening[]> {
-    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId));
+    return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId)).orderBy(roomOpenings.id);
   }
 
   async getOpeningsForSession(sessionId: number): Promise<RoomOpening[]> {
-    return db.select().from(roomOpenings).where(eq(roomOpenings.sessionId, sessionId));
+    return db.select().from(roomOpenings).where(eq(roomOpenings.sessionId, sessionId)).orderBy(roomOpenings.id);
   }
 
   async deleteOpening(id: number): Promise<void> {
@@ -1312,6 +1315,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Settlement Summary ──────────────────────────
+
+
+  async addSessionEvent(data: InsertInspectionSessionEvent): Promise<InspectionSessionEvent> {
+    const [event] = await db.insert(inspectionSessionEvents).values(data).returning();
+    return event;
+  }
+
+  async getSessionEvents(sessionId: number, since?: string): Promise<InspectionSessionEvent[]> {
+    if (since) {
+      return db.select().from(inspectionSessionEvents).where(and(eq(inspectionSessionEvents.sessionId, sessionId), sql`${inspectionSessionEvents.ts} >= ${new Date(since)}`)).orderBy(inspectionSessionEvents.ts);
+    }
+    return db.select().from(inspectionSessionEvents).where(eq(inspectionSessionEvents.sessionId, sessionId)).orderBy(inspectionSessionEvents.ts);
+  }
 
   async getSettlementSummary(sessionId: number, claimId: number): Promise<any> {
     const items = await this.getLineItems(sessionId);

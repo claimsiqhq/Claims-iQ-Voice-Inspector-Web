@@ -174,6 +174,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     missingItems: string[];
     completionScore: number;
   } | null>(null);
+  const [workflowHud, setWorkflowHud] = useState<any>(null);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddStructure, setShowAddStructure] = useState(false);
@@ -350,6 +351,17 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     return { "Content-Type": "application/json", ...authHeaders };
   }, []);
 
+
+  useEffect(() => {
+    if (!sessionId || !import.meta.env.DEV) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const wfRes = await fetch(`/api/inspection/${sessionId}/workflow`, { headers });
+        if (wfRes.ok) setWorkflowHud(await wfRes.json());
+      } catch {}
+    })();
+  }, [sessionId, currentRoomId, currentPhase, getAuthHeaders]);
   const sendLogToServer = useCallback(async (toolName: string, type: "call" | "result" | "error", data: any) => {
     try {
       const headers = await getAuthHeaders();
@@ -718,6 +730,31 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           }
           if (args.name) setCurrentStructure(args.name);
           result = { success: true, structureId: structure.id, name: structure.name, message: `Structure "${structure.name}" created.` };
+          break;
+        }
+
+        case "get_workflow_state": {
+          if (!sessionId) { result = { success: false, error: { type: "CONTEXT_ERROR", code: "NO_SESSION", message: "No active session" } }; break; }
+          const headers = await getAuthHeaders();
+          const wfRes = await fetch(`/api/inspection/${sessionId}/workflow`, { headers });
+          const wfPayload = await wfRes.json();
+          result = wfRes.ok ? { success: true, ...wfPayload } : { success: false, error: { type: "API_ERROR", code: "WORKFLOW_FETCH_FAILED", message: wfPayload?.message || "Failed to fetch workflow" } };
+          break;
+        }
+
+        case "set_phase": {
+          if (!sessionId) { result = { success: false, error: { type: "CONTEXT_ERROR", code: "NO_SESSION", message: "No active session" } }; break; }
+          const headers = await getAuthHeaders();
+          const phRes = await fetch(`/api/inspection/${sessionId}/workflow/set-phase`, { method: "POST", headers, body: JSON.stringify({ phase: args.phase, stepId: args.stepId }) });
+          result = await phRes.json();
+          break;
+        }
+
+        case "set_context": {
+          if (!sessionId) { result = { success: false, error: { type: "CONTEXT_ERROR", code: "NO_SESSION", message: "No active session" } }; break; }
+          const headers = await getAuthHeaders();
+          const ctxRes = await fetch(`/api/inspection/${sessionId}/workflow/set-context`, { method: "POST", headers, body: JSON.stringify(args) });
+          result = await ctxRes.json();
           break;
         }
 
@@ -3801,6 +3838,16 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {import.meta.env.DEV && workflowHud && (
+        <div className="fixed bottom-3 right-3 z-50 max-w-sm rounded border bg-white/95 p-2 text-[11px] shadow">
+          <div className="font-semibold">Workflow HUD</div>
+          <div>Phase: {workflowHud.state?.phase} / {workflowHud.state?.stepId}</div>
+          <div>Room: {workflowHud.state?.context?.roomId || "-"} Elev: {workflowHud.state?.context?.elevationId || "-"}</div>
+          <div>Gates: S:{workflowHud.gateSummaries?.sketch?.blockers || 0} P:{workflowHud.gateSummaries?.photoDamage?.blockers || 0} Sc:{workflowHud.gateSummaries?.scope?.blockers || 0} E:{workflowHud.gateSummaries?.export?.blockers || 0}</div>
+          <a className="text-blue-600 underline" href={`/api/inspection/${sessionId}/timeline`} target="_blank" rel="noreferrer">Timeline</a>
         </div>
       )}
     </div>

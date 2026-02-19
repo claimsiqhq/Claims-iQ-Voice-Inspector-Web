@@ -143,6 +143,8 @@ export const inspectionSessions = pgTable(
     currentRoomId: integer("current_room_id"),
     currentStructure: varchar("current_structure", { length: 100 }).default("Main Dwelling"),
     voiceSessionId: text("voice_session_id"),
+    workflowStateJson: jsonb("workflow_state_json"),
+    gateResultsJson: jsonb("gate_results_json"),
     adjusterNotes: text("adjuster_notes"),
     waterClassification: jsonb("water_classification"),
     startedAt: timestamp("started_at").defaultNow(),
@@ -420,6 +422,16 @@ export const voiceTranscripts = pgTable("voice_transcripts", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+export const inspectionSessionEvents = pgTable("inspection_session_events", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+  ts: timestamp("ts").defaultNow().notNull(),
+  type: varchar("type", { length: 64 }).notNull(),
+  payloadJson: jsonb("payload_json"),
+}, (table) => ({
+  sessionIdIdx: index("inspection_session_events_session_id_idx").on(table.sessionId),
+}));
+
 export const supplementalClaims = pgTable("supplemental_claims", {
   id: serial("id").primaryKey(),
   originalSessionId: integer("original_session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
@@ -577,6 +589,7 @@ export const insertInspectionPhotoSchema = createInsertSchema(inspectionPhotos).
 export const insertMoistureReadingSchema = createInsertSchema(moistureReadings).omit({ id: true, createdAt: true });
 export const insertTestSquareSchema = createInsertSchema(testSquares).omit({ id: true, createdAt: true });
 export const insertVoiceTranscriptSchema = createInsertSchema(voiceTranscripts).omit({ id: true, timestamp: true });
+export const insertInspectionSessionEventSchema = createInsertSchema(inspectionSessionEvents).omit({ id: true, ts: true });
 
 export type InspectionSession = typeof inspectionSessions.$inferSelect;
 export type InsertInspectionSession = z.infer<typeof insertInspectionSessionSchema>;
@@ -602,6 +615,8 @@ export type TestSquare = typeof testSquares.$inferSelect;
 export type InsertTestSquare = z.infer<typeof insertTestSquareSchema>;
 export type VoiceTranscript = typeof voiceTranscripts.$inferSelect;
 export type InsertVoiceTranscript = z.infer<typeof insertVoiceTranscriptSchema>;
+export type InspectionSessionEvent = typeof inspectionSessionEvents.$inferSelect;
+export type InsertInspectionSessionEvent = z.infer<typeof insertInspectionSessionEventSchema>;
 
 export const insertSupplementalClaimSchema = createInsertSchema(supplementalClaims).omit({
   id: true,
