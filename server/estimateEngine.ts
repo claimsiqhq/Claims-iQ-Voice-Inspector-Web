@@ -558,28 +558,13 @@ export type SettlementItemInput = {
   materialCost?: number;
 };
 
-export type PolicyRuleLegacy = {
-  coverageType: string;
-  policyLimit: number | null;
-  deductible: number | null;
-  applyRoofSchedule?: boolean;
-  overheadPct?: number;
-  profitPct?: number;
-  taxRate?: number;
-  opExcludedTrades?: string[];
-};
-
-export type TaxRuleLegacy = {
-  taxLabel?: string;
-  taxRate: number;
-  appliesToCategories: string[];
-  appliesToCostType?: string;
-  isDefault?: boolean;
-};
-
-/** Converts legacy tax rules to the format expected by resolveTaxRateWithRules */
-function legacyTaxRulesToCategoryRules(
-  taxRules: TaxRuleLegacy[]
+/** Converts tax rules (from DB) to the format expected by resolveTaxRateWithRules */
+export function taxRulesToCategoryFormat(
+  taxRules: Array<{
+    taxRate: number;
+    appliesToCategories?: string[];
+    appliesToCostType?: string;
+  }>
 ): Array<{ category: string; taxRate: number; costType: "all" | "materials_only" | "labor_only" }> {
   const out: Array<{ category: string; taxRate: number; costType: "all" | "materials_only" | "labor_only" }> = [];
   for (const r of taxRules) {
@@ -601,25 +586,37 @@ function legacyTaxRulesToCategoryRules(
   return out;
 }
 
-/** Builds SettlementRules + policyLimitsAndDeductibles from legacy policy rules */
-function policyRulesToSettlementInput(
-  policyRules: PolicyRuleLegacy[]
-): { rules: SettlementRules; limits: Array<{ coverageType: string; policyLimit: number | null; deductible: number | null }> } {
-  const rules = getDefaultSettlementRules();
+/** Extracts policy overrides and limits from policy rules (from DB) */
+export function getPolicyOverridesAndLimits(
+  policyRules: Array<{
+    coverageType: string;
+    policyLimit: number | null;
+    deductible: number | null;
+    applyRoofSchedule?: boolean;
+    overheadPct?: number;
+    profitPct?: number;
+    taxRate?: number;
+    opExcludedTrades?: string[];
+  }>
+): {
+  overrides: Partial<SettlementRules>;
+  limits: Array<{ coverageType: string; policyLimit: number | null; deductible: number | null }>;
+} {
   const limits = policyRules.map(p => ({
     coverageType: p.coverageType,
     policyLimit: p.policyLimit,
     deductible: p.deductible,
   }));
+  const overrides: Partial<SettlementRules> = {};
   if (policyRules.length > 0) {
     const first = policyRules[0];
-    rules.defaultTaxRate = first.taxRate ?? 8;
-    rules.overheadPercentage = first.overheadPct ?? 10;
-    rules.profitPercentage = first.profitPct ?? 10;
-    rules.applyRoofDepreciationSchedule = first.applyRoofSchedule ?? false;
-    rules.opExcludedTrades = first.opExcludedTrades ?? [];
+    overrides.defaultTaxRate = first.taxRate ?? 8;
+    overrides.overheadPercentage = first.overheadPct ?? 10;
+    overrides.profitPercentage = first.profitPct ?? 10;
+    overrides.applyRoofDepreciationSchedule = first.applyRoofSchedule ?? false;
+    overrides.opExcludedTrades = first.opExcludedTrades ?? [];
   }
-  return { rules, limits };
+  return { overrides, limits };
 }
 
 /**
@@ -871,92 +868,6 @@ export function getTaxBreakdown(summary: SettlementSummary): {
     totalTaxOnMaterials: summary.totalTaxOnMaterials,
     totalTaxOnLabor: summary.totalTaxOnLabor,
     totalTaxOnOP: summary.totalTaxOnOP,
-  };
-}
-
-/**
- * Backward-compatible: accepts legacy policy rules and tax rules, converts to SettlementRules.
- */
-export function calculateSettlementFromPolicyRules(
-  items: SettlementItemInput[],
-  policyRules: PolicyRuleLegacy[],
-  taxRules: TaxRuleLegacy[] = []
-): SettlementSummary {
-  const { rules, limits } = policyRulesToSettlementInput(policyRules);
-  const taxRulesByCategory = legacyTaxRulesToCategoryRules(taxRules);
-  return calculateSettlement(items, rules, limits, taxRulesByCategory);
-}
-
-/**
- * Backward-compatible wrapper: runs calculateSettlement and maps to old EstimateTotals shape.
- * Use this as a drop-in replacement where calculateEstimateTotals was called.
- */
-export function calculateEstimateTotalsV2(
-  pricedItems: PricedLineItem[],
-  policyRulesInput: Array<{
-    coverageType: string;
-    policyLimit: number | null;
-    deductible: number | null;
-    applyRoofSchedule: boolean;
-    overheadPct: number;
-    profitPct: number;
-    taxRate: number;
-  }> = []
-): EstimateTotals & { settlement: SettlementSummary } {
-  const mapped: SettlementItemInput[] = pricedItems.map((item, idx) => ({
-    id: idx,
-    description: item.description,
-    category: item.tradeCode,
-    tradeCode: item.tradeCode,
-    quantity: item.quantity,
-    unitPrice: item.unitPriceBreakdown.unitPrice,
-    totalPrice: item.totalPrice,
-    age: null as number | null,
-    lifeExpectancy: null as number | null,
-    depreciationPercentage: null as number | null,
-    depreciationType: "Recoverable",
-    coverageBucket: "Coverage A",
-    structure: null as string | null,
-    materialCost: item.unitPriceBreakdown.materialCost * item.quantity,
-    laborCost: item.unitPriceBreakdown.laborCost * item.quantity,
-  }));
-
-  const settlement = calculateSettlementFromPolicyRules(mapped, policyRulesInput);
-
-  // Reconstruct old shape
-  let subtotalMaterial = 0, subtotalLabor = 0, subtotalEquipment = 0;
-  for (const item of pricedItems) {
-    subtotalMaterial += item.unitPriceBreakdown.materialCost * item.quantity;
-    subtotalLabor += item.unitPriceBreakdown.laborCost * item.quantity;
-    subtotalEquipment += item.unitPriceBreakdown.equipmentCost * item.quantity;
-  }
-  const subtotal = subtotalMaterial + subtotalLabor + subtotalEquipment;
-  const wasteIncluded = pricedItems.reduce((sum, item) => {
-    const wf = item.unitPriceBreakdown.wasteFactor;
-    if (wf <= 0) return sum;
-    const basePrice = (item.unitPriceBreakdown.materialCost / (1 + wf / 100) +
-                       item.unitPriceBreakdown.laborCost / (1 + wf / 100) +
-                       item.unitPriceBreakdown.equipmentCost / (1 + wf / 100)) * item.quantity;
-    return sum + (item.totalPrice - basePrice);
-  }, 0);
-
-  const totalTax =
-    settlement.totalTaxOnMaterials + settlement.totalTaxOnLabor + settlement.totalTaxOnOP;
-
-  return {
-    subtotalMaterial,
-    subtotalLabor,
-    subtotalEquipment,
-    subtotal,
-    taxAmount: round2(totalTax),
-    wasteIncluded,
-    grandTotal: settlement.grandTotalRCV,
-    tradesInvolved: settlement.tradesInvolved,
-    qualifiesForOP: settlement.qualifiesForOP,
-    overheadAmount: settlement.totalOverhead,
-    profitAmount: settlement.totalProfit,
-    totalWithOP: settlement.grandTotalRCV,
-    settlement,
   };
 }
 

@@ -1345,17 +1345,30 @@ export class DatabaseStorage implements IStorage {
       opExcludedTrades: (r as any).opExcludedTrades || [],
     }));
 
-    // Map tax rules for the engine
-    const taxInput = claimTaxRules.map(t => ({
-      taxLabel: t.taxLabel,
-      taxRate: t.taxRate,
-      appliesToCategories: (t.appliesToCategories || []) as string[],
-      appliesToCostType: t.appliesToCostType || "all",
-      isDefault: t.isDefault || false,
-    }));
+    const taxRulesByCategory = taxRulesToCategoryFormat(
+      claimTaxRules.map(t => ({
+        taxRate: t.taxRate,
+        appliesToCategories: (t.appliesToCategories || []) as string[],
+        appliesToCostType: t.appliesToCostType || "all",
+      }))
+    );
 
-    const { calculateSettlementFromPolicyRules } = await import("./estimateEngine");
-    return calculateSettlementFromPolicyRules(mapped, policyInput, taxInput);
+    const { resolveSettlementRules } = await import("./settlementRules");
+    const claim = await this.getClaim(claimId);
+    const baseRules = await resolveSettlementRules(
+      String(claimId),
+      (claim as { carrierCode?: string })?.carrierCode ?? null
+    );
+
+    const {
+      getPolicyOverridesAndLimits,
+      taxRulesToCategoryFormat,
+      calculateSettlement,
+    } = await import("./estimateEngine");
+    const { overrides, limits } = getPolicyOverridesAndLimits(policyInput);
+    const settlementRules = { ...baseRules, ...overrides };
+
+    return calculateSettlement(mapped, settlementRules, limits, taxRulesByCategory);
   }
 }
 
