@@ -2049,117 +2049,86 @@ Respond in JSON format:
       const moistureReadings = await storage.getMoistureReadingsForSession(sessionId);
 
       const perilType = claim?.perilType || "unknown";
-      const checklist: Array<{ item: string; satisfied: boolean; evidence?: string; weight?: number }> = [];
+      const currentPhase = (session as any).currentPhase || 1;
+      const totalPhases = 8;
 
-      // Helper: interior rooms (contents-first validation)
-      const interiorRooms = rooms.filter(r => r.roomType?.startsWith("interior_"));
-      const interiorRoomsWithDocs = interiorRooms.filter(r => {
+      const roomsWithDocs = rooms.filter(r => {
         const hasDamage = allDamages.some(d => d.roomId === r.id);
         const hasLineItem = allLineItems.some(li => li.roomId === r.id);
         return hasDamage || hasLineItem;
       });
 
-      // ── TIER 1: Core / Contents (validated first, higher weight)
+      const checklist: Array<{ item: string; satisfied: boolean; evidence?: string }> = [];
+
       checklist.push({
         item: "At least one room/area documented",
         satisfied: rooms.length > 0,
         evidence: `${rooms.length} rooms created`,
-        weight: 1.5,
       });
       checklist.push({
-        item: "At least one interior room documented",
-        satisfied: interiorRooms.length > 0,
-        evidence: interiorRooms.length > 0 ? `${interiorRooms.length} interior rooms` : undefined,
-        weight: 1.5,
+        item: "Rooms have damages or line items",
+        satisfied: roomsWithDocs.length > 0,
+        evidence: roomsWithDocs.length > 0 ? `${roomsWithDocs.length} rooms with documentation` : undefined,
       });
       checklist.push({
-        item: "Interior rooms have damages or line items",
-        satisfied: interiorRoomsWithDocs.length > 0 || interiorRooms.length === 0,
-        evidence: interiorRoomsWithDocs.length > 0 ? `${interiorRoomsWithDocs.length} interior rooms documented` : undefined,
-        weight: 1.5,
-      });
-      checklist.push({
-        item: "At least one damage observation recorded",
+        item: "Damage observations recorded",
         satisfied: allDamages.length > 0,
         evidence: `${allDamages.length} damage observations`,
-        weight: 1.5,
       });
       checklist.push({
-        item: "At least one line item in estimate",
+        item: "Line items in estimate",
         satisfied: allLineItems.length > 0,
         evidence: `${allLineItems.length} line items`,
-        weight: 1.5,
       });
-
-      // ── TIER 2: Exterior / Overview (lower weight until core is satisfied)
       checklist.push({
-        item: "Property overview photos (4 corners)",
-        satisfied: allPhotos.filter(p => p.photoType === "overview").length >= 4,
-        evidence: `${allPhotos.filter(p => p.photoType === "overview").length} overview photos`,
-        weight: 0.8,
+        item: "Inspection photos taken",
+        satisfied: allPhotos.length > 0,
+        evidence: `${allPhotos.length} photos`,
       });
-
-      // Peril-specific items (exterior items get lower weight for contents-first scoring)
-      if (perilType === "hail") {
-        const testSquarePhotos = allPhotos.filter(p => p.photoType === "test_square");
-        checklist.push({
-          item: "Roof test square photos",
-          satisfied: testSquarePhotos.length >= 2,
-          evidence: `${testSquarePhotos.length} test square photos`,
-          weight: 0.8,
-        });
-        checklist.push({
-          item: "Soft metal inspection documented (gutters, AC, vents)",
-          satisfied: allDamages.some(d => d.damageType === "dent" || d.damageType === "hail_impact"),
-          evidence: allDamages.filter(d => d.damageType === "dent" || d.damageType === "hail_impact").length > 0
-            ? "Hail/dent damage recorded" : undefined,
-          weight: 0.8,
-        });
-      }
-
-      if (perilType === "wind" || perilType === "hail") {
-        const elevationRooms = rooms.filter(r => r.roomType?.startsWith("exterior_elevation_"));
-        checklist.push({
-          item: "All four elevations documented",
-          satisfied: elevationRooms.length >= 4,
-          evidence: elevationRooms.length > 0
-            ? `${elevationRooms.length} elevations: ${elevationRooms.map(r => r.name).join(", ")}`
-            : undefined,
-          weight: 0.8,
-        });
-        const roofRooms = rooms.filter(r => r.roomType === "exterior_roof_slope");
-        checklist.push({
-          item: "Roof slopes documented",
-          satisfied: roofRooms.length >= 2,
-          evidence: roofRooms.length > 0
-            ? `${roofRooms.length} slopes: ${roofRooms.map(r => r.name).join(", ")}`
-            : undefined,
-          weight: 0.8,
-        });
-      }
 
       if (perilType === "water") {
         checklist.push({
           item: "Moisture readings recorded",
-          satisfied: moistureReadings.length >= 3,
+          satisfied: moistureReadings.length > 0,
           evidence: `${moistureReadings.length} moisture readings`,
-          weight: 1.0,
         });
+      }
+
+      if (perilType === "hail" || perilType === "wind") {
+        const elevationRooms = rooms.filter(r =>
+          r.roomType?.startsWith("exterior_elevation_") ||
+          r.viewType === "elevation" ||
+          /front|rear|left|right/i.test(r.name)
+        );
         checklist.push({
-          item: "Water entry point documented",
-          satisfied: allDamages.some(d => d.damageType === "water_intrusion"),
-          evidence: allDamages.some(d => d.damageType === "water_intrusion")
-            ? "Water intrusion recorded" : undefined,
-          weight: 1.0,
+          item: "Elevations documented",
+          satisfied: elevationRooms.length > 0,
+          evidence: elevationRooms.length > 0
+            ? `${elevationRooms.length} elevations: ${elevationRooms.map(r => r.name).join(", ")}`
+            : undefined,
         });
       }
 
-      // Normalize weights: items without weight use 1.0
-      for (const c of checklist) {
-        if (c.weight === undefined) c.weight = 1.0;
-      }
+      const completedRooms = rooms.filter(r => r.status === "complete").length;
 
-      // Scope gap detection
+      const phaseScore = Math.min(((currentPhase - 1) / totalPhases) * 100, 87);
+
+      const workMetrics = [
+        Math.min(rooms.length / 3, 1) * 15,
+        Math.min(allDamages.length / 3, 1) * 20,
+        Math.min(allLineItems.length / 5, 1) * 25,
+        Math.min(allPhotos.length / 4, 1) * 15,
+        Math.min(roomsWithDocs.length / 2, 1) * 15,
+        (perilType === "water" ? Math.min(moistureReadings.length / 3, 1) * 10 : 0),
+      ];
+      const workScore = workMetrics.reduce((a, b) => a + b, 0);
+      const adjustedWorkScore = perilType === "water" ? workScore : (workScore / 90) * 100;
+
+      const completenessScore = Math.min(
+        Math.round(Math.max(phaseScore, adjustedWorkScore)),
+        completedRooms > 0 && allLineItems.length > 0 && allPhotos.length > 0 ? 100 : 95
+      );
+
       const scopeGaps: Array<{ room: string; issue: string }> = [];
       for (const room of rooms) {
         const roomDamages = allDamages.filter(d => d.roomId === room.id);
@@ -2172,7 +2141,6 @@ Respond in JSON format:
         }
       }
 
-      // Missing photo alerts
       const missingPhotos: Array<{ room: string; issue: string }> = [];
       for (const room of rooms) {
         const roomDamages = allDamages.filter(d => d.roomId === room.id);
@@ -2185,25 +2153,14 @@ Respond in JSON format:
         }
       }
 
-      // Weighted scoring: contents-first items (weight 1.5) count more than exterior (weight 0.8)
-      const totalWeight = checklist.reduce((sum, c) => sum + (c.weight ?? 1), 0);
-      const satisfiedWeight = checklist
-        .filter(c => c.satisfied)
-        .reduce((sum, c) => sum + (c.weight ?? 1), 0);
-      const completenessScore = totalWeight > 0
-        ? Math.round((satisfiedWeight / totalWeight) * 100) : 0;
-
-      // Strip weight from response (UI doesn't need it)
-      const checklistForResponse = checklist.map(({ weight, ...rest }) => rest);
-
       res.json({
         completenessScore,
-        checklist: checklistForResponse,
+        checklist,
         scopeGaps,
         missingPhotos,
         summary: {
           totalRooms: rooms.length,
-          completedRooms: rooms.filter(r => r.status === "complete").length,
+          completedRooms,
           totalDamages: allDamages.length,
           totalLineItems: allLineItems.length,
           totalPhotos: allPhotos.length,
