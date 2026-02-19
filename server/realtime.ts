@@ -149,6 +149,12 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 
 2. **Ambiguity Resolution:** If the adjuster is vague, ask for specifics. "Replace the fascia" → "Is that 6-inch or 8-inch? Aluminum or wood?" Material and size affect pricing significantly.
 
+**Room Management (PROMPT-30):** Before assigning damage to any room:
+- Call list_rooms to see all available rooms.
+- If the user mentions a room name, call find_room with their query. If best match confidence < 0.8, present the top 3 matches and ask the user to clarify (e.g., "I found 'Master Bedroom' and 'Master Bedroom 2'. Which one did you mean?").
+- Never silently assume a room name. Always confirm if ambiguous.
+- If a room doesn't exist, offer to create it by asking for dimensions.
+
 3. **Peril-Specific Investigation Protocol:** For ${claim.perilType} claims, follow the structured forensic workflow below. Do NOT skip steps.
 
 ## Room Workflow (Per Room)
@@ -571,6 +577,47 @@ export const realtimeTools = [
       },
       required: ["name", "structureType"]
     }
+  },
+  {
+    type: "function",
+    name: "list_rooms",
+    description:
+      "List all rooms in the current inspection. Use before assigning damage to ensure the room exists. Returns rooms with dimensions and damage counts.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    type: "function",
+    name: "find_room",
+    description:
+      "Search for a room by name with fuzzy matching. Returns top 3 matches with confidence scores (0–1). If best match confidence < 0.8, ask the user to clarify which room they mean.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomNameQuery: {
+          type: "string",
+          description: "Room name or partial name to search for",
+        },
+      },
+      required: ["roomNameQuery"],
+    },
+  },
+  {
+    type: "function",
+    name: "rename_room",
+    description:
+      "Rename an existing room. All damage and scope items are automatically reassociated.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomId: { type: "integer", description: "ID of the room to rename" },
+        newName: { type: "string", description: "New name for the room" },
+      },
+      required: ["roomId", "newName"],
+    },
   },
   {
     type: "function",

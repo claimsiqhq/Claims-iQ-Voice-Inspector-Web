@@ -127,29 +127,25 @@ export function tShapePolygon(
     ];
   } else if (capPosition === 1) {
     points = [
-      { x: 0, y: stemOffset },
-      { x: stemWidth, y: stemOffset },
-      { x: stemWidth, y: stemOffset + capWidth },
-      { x: stemWidth + capHeight, y: stemOffset + capWidth },
-      { x: stemWidth + capHeight, y: 0 },
+      { x: 0, y: 0 },
       { x: stemWidth, y: 0 },
       { x: stemWidth, y: stemOffset },
-      { x: 0, y: stemOffset },
-      { x: 0, y: stemOffset + capWidth },
+      { x: stemWidth + capHeight, y: stemOffset },
+      { x: stemWidth + capHeight, y: stemOffset + capWidth },
       { x: stemWidth, y: stemOffset + capWidth },
+      { x: stemWidth, y: stemHeight },
+      { x: 0, y: stemHeight },
     ];
   } else {
     points = [
-      { x: capHeight, y: stemOffset },
-      { x: stemWidth, y: stemOffset },
-      { x: stemWidth, y: stemOffset + capWidth },
-      { x: stemWidth + capHeight, y: stemOffset + capWidth },
+      { x: capHeight, y: 0 },
+      { x: stemWidth + capHeight, y: 0 },
       { x: stemWidth + capHeight, y: stemHeight },
-      { x: 0, y: stemHeight },
-      { x: 0, y: stemOffset + capWidth },
+      { x: capHeight, y: stemHeight },
       { x: capHeight, y: stemOffset + capWidth },
-      { x: capHeight, y: stemOffset },
+      { x: 0, y: stemOffset + capWidth },
       { x: 0, y: stemOffset },
+      { x: capHeight, y: stemOffset },
     ];
   }
 

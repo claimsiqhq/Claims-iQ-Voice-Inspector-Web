@@ -594,6 +594,7 @@ export async function assembleScope(
       quantity = 1;
     }
 
+    const isPlaceholder = Boolean(!hasDimensions || (quantity === 1 && quantityFormula && quantityFormula !== "EACH"));
     itemsToCreate.push({
       sessionId,
       roomId: room.id,
@@ -610,6 +611,8 @@ export async function assembleScope(
       wasteFactor: catalogItem.defaultWasteFactor ?? null,
       status: "active",
       parentScopeItemId: null,
+      quantityIsPlaceholder: isPlaceholder,
+      lastQuantityRecalcAt: isPlaceholder ? new Date() : undefined,
     });
   }
 

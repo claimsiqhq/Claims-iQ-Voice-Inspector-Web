@@ -5,7 +5,11 @@
  * When GPT-4o Vision detects damage in a photo, this service maps Vision damage
  * types to our damageType enum and returns suggested damage observations for
  * the voice agent to confirm.
+ *
+ * PROMPT-30 Part D: Confidence tiers filter suggestions by score.
  */
+
+import { getTierForScore, getTierMetadata, type ConfidenceTier } from "./types/photoConfidence";
 
 // ─── Vision Damage Type → Our Damage Type Mapping ──────────────────────────
 
@@ -78,6 +82,10 @@ export interface PhotoDamageSuggestion {
   severity: string;
   notes: string;
   confidence: number;
+  confidenceTier?: ConfidenceTier;
+  voicePresentation?: string;
+  requiresConfirmation?: boolean;
+  shouldAutoSuggest?: boolean;
 }
 
 /**
@@ -99,23 +107,71 @@ export function processPhotoAnalysis(
     return suggestions;
   }
 
+  const baseConfidence = analysis.matchConfidence ?? 0.5;
+
   for (const detected of analysis.damageVisible) {
-    // Map Vision damage type to our enum
     const normalizedType = (detected.type || "").toLowerCase().trim();
     const damageType = VISION_TO_DAMAGE_TYPE[normalizedType] || "other";
-
-    // Map severity
     const normalizedSeverity = (detected.severity || "moderate").toLowerCase().trim();
     const severity = VISION_SEVERITY_MAP[normalizedSeverity] || "moderate";
+
+    const confidence = (detected as { confidence?: number }).confidence ?? baseConfidence;
+    const tier = getTierForScore(confidence);
+    const metadata = getTierMetadata(tier);
+    const voicePresentation = metadata.voicePresentation
+      ? metadata.voicePresentation.replace("{damageType}", detected.type || damageType)
+      : undefined;
 
     suggestions.push({
       description: `[Photo-detected] ${detected.type}: ${detected.notes || analysis.description || ""}`.trim(),
       damageType,
       severity,
       notes: detected.notes || "",
-      confidence: analysis.matchConfidence ?? 0.5,
+      confidence,
+      confidenceTier: tier,
+      voicePresentation,
+      requiresConfirmation: metadata.requiresConfirmation,
+      shouldAutoSuggest: metadata.shouldAutoSuggest,
     });
   }
 
   return suggestions;
+}
+
+/**
+ * Filter suggestions by auto-suggest threshold (HIGH and MODERATE only).
+ * VERY_LOW and LOW are excluded unless includeAll is true.
+ */
+export function filterPhotoSuggestions(
+  suggestions: PhotoDamageSuggestion[],
+  includeAll = false
+): PhotoDamageSuggestion[] {
+  if (includeAll) return suggestions;
+  return suggestions.filter((s) => s.shouldAutoSuggest !== false);
+}
+
+/**
+ * Build voice agent prompt text grouped by confidence tier.
+ */
+export function buildDamageSuggestionPrompt(suggestions: PhotoDamageSuggestion[]): string {
+  if (suggestions.length === 0) return "I analyzed the photo but couldn't identify specific damage.";
+
+  const high = suggestions.filter((s) => s.confidenceTier === "HIGH");
+  const moderate = suggestions.filter((s) => s.confidenceTier === "MODERATE");
+  const low = suggestions.filter((s) => s.confidenceTier === "LOW");
+
+  let prompt = "";
+  if (high.length > 0) {
+    prompt += "I found damage with high confidence:\n";
+    high.forEach((s) => { prompt += `  - ${s.voicePresentation || s.description}\n`; });
+  }
+  if (moderate.length > 0) {
+    prompt += (prompt ? "\n" : "") + "I also see possible damage that I'm less certain about:\n";
+    moderate.forEach((s) => { prompt += `  - ${s.voicePresentation || s.description}\n`; });
+  }
+  if (low.length > 0) {
+    prompt += (prompt ? "\n" : "") + "I'm uncertain about these:\n";
+    low.forEach((s) => { prompt += `  - ${s.voicePresentation || s.description}\n`; });
+  }
+  return prompt;
 }

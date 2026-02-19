@@ -678,6 +678,74 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "list_rooms": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const listRooms = await fetchFreshRooms();
+          result = {
+            success: true,
+            rooms: listRooms.map((r: any) => ({
+              id: r.id,
+              name: r.name,
+              dimensions: r.dimensions || {},
+              damageCount: r.damageCount || 0,
+            })),
+            message: `Found ${listRooms.length} room(s).`,
+          };
+          break;
+        }
+
+        case "find_room": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const query = (args.roomNameQuery || "").toLowerCase().trim();
+          const allRooms = await fetchFreshRooms();
+          const levenshtein = (a: string, b: string) => {
+            const m = a.length, n = b.length;
+            const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+            for (let i = 0; i <= m; i++) dp[i][0] = i;
+            for (let j = 0; j <= n; j++) dp[0][j] = j;
+            for (let i = 1; i <= m; i++) {
+              for (let j = 1; j <= n; j++) {
+                dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1]
+                  : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+              }
+            }
+            return dp[m][n];
+          };
+          const score = (roomName: string) => {
+            const t = roomName.toLowerCase();
+            if (query === t) return 1;
+            if (t.includes(query)) return 0.95;
+            const d = levenshtein(query, t);
+            return Math.max(0, 1 - d / Math.max(query.length, t.length));
+          };
+          const matches = allRooms
+            .map((r: any) => ({ id: r.id, name: r.name, confidence: score(r.name) }))
+            .sort((a: any, b: any) => b.confidence - a.confidence)
+            .slice(0, 3);
+          result = { success: true, matches, message: matches.length ? `Top match: "${matches[0].name}" (${(matches[0].confidence * 100).toFixed(0)}% confidence)` : "No rooms found." };
+          break;
+        }
+
+        case "rename_room": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const newName = (args.newName || "").trim();
+          if (!newName) { result = { success: false, error: "Room name cannot be empty." }; break; }
+          const renameHeaders = await getAuthHeaders();
+          const renameRes = await fetch(`/api/inspection/${sessionId}/rooms/${args.roomId}`, {
+            method: "PATCH",
+            headers: renameHeaders,
+            body: JSON.stringify({ name: newName }),
+          });
+          const renameData = await renameRes.json();
+          if (!renameRes.ok) {
+            result = { success: false, error: renameData.message || "Failed to rename room" };
+            break;
+          }
+          await refreshRooms();
+          result = { success: true, message: `Room renamed to "${newName}". All damage and scope items have been updated.` };
+          break;
+        }
+
         case "get_room_details": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const freshDetailRooms = await fetchFreshRooms();

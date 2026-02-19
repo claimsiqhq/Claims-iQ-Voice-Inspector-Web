@@ -1,6 +1,8 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import type { RoomPolygon, DimensionProvenance } from "@/lib/types/roomPolygon";
+import { rectanglePolygon } from "@/lib/polygonBuilder";
 
 // ── Types ──────────────────────────────────────────
 interface RoomData {
@@ -30,6 +32,8 @@ interface RoomData {
       SQ: number;
     };
   };
+  polygon?: RoomPolygon | { points: Array<{ x: number; y: number }>; boundingBox?: { width: number; height: number } };
+  dimensionProvenance?: DimensionProvenance;
   structure?: string;
 }
 
@@ -134,6 +138,13 @@ interface PositionedRoom {
 }
 
 function getRoomPixelSize(room: RoomData): { w: number; h: number } {
+  const poly = room.polygon as RoomPolygon | undefined;
+  if (poly?.boundingBox) {
+    return {
+      w: Math.max(poly.boundingBox.width * PIXELS_PER_FOOT, MIN_ROOM_PX),
+      h: Math.max(poly.boundingBox.height * PIXELS_PER_FOOT, MIN_ROOM_PX),
+    };
+  }
   const dims = room.dimensions;
   if (dims?.length && dims?.width) {
     return {
@@ -142,6 +153,29 @@ function getRoomPixelSize(room: RoomData): { w: number; h: number } {
     };
   }
   return { w: MIN_ROOM_PX + 16, h: MIN_ROOM_PX + 6 };
+}
+
+function getRoomPolygon(room: RoomData): RoomPolygon | null {
+  const poly = room.polygon as RoomPolygon | { points: Array<{ x: number; y: number }>; boundingBox?: { width: number; height: number } } | undefined;
+  if (poly?.points && poly.points.length >= 3) {
+    const bb = poly.boundingBox || (() => {
+      const xs = poly.points.map((p) => p.x);
+      const ys = poly.points.map((p) => p.y);
+      return { width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+    })();
+    return {
+      points: poly.points,
+      origin: { x: 0, y: 0 },
+      boundingBox: bb,
+      shapeType: "custom",
+      openingEdges: Array.from({ length: poly.points.length }, (_, i) => i),
+    };
+  }
+  const dims = room.dimensions;
+  if (dims?.length && dims?.width) {
+    return rectanglePolygon(dims.length, dims.width);
+  }
+  return null;
 }
 
 function layoutRoomsWithAdjacency(
@@ -288,16 +322,41 @@ function RoomRect({
 }) {
   const dims = room.dimensions;
   const dv = dims?.dimVars;
+  const polygon = getRoomPolygon(room);
   const colors = isCurrent
     ? { fill: "rgba(198,165,78,0.15)", stroke: "#C6A54E", text: "#C6A54E" }
     : STATUS_COLORS[room.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.not_started;
+
+  const hasDimensionDefaults =
+    room.dimensionProvenance &&
+    Object.values(room.dimensionProvenance).some((v) => v === "defaulted");
+  const strokeDasharray = hasDimensionDefaults ? "4,4" : room.status === "not_started" ? "4,3" : "none";
 
   const displayName = room.name.length > 16 ? room.name.substring(0, 15) + "…" : room.name;
   const dimText = dims?.length && dims?.width ? `${dims.length}'×${dims.width}'` : null;
   const sfText = dv?.F ? `${dv.F} SF` : dims?.length && dims?.width ? `${dims.length * dims.width} SF` : null;
 
-  return (
-    <g onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+  const renderShape = () => {
+    if (polygon && polygon.points.length > 2) {
+      const scaleX = w / polygon.boundingBox.width;
+      const scaleY = h / polygon.boundingBox.height;
+      const pointsStr = polygon.points
+        .map((p) => `${x + p.x * scaleX},${y + p.y * scaleY}`)
+        .join(" ");
+      return (
+        <motion.polygon
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          points={pointsStr}
+          fill={colors.fill}
+          stroke={colors.stroke}
+          strokeWidth={isCurrent ? WALL_THICKNESS : WALL_THICKNESS - 1}
+          strokeDasharray={strokeDasharray}
+        />
+      );
+    }
+    return (
       <motion.rect
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -309,8 +368,38 @@ function RoomRect({
         fill={colors.fill}
         stroke={colors.stroke}
         strokeWidth={isCurrent ? WALL_THICKNESS : WALL_THICKNESS - 1}
-        strokeDasharray={room.status === "not_started" ? "4,3" : "none"}
+        strokeDasharray={strokeDasharray}
       />
+    );
+  };
+
+  return (
+    <g onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+      {renderShape()}
+
+      {hasDimensionDefaults && (
+        <g>
+          <rect
+            x={x + w * 0.02}
+            y={y + h * 0.02}
+            width={20}
+            height={14}
+            fill="#ffc107"
+            rx={3}
+            opacity={0.9}
+          />
+          <text
+            x={x + w * 0.02 + 10}
+            y={y + h * 0.02 + 10}
+            fontSize="8"
+            fontWeight="bold"
+            textAnchor="middle"
+            fill="#333"
+          >
+            ⚠
+          </text>
+        </g>
+      )}
 
       <text
         x={x + w / 2}

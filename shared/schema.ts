@@ -198,6 +198,8 @@ export const inspectionRooms = pgTable(
     dimensions: jsonb("dimensions"),
       // {length, width, height} — for rooms: LxWxCeiling; for elevations: LxWallH; for roofs: LxW
     polygon: jsonb("polygon"),         // array of {x,y} wall vertices for sketch
+    dimensionProvenance: jsonb("dimension_provenance"),
+      // {length, width, height} — "measured" | "estimated" | "defaulted"
     position: jsonb("position"),       // {x,y} placement on sketch canvas
     floor: integer("floor").default(1),
     // Facet label for roof slopes (F1, F2, F3 — auto-assigned)
@@ -526,6 +528,8 @@ export const scopeItems = pgTable("scope_items", {
   wasteFactor: real("waste_factor"),
   status: varchar("status", { length: 20 }).default("active"),
   parentScopeItemId: integer("parent_scope_item_id"),
+  quantityIsPlaceholder: boolean("quantity_is_placeholder").default(false),
+  lastQuantityRecalcAt: timestamp("last_quantity_recalc_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
