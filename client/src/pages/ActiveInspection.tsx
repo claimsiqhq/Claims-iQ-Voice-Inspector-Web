@@ -4163,7 +4163,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         </div>
       )}
 
-      {import.meta.env.DEV && workflowHud && (
+      {false && import.meta.env.DEV && workflowHud && (
         <div className="fixed bottom-3 right-3 z-50 max-w-sm rounded border bg-white/95 p-2 text-[11px] shadow">
           <div className="font-semibold">Workflow HUD</div>
           <div>Phase: {workflowHud.state?.phase} / {workflowHud.state?.stepId}</div>
