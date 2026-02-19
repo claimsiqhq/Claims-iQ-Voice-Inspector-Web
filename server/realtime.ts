@@ -1174,4 +1174,23 @@ export const realtimeTools = [
       "'are we ready to move on?'",
     parameters: { type: "object", properties: {}, required: [] }
   }
+  ,
+  {
+    type: "function",
+    name: "get_workflow_state",
+    description: "Get canonical workflow phase, step, context, and current allowed tool list.",
+    parameters: { type: "object", properties: { sessionId: { type: "integer" } }, required: [] }
+  },
+  {
+    type: "function",
+    name: "set_phase",
+    description: "Set workflow phase when user explicitly confirms moving steps.",
+    parameters: { type: "object", properties: { sessionId: { type: "integer" }, phase: { type: "string" } }, required: ["phase"] }
+  },
+  {
+    type: "function",
+    name: "set_context",
+    description: "Set workflow room/elevation/view context for subsequent tools.",
+    parameters: { type: "object", properties: { sessionId: { type: "integer" }, roomId: { type: "integer" }, roomName: { type: "string" }, elevationId: { type: "integer" }, viewType: { type: "string" } }, required: [] }
+  }
 ];

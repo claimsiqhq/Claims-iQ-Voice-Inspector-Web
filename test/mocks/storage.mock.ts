@@ -144,6 +144,8 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     // Transcripts
     addTranscript: vi.fn().mockResolvedValue({ id: 1 }),
     getTranscript: vi.fn().mockResolvedValue([]),
+    addSessionEvent: vi.fn().mockResolvedValue({ id: 1 }),
+    getSessionEvents: vi.fn().mockResolvedValue([]),
 
     // Pricing catalog
     getScopeLineItems: vi.fn().mockResolvedValue([]),

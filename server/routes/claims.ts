@@ -9,6 +9,7 @@ import { param, parseIntParam, MAX_DOCUMENT_BYTES, decodeBase64Payload, uploadTo
 import { logger } from "../logger";
 import { z } from "zod";
 import { getWeatherCorrelation } from "../weatherService";
+import { initSessionWorkflow } from "../workflow/orchestrator";
 
 const createClaimSchema = z.object({
   claimNumber: z.string().min(1).max(50),
@@ -855,6 +856,8 @@ export function claimsRouter(): Router {
         return res.json({ sessionId: existing.id, session: existing });
       }
       const session = await storage.createInspectionSession(claimId);
+      const claim = await storage.getClaim(claimId);
+      await initSessionWorkflow({ claimId, sessionId: session.id, peril: claim?.perilType || "General" });
       if (req.user?.id) {
         await storage.updateSession(session.id, { inspectorId: req.user.id });
       }

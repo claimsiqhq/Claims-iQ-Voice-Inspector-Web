@@ -14,6 +14,9 @@ import { handleWaterDamageProtocol } from "../waterProtocol";
 import { deriveQuantity, type QuantityFormula } from "../scopeQuantityEngine";
 import { calculateDepreciation, lookupLifeExpectancy } from "../depreciationEngine";
 import { calculateItemDepreciation } from "../estimateEngine";
+import { advance, canAdvance, getAllowedTools, getWorkflowState, runGates, setWorkflowState } from "../workflow/orchestrator";
+import { runAllWorkflowGates } from "../workflow/validators";
+import { toolFailure, toolSuccess } from "@shared/contracts/tools";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
@@ -212,6 +215,104 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       res.json(session);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+
+
+  app.get("/api/inspection/:sessionId/workflow", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const state = await getWorkflowState(sessionId);
+      if (!state) return res.status(404).json({ message: "Workflow state not found" });
+      res.json({ state, allowedTools: getAllowedTools(state), gateSummaries: state.lastValidatorSummary || null });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/gates/run", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const state = await getWorkflowState(sessionId);
+      if (!state) return res.status(404).json({ message: "Workflow state not found" });
+      const gates = await runAllWorkflowGates(sessionId, state.peril);
+      await storage.updateSession(sessionId, { gateResultsJson: gates } as any);
+      const next = await runGates(state);
+      await storage.addSessionEvent({ sessionId, type: "gate.run", payloadJson: { requested: req.body?.gates || "all" } } as any);
+      await storage.addSessionEvent({ sessionId, type: "gate.result", payloadJson: gates } as any);
+      res.json({ gates, workflow: next });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/gates", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const session = await storage.getInspectionSession(sessionId);
+      res.json((session as any)?.gateResultsJson || {});
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/timeline", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const events = Array.isArray(req.body?.events) ? req.body.events : [];
+      for (const ev of events) {
+        await storage.addSessionEvent({ sessionId, type: String(ev.type || "realtime.event"), payloadJson: ev.payload || {}, ts: ev.ts ? new Date(ev.ts) : new Date() } as any);
+      }
+      res.json({ ok: true, stored: events.length });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/timeline", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const since = typeof req.query.since === "string" ? req.query.since : undefined;
+      const events = await storage.getSessionEvents(sessionId, since);
+      res.json({ events });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/workflow/set-phase", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const state = await getWorkflowState(sessionId);
+      if (!state) return res.status(404).json(toolFailure("set_phase", { type: "CONTEXT_ERROR", code: "WORKFLOW_STATE_MISSING", message: "Workflow state missing" }));
+      const phase = req.body?.phase;
+      if (!phase) return res.status(400).json(toolFailure("set_phase", { type: "VALIDATION_ERROR", code: "PHASE_REQUIRED", message: "phase is required" }));
+      const next = await setWorkflowState(sessionId, { phase, stepId: req.body?.stepId || `${phase}.manual` } as any);
+      await storage.addSessionEvent({ sessionId, type: "workflow.phase_changed", payloadJson: { from: state.phase, to: phase } } as any);
+      res.json(toolSuccess("set_phase", next));
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json(toolFailure("set_phase", { type: "RUNTIME_ERROR", code: "SET_PHASE_FAILED", message: error?.message || "Failed" }));
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/workflow/set-context", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const state = await getWorkflowState(sessionId);
+      if (!state) return res.status(404).json(toolFailure("set_context", { type: "CONTEXT_ERROR", code: "WORKFLOW_STATE_MISSING", message: "Workflow state missing" }));
+      const next = await setWorkflowState(sessionId, { context: req.body || {} } as any);
+      await storage.addSessionEvent({ sessionId, type: "workflow.context_changed", payloadJson: { context: req.body || {} } } as any);
+      res.json(toolSuccess("set_context", next));
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json(toolFailure("set_context", { type: "RUNTIME_ERROR", code: "SET_CONTEXT_FAILED", message: error?.message || "Failed" }));
     }
   });
 
