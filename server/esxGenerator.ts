@@ -419,7 +419,8 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
   let subroomsXml = "";
   let itemGroupsXml = "";
 
-  Object.entries(roomGroups).forEach(([roomName, roomItems]) => {
+  Object.entries(roomGroups).sort(([a], [b]) => a.localeCompare(b)).forEach(([roomName, roomItems]) => {
+    roomItems.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
     const room = rooms.find((r) => r.name === roomName);
     const dims: RoomDimensions = {
       length: room?.dimensions?.length || 10,

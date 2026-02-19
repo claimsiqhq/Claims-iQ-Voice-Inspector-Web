@@ -19,10 +19,12 @@ export async function runScopeGate(sessionId: number, peril = ""): Promise<GateR
   const issues: GateIssue[] = [];
   const suggestions: string[] = [];
 
+  const scopeItems = await storage.getScopeItems(sessionId);
   const confirmedDamages = damages.filter((d) => (d.severity || "").toLowerCase() !== "none");
   for (const d of confirmedDamages) {
-    const linked = items.some((li) => li.roomId === d.roomId && (li.description || "").toLowerCase().includes((d.damageType || "").toLowerCase()));
-    if (!linked) {
+    const linkedByItem = items.some((li) => li.damageId === d.id);
+    const linkedByScope = scopeItems.some((si) => si.damageId === d.id);
+    if (!linkedByItem && !linkedByScope) {
       issues.push({ severity: "WARNING", code: "SCOPE_DAMAGE_UNCOVERED", message: `Damage ${d.id} has no matching line item`, entity: { type: "lineItem", id: String(d.id) } });
       suggestions.push(`Add scope line for ${d.damageType || "damage"} in room ${d.roomId}`);
     }
@@ -30,7 +32,7 @@ export async function runScopeGate(sessionId: number, peril = ""): Promise<GateR
 
   const seen = new Set<string>();
   for (const li of items) {
-    const key = `${li.category || ""}:${li.roomId || 0}`;
+    const key = `${li.category || ""}:${li.roomId || 0}:${li.damageId || "none"}`;
     if (seen.has(key)) {
       issues.push({ severity: "WARNING", code: "SCOPE_DUPLICATE_LINE", message: `Duplicate line item ${li.category} in room ${li.roomId}`, entity: { type: "lineItem", id: String(li.id) } });
     }

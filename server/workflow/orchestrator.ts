@@ -1,5 +1,5 @@
 import { PHASE_ALLOWED_TOOLS, WORKFLOW_PHASES, WORKFLOW_STEPS, type WorkflowPhase } from "@shared/contracts/workflow";
-import type { ToolResult } from "@shared/contracts/tools";
+import { toolFailure, type ToolResult } from "@shared/contracts/tools";
 import { storage } from "../storage";
 import { firstStepForPhase } from "./steps/default";
 import type { GateResultSummary, WorkflowState } from "./types";
@@ -53,6 +53,40 @@ export function assertToolContext(state: WorkflowState, toolName: string, args: 
     elevationId: args?.elevationId ? String(args.elevationId) : state.context.elevationId,
     currentView: args?.viewType || state.context.currentView,
   };
+}
+
+/**
+ * Server-side authoritative tool validation.
+ * Returns a ToolResult failure if the tool is not allowed in the current phase
+ * or if required context is missing; otherwise returns null (caller proceeds).
+ */
+export async function validateToolForWorkflow(
+  sessionId: number,
+  toolName: string,
+  args?: Record<string, unknown>,
+): Promise<ToolResult<never> | null> {
+  const state = await getWorkflowState(sessionId);
+  if (!state) return null; // no workflow state yet — allow
+  const allowed = getAllowedTools(state);
+  if (!allowed.includes(toolName)) {
+    return toolFailure(toolName, {
+      type: "CONTEXT_ERROR",
+      code: "TOOL_NOT_ALLOWED",
+      message: `Tool "${toolName}" is not allowed in phase "${state.phase}".`,
+      hint: `Allowed tools: ${allowed.join(", ")}. Call set_phase to advance.`,
+    }, { workflow: { phase: state.phase, stepId: state.stepId } });
+  }
+  try {
+    assertToolContext(state, toolName, args);
+  } catch (e: any) {
+    return toolFailure(toolName, {
+      type: "CONTEXT_ERROR",
+      code: "MISSING_CONTEXT",
+      message: e.message || "Required context is missing for this tool.",
+      hint: "Set the room/elevation context first with set_context.",
+    }, { workflow: { phase: state.phase, stepId: state.stepId } });
+  }
+  return null;
 }
 
 export function onToolResult(state: WorkflowState, toolName: string, result: ToolResult<any>): WorkflowState {
