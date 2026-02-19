@@ -167,7 +167,7 @@ async function enrichClaimsWithProgress(claims: any[]) {
     try {
       const [docs, sessions] = await Promise.all([
         storage.getDocuments(claim.id),
-        storage.getInspectionSessions(claim.id),
+        storage.getInspectionSessionsForClaim(claim.id),
       ]);
       const activeSession = sessions.find(s => s.status === "active" || s.status === "in_progress") || sessions[0];
 
