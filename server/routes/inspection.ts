@@ -2120,7 +2120,8 @@ Respond in JSON format:
   "matchConfidence": 0.0-1.0,
   "matchExplanation": "string",
   "qualityScore": 1-5,
-  "qualityNotes": "string"
+  "qualityNotes": "string"${expectedPhotoType === "address_verification" ? `,
+  "addressVerification": { "expectedAddress": "string", "visibleAddress": "string or null if not readable", "matches": true/false, "confidence": 0.0-1.0, "notes": "string" }` : ""}
 }`
             },
             {
