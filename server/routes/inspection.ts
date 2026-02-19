@@ -2121,24 +2121,34 @@ Respond in JSON format:
       }
 
       const completedRooms = rooms.filter(r => r.status === "complete").length;
+      const totalRooms = rooms.length;
 
-      const phaseScore = Math.min(((currentPhase - 1) / totalPhases) * 100, 87);
+      const completedPhases = currentPhase - 1;
+      const phaseProgress = completedPhases / totalPhases;
+      const phaseComponent = phaseProgress * 50;
 
-      const workMetrics = [
-        Math.min(rooms.length / 3, 1) * 15,
-        Math.min(allDamages.length / 3, 1) * 20,
-        Math.min(allLineItems.length / 5, 1) * 25,
-        Math.min(allPhotos.length / 4, 1) * 15,
-        Math.min(roomsWithDocs.length / 2, 1) * 15,
-        (perilType === "water" ? Math.min(moistureReadings.length / 3, 1) * 10 : 0),
-      ];
-      const workScore = workMetrics.reduce((a, b) => a + b, 0);
-      const adjustedWorkScore = perilType === "water" ? workScore : (workScore / 90) * 100;
+      const roomRatio = totalRooms > 0 ? completedRooms / totalRooms : 0;
+      const roomComponent = roomRatio * 30;
 
-      const completenessScore = Math.min(
-        Math.round(Math.max(phaseScore, adjustedWorkScore)),
-        completedRooms > 0 && allLineItems.length > 0 && allPhotos.length > 0 ? 100 : 95
-      );
+      let docScore = 0;
+      if (totalRooms > 0) {
+        const avgDamagesPerRoom = allDamages.length / totalRooms;
+        const avgItemsPerRoom = allLineItems.length / totalRooms;
+        const avgPhotosPerRoom = allPhotos.length / totalRooms;
+        const damageDepth = Math.min(avgDamagesPerRoom / 2, 1);
+        const itemDepth = Math.min(avgItemsPerRoom / 5, 1);
+        const photoDepth = Math.min(avgPhotosPerRoom / 2, 1);
+        docScore = ((damageDepth * 0.3) + (itemDepth * 0.4) + (photoDepth * 0.3));
+        if (perilType === "water" && moistureReadings.length > 0) {
+          docScore = Math.min(docScore + 0.1, 1);
+        }
+      }
+      const docComponent = docScore * 20;
+
+      const rawScore = phaseComponent + roomComponent + docComponent;
+
+      const phaseCap = ((currentPhase / totalPhases) * 100) + 15;
+      const completenessScore = Math.min(Math.round(rawScore), Math.round(phaseCap));
 
       const scopeGaps: Array<{ room: string; issue: string }> = [];
       for (const room of rooms) {
