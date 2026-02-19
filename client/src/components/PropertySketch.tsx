@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut, Maximize2, Move } from "lucide-react";
 
 /* ─── Types ─── */
 
@@ -406,6 +406,19 @@ function bfsLayout(
 
   function getRoomSize(r: HierarchyRoom): { w: number; h: number } {
     const d = r.dimensions as any;
+    if (d?.length && d?.width) {
+      // Use proportional scaling: pick the larger scale factor that ensures
+      // at least one dimension meets the minimum, then apply it to both
+      // dimensions to preserve the aspect ratio.
+      const scaleW = minW / (d.length * scale);
+      const scaleH = minH / (d.width * scale);
+      const needsUpscale = scaleW > 1 || scaleH > 1;
+      if (needsUpscale) {
+        const upscale = Math.max(scaleW, scaleH);
+        return { w: d.length * scale * upscale, h: d.width * scale * upscale };
+      }
+      return { w: d.length * scale, h: d.width * scale };
+    }
     const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
     const h = d?.width ? Math.max(d.width * scale, minH) : minH;
     return { w, h };
@@ -589,8 +602,23 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
 
     for (const r of unplaced) {
       const d = r.dimensions as any;
-      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
-      const h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      let w: number, h: number;
+      if (d?.length && d?.width) {
+        const scaleW = minW / (d.length * scale);
+        const scaleH = minH / (d.width * scale);
+        const needsUpscale = scaleW > 1 || scaleH > 1;
+        if (needsUpscale) {
+          const upscale = Math.max(scaleW, scaleH);
+          w = d.length * scale * upscale;
+          h = d.width * scale * upscale;
+        } else {
+          w = d.length * scale;
+          h = d.width * scale;
+        }
+      } else {
+        w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
+        h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
+      }
 
       if (cx + w > usable && cx > 0) {
         cx = 0;
@@ -1122,6 +1150,60 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
 
+  // Zoom/pan state for the non-edit view
+  const [zoomViewBox, setZoomViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const effectiveViewBox = zoomViewBox || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+
+  const handleZoomIn = useCallback(() => {
+    setZoomViewBox((prev) => {
+      const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+      const nw = v.w * 0.8;
+      const nh = v.h * 0.8;
+      return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
+    });
+  }, [svgW, layout.totalHeight]);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomViewBox((prev) => {
+      const v = prev || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+      const nw = v.w * 1.25;
+      const nh = v.h * 1.25;
+      return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh };
+    });
+  }, [svgW, layout.totalHeight]);
+
+  const handleFitView = useCallback(() => {
+    setZoomViewBox(null);
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+    (e.target as Element)?.setPointerCapture?.(e.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isPanning) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const v = zoomViewBox || { x: 0, y: 0, w: svgW, h: layout.totalHeight };
+    const dx = (e.clientX - panStart.x) * (v.w / rect.width);
+    const dy = (e.clientY - panStart.y) * (v.h / rect.height);
+    setZoomViewBox({ ...v, x: v.x - dx, y: v.y - dy });
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, [isPanning, panStart, zoomViewBox, svgW, layout.totalHeight]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    setIsPanning(false);
+    (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+  }, []);
+
   if (sectionsFilter && sectionsFilter.length > 0 && layout.sections.length === 0) return null;
 
   if (totalRooms === 0 && rooms.length === 0) {
@@ -1146,6 +1228,19 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
           </p>
           {!compact && (
           <div className="flex items-center gap-2">
+            {!compact && (
+              <div className="flex items-center gap-0.5">
+                <button onClick={handleZoomIn} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom In">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleZoomOut} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom Out">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleFitView} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Fit to Content">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <p className="text-[10px] text-slate-400 font-mono">
               {structures.length > 1 ? `${structures.length} structures \u00B7 ` : ""}
               {totalRooms} area{totalRooms !== 1 ? "s" : ""}
@@ -1189,9 +1284,20 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
       </div>
 
       <svg
-        viewBox={`0 0 ${svgW} ${layout.totalHeight}`}
+        ref={svgRef}
+        viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className="w-full"
-        style={{ ...(expanded ? {} : { maxHeight: 500 }), userSelect: 'none', WebkitUserSelect: 'none' }}
+        style={{
+          ...(expanded ? {} : { maxHeight: 500 }),
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          cursor: isPanning ? 'grabbing' : (zoomViewBox ? 'grab' : 'default'),
+          touchAction: 'none',
+        }}
+        onPointerDown={!compact ? handlePointerDown : undefined}
+        onPointerMove={!compact ? handlePointerMove : undefined}
+        onPointerUp={!compact ? handlePointerUp : undefined}
+        onPointerCancel={!compact ? handlePointerUp : undefined}
       >
         <defs>
           <pattern id="sketchGrid" width="10" height="10" patternUnits="userSpaceOnUse">

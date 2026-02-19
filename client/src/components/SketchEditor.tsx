@@ -22,6 +22,7 @@ interface RoomData {
   dimensions?: { length?: number; width?: number; height?: number; dimVars?: any };
   viewType?: string;
   parentRoomId?: number | null;
+  structure?: string;
 }
 
 interface SketchEditorProps {
@@ -74,9 +75,10 @@ const MIN_H = 32;
 const HIT_PADDING = 12;
 const HANDLE_SIZE = 12;
 
-function categorizeInterior(rooms: RoomData[]): RoomData[] {
+function categorizeInterior(rooms: RoomData[], structureName?: string): RoomData[] {
   return rooms.filter((r) => {
     if (r.parentRoomId) return false;
+    if (structureName && (r.structure || "Main Dwelling") !== structureName) return false;
     const vt = r.viewType || "";
     const rt = r.roomType || "";
     if (vt === "roof_plan" || rt === "exterior_roof_slope") return false;
@@ -86,12 +88,13 @@ function categorizeInterior(rooms: RoomData[]): RoomData[] {
   });
 }
 
-function categorizeRoofElevExterior(rooms: RoomData[]): { roofSlopes: RoomData[]; elevations: RoomData[]; otherExterior: RoomData[] } {
+function categorizeRoofElevExterior(rooms: RoomData[], structureName?: string): { roofSlopes: RoomData[]; elevations: RoomData[]; otherExterior: RoomData[] } {
   const roofSlopes: RoomData[] = [];
   const elevations: RoomData[] = [];
   const otherExterior: RoomData[] = [];
   for (const r of rooms) {
     if (r.parentRoomId) continue;
+    if (structureName && (r.structure || "Main Dwelling") !== structureName) continue;
     const vt = r.viewType || "";
     const rt = r.roomType || "";
     if (vt === "roof_plan" || rt === "exterior_roof_slope") roofSlopes.push(r);
@@ -230,8 +233,8 @@ export default function SketchEditor({
     }
   }, [sessionId, getAuthHeaders, queryClient, onRoomUpdate]);
 
-  const interiorRooms = useMemo(() => categorizeInterior(rooms), [rooms]);
-  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(rooms), [rooms]);
+  const interiorRooms = useMemo(() => categorizeInterior(rooms, structureName), [rooms, structureName]);
+  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(rooms, structureName), [rooms, structureName]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
 
