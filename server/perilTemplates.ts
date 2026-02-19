@@ -173,6 +173,61 @@ export const WIND_ROOF_TEMPLATE: PerilTemplate = {
   ],
 };
 
+export const FIRE_INTERIOR_TEMPLATE: PerilTemplate = {
+  perilType: "fire",
+  name: "Fire Damage — Interior Room",
+  description: "Standard scope for fire-damaged interior room including demolition, fire-rated drywall, paint, and electrical",
+  applicableRoomTypes: [
+    "interior_bedroom",
+    "interior_living",
+    "interior_kitchen",
+    "interior_bathroom",
+    "interior_hallway",
+    "interior_den",
+    "interior_dining",
+    "interior_other",
+  ],
+  applicableZoneTypes: ["interior"],
+  items: [
+    { catalogCode: "DEM-DRY-SF", autoInclude: true, quantityMultiplier: 1.0, perilNotes: "Full removal in fire rooms" },
+    { catalogCode: "DEM-CEIL-SF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "DEM-FLR-SF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "DEM-TRIM-LF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "DEM-INSUL-SF", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "If wall cavities exposed" },
+    { catalogCode: "DRY-X-5-8", autoInclude: true, quantityMultiplier: 1.0, perilNotes: "5/8\" fire-rated drywall" },
+    { catalogCode: "PNT-INT-SF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "PNT-CEILING-SF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "PNT-TRIM-LF", autoInclude: true, quantityMultiplier: 1.0 },
+    { catalogCode: "FLR-CARPET-SF", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "Select appropriate flooring type" },
+    { catalogCode: "FLR-PAD-SF", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "INS-BATTS-SF", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "ELE-OUTL-EA", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "Replace melted/damaged outlets" },
+    { catalogCode: "ELE-SWCH-EA", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "GEN-CLEAN-SF", autoInclude: true, quantityMultiplier: 1.0 },
+  ],
+};
+
+export const FIRE_EXTERIOR_TEMPLATE: PerilTemplate = {
+  perilType: "fire",
+  name: "Fire Damage — Exterior",
+  description: "Exterior fire damage scope — siding, trim, roofing",
+  applicableRoomTypes: [
+    "exterior_elevation_front",
+    "exterior_elevation_left",
+    "exterior_elevation_right",
+    "exterior_elevation_rear",
+  ],
+  applicableZoneTypes: ["exterior"],
+  items: [
+    { catalogCode: "EXT-SIDING-SF", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "Per elevation — measure charred area" },
+    { catalogCode: "EXT-FASCIA-LF", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "EXT-SOFFIT-SF", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "RFG-SHIN-AR", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "If fire reached roof" },
+    { catalogCode: "RFG-FELT-SQ", autoInclude: false, quantityMultiplier: 1.0 },
+    { catalogCode: "PNT-EXT-SF", autoInclude: false, quantityMultiplier: 1.0, perilNotes: "For smoke-stained exterior surfaces" },
+  ],
+};
+
 export const PERIL_TEMPLATES: PerilTemplate[] = [
   WATER_INTERIOR_TEMPLATE,
   WATER_KITCHEN_TEMPLATE,
@@ -180,6 +235,8 @@ export const PERIL_TEMPLATES: PerilTemplate[] = [
   HAIL_ROOF_TEMPLATE,
   HAIL_EXTERIOR_TEMPLATE,
   WIND_ROOF_TEMPLATE,
+  FIRE_INTERIOR_TEMPLATE,
+  FIRE_EXTERIOR_TEMPLATE,
 ];
 
 /**

@@ -1,16 +1,18 @@
 /**
- * Scope Assembly Service v4
+ * Scope Assembly Service v5
  *
  * Assembles scope items from damage observations using ONLY real Xactimate catalog items.
  * Maps damage type → trades → curated Xactimate codes that a real adjuster would pull.
  * No seed data, no alphabetical selection. Hand-picked codes per damage scenario.
  *
- * Quantities default to 1 when room dimensions are unavailable.
- * The adjuster adjusts quantities during review.
+ * Quantities are derived from room geometry via scopeQuantityEngine when dimensions
+ * are available. Falls back to 1 when room dimensions are missing, and flags items
+ * that need manual quantities.
  */
 
 import { IStorage } from "./storage";
 import type { InspectionRoom, DamageObservation, ScopeLineItem, ScopeItem, InsertScopeItem } from "@shared/schema";
+import { deriveQuantity, type QuantityFormula } from "./scopeQuantityEngine";
 
 export interface ScopeAssemblyResult {
   created: ScopeItem[];
@@ -461,7 +463,8 @@ const DEFAULT_TRADE_CODES: Record<string, string[]> = {
  * 1. Maps damageType → trades → curated Xactimate codes
  * 2. Looks up each code in the catalog
  * 3. Falls back to searching by trade if curated code not found
- * 4. Creates scope items with quantity=1 (adjuster adjusts during review)
+ * 4. Derives quantities from room geometry via scopeQuantityEngine when available
+ * 5. Flags items needing manual quantities when dimensions are missing
  */
 export async function assembleScope(
   storage: IStorage,
@@ -504,11 +507,54 @@ export async function assembleScope(
       .map(si => si.catalogCode)
   );
 
+  // Check if room has usable dimensions for quantity derivation
+  const dims = room.dimensions as Record<string, unknown> | null;
+  const hasDimensions = !!(dims && (dims.length as number) > 0 && (dims.width as number) > 0);
+
   const itemsToCreate: InsertScopeItem[] = [];
 
   for (const catalogItem of matchingItems) {
     if (existingCodes.has(catalogItem.code)) {
       continue;
+    }
+
+    // Derive quantity from room geometry using catalog's quantityFormula
+    let quantity = 1;
+    let quantityFormula: string | null = catalogItem.quantityFormula || null;
+
+    if (quantityFormula && quantityFormula !== "MANUAL" && quantityFormula !== "EACH") {
+      if (hasDimensions) {
+        const qResult = deriveQuantity(room, quantityFormula as QuantityFormula, _netWallDeduction);
+        if (qResult && qResult.quantity > 0) {
+          quantity = qResult.quantity;
+        } else {
+          // Formula didn't produce a usable quantity
+          result.manualQuantityNeeded.push({
+            catalogCode: catalogItem.code,
+            description: catalogItem.xactDescription || catalogItem.description,
+            unit: catalogItem.unit,
+            reason: "Could not derive quantity from room geometry",
+          });
+        }
+      } else {
+        // Room lacks dimensions — flag for manual entry
+        result.manualQuantityNeeded.push({
+          catalogCode: catalogItem.code,
+          description: catalogItem.xactDescription || catalogItem.description,
+          unit: catalogItem.unit,
+          reason: "Room dimensions not available — provide dimensions with update_room_dimensions for accurate quantities",
+        });
+      }
+    } else if (quantityFormula === "MANUAL") {
+      result.manualQuantityNeeded.push({
+        catalogCode: catalogItem.code,
+        description: catalogItem.xactDescription || catalogItem.description,
+        unit: catalogItem.unit,
+        reason: "Manual measurement required",
+      });
+    } else if (quantityFormula === "EACH" || !quantityFormula) {
+      // EACH or no formula — quantity stays at 1
+      quantity = 1;
     }
 
     itemsToCreate.push({
@@ -518,9 +564,9 @@ export async function assembleScope(
       catalogCode: catalogItem.code,
       description: catalogItem.xactDescription || catalogItem.description,
       tradeCode: catalogItem.tradeCode,
-      quantity: 1,
+      quantity,
       unit: catalogItem.unit,
-      quantityFormula: null,
+      quantityFormula,
       provenance: "damage_triggered",
       coverageType: catalogItem.coverageType || "A",
       activityType: catalogItem.activityType || "replace",
@@ -533,6 +579,13 @@ export async function assembleScope(
   if (itemsToCreate.length > 0) {
     const created = await storage.createScopeItems(itemsToCreate);
     result.created.push(...created);
+  }
+
+  if (!hasDimensions && itemsToCreate.length > 0) {
+    result.warnings.push(
+      `Room "${room.name}" has no dimensions — scope item quantities default to 1. ` +
+      `Call update_room_dimensions to set measurements; quantities will auto-update.`
+    );
   }
 
   await storage.recalculateScopeSummary(sessionId);
