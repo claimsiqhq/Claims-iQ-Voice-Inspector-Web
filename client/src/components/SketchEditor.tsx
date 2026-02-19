@@ -233,8 +233,21 @@ export default function SketchEditor({
     }
   }, [sessionId, getAuthHeaders, queryClient, onRoomUpdate]);
 
-  const interiorRooms = useMemo(() => categorizeInterior(rooms, structureName), [rooms, structureName]);
-  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(rooms, structureName), [rooms, structureName]);
+  const { data: hierarchyData } = useQuery<{ structures: { id: number; name: string; structureType: string; rooms: RoomData[] }[] }>({
+    queryKey: [`/api/inspection/${sessionId}/hierarchy`],
+    enabled: !!sessionId,
+    refetchInterval: 10000,
+  });
+
+  const hierarchyRooms = useMemo(() => {
+    if (!hierarchyData?.structures) return rooms;
+    const struct = hierarchyData.structures.find(s => s.name === structureName) || hierarchyData.structures[0];
+    if (!struct) return rooms;
+    return struct.rooms as RoomData[];
+  }, [hierarchyData, structureName, rooms]);
+
+  const interiorRooms = useMemo(() => categorizeInterior(hierarchyRooms), [hierarchyRooms]);
+  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(hierarchyRooms), [hierarchyRooms]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
 
