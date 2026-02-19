@@ -207,6 +207,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
   const hasGreetedRef = useRef(false);
+  const hasEverConnectedRef = useRef(false);
   const elapsedRef = useRef(0);
   const agentSpeakingRef = useRef(false);
   const userSpeakingRef = useRef(false);
@@ -2613,6 +2614,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         setVoiceState("idle");
         isConnectingRef.current = false;
         setIsConnecting(false);
+        hasEverConnectedRef.current = true;
 
         if (!hasGreetedRef.current) {
           hasGreetedRef.current = true;
@@ -2666,13 +2668,6 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         setIsConnected(false);
         setVoiceState("disconnected");
         hasGreetedRef.current = false;
-        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectTimeoutRef.current = null;
-          if (!pcRef.current || pcRef.current.connectionState === "closed") {
-            connectVoice();
-          }
-        }, 3000);
       };
 
       dc.onmessage = (event) => {
@@ -3329,11 +3324,11 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         )}
 
         {/* Disconnected Banner */}
-        {voiceState === "disconnected" && !isConnecting && (
+        {voiceState === "disconnected" && !isConnecting && hasEverConnectedRef.current && (
           <div className="bg-destructive text-destructive-foreground px-4 py-2 flex items-center justify-between text-sm z-10">
             <div className="flex items-center gap-2">
               <WifiOff className="h-4 w-4" />
-              <span>Voice disconnected — Reconnecting...</span>
+              <span>Voice disconnected — Tap mic to reconnect</span>
             </div>
             <Button
               variant="ghost"
