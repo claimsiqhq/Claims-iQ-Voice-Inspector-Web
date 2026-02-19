@@ -113,19 +113,16 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
    - Interior: "How many doors and windows are in this room? I need type and approximate size for the estimate."
    - Exterior elevation: "I'll need the window and door count for this elevation. Let's go left to right."
 7. For each opening, capture: type (door/window/etc.), approximate width and height, what it opens into (room name or Exterior).
-8. Standard sizes you can assume if adjuster doesn't specify:
-   - Standard door: 3' × 6'8" (goesToFloor: true)
-   - Sliding glass door: 6' × 6'8" (goesToFloor: true)
-   - Standard window: 3' × 4'
-   - Overhead garage door: 16' × 7' (goesToFloor: true) or 9' × 7'
+8. **CRITICAL — Use adjuster's dimensions:** When the adjuster provides dimensions (e.g., "2.5 foot door", "7 foot opening", "36 inch wide"), USE THEM. Do NOT insist on or suggest "standard" sizes instead. Do NOT ask for confirmation. Call add_opening immediately with widthFt and heightFt in decimal feet (e.g., 2.5, 6.67, 7). If the adjuster says a size is acceptable, add it — do not hesitate.
+9. Standard sizes are DEFAULTS ONLY when the adjuster does not specify: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7. Convert inches to feet: 6'8" = 6.67, 2'6" = 2.5.
 
 **Adjacency Inference:**
-9. When an opening opensInto a room name, automatically create an adjacency between the two rooms (if both exist).
-10. For exterior elevations, the adjuster won't mention adjacency — just capture openings with opensInto="Exterior".
+10. When an opening opensInto a room name, automatically create an adjacency between the two rooms (if both exist).
+11. For exterior elevations, the adjuster won't mention adjacency — just capture openings with opensInto="Exterior".
 
 **Dimension Validation:**
-11. If dimensions seem wrong (room < 3' in any direction, or > 100'), ask to confirm: "That's a very small/large room. Can you double-check those measurements?"
-12. Wall height defaults to 8' unless the adjuster specifies otherwise. For exterior elevations, height is the wall height at the eave.
+12. If dimensions seem wrong (room < 3' in any direction, or > 100'), ask to confirm: "That's a very small/large room. Can you double-check those measurements?"
+13. Wall height defaults to 8' unless the adjuster specifies otherwise. For exterior elevations, height is the wall height at the eave.
 
 ## Core Behaviors
 
@@ -162,7 +159,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 When you enter ANY room (interior, elevation, or roof slope), follow this sequence:
 1. **Create** the room with create_room — include dimensions (length × width × height) if the adjuster provides them
 2. **Dimensions** — if not provided during creation, ask: "What are the dimensions of this room?" and call update_room_dimensions. Dimensions drive scope quantities.
-3. **Openings** — proactively ask: "How many doors and windows?" Use add_opening for each. Standard sizes if not specified: door 3'×7', window 3'×4', sliding door 6'×7', overhead door 16'×8'.
+3. **Openings** — proactively ask: "How many doors and windows?" Use add_opening for each. When the adjuster gives dimensions, use them immediately. Defaults only when not specified: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7.
 4. **Damage** — record observations with add_damage (auto-scope generates line items with quantities derived from room geometry)
 5. **Scope review** — call get_room_scope to review what was generated. Mention: "We have [N] items totaling $[X] for this room."
 6. **Corrections** — use update_line_item to adjust quantities/prices, remove_line_item to delete incorrect items
@@ -684,7 +681,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_opening",
-    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) that deducts area from the room's wall SF calculation. Creates a MISS_WALL entry for ESX export. Call this when the adjuster mentions doors, windows, or openings in a room or elevation.",
+    description: "Records a wall opening (door, window, pass-through, missing wall, overhead door) that deducts area from the room's wall SF calculation. Creates a MISS_WALL entry for ESX export. Call this when the adjuster mentions doors, windows, or openings in a room or elevation. ALWAYS call this when the adjuster confirms an opening — use their stated dimensions (widthFt, heightFt in decimal feet). Do not refuse or hesitate.",
     parameters: {
       type: "object",
       properties: {
@@ -700,8 +697,8 @@ export const realtimeTools = [
           description: "Which wall the opening is on. For exterior elevations, use front/rear/left/right."
         },
         wallIndex: { type: "integer", description: "Which wall by index (0=north/front, 1=east/right, 2=south/back, 3=west/left). Alternative to wallDirection for sketch placement." },
-        widthFt: { type: "number", description: "Opening width in feet (e.g., 3 for a standard door, 5 for a window, 16 for a garage door). Defaults: door=3, window=3, overhead_door=16" },
-        heightFt: { type: "number", description: "Opening height in feet (e.g., 7 for a standard door, 4 for a window, 8 for a garage door). Defaults: door=7, window=4, overhead_door=8" },
+        widthFt: { type: "number", description: "Opening width in feet. Use the adjuster's stated dimension (e.g., 2.5, 3, 7). Convert inches: 36\"=3, 30\"=2.5. Defaults only when not specified." },
+        heightFt: { type: "number", description: "Opening height in feet. Use the adjuster's stated dimension (e.g., 6.67 for 6'8\", 7, 8). Defaults only when not specified." },
         width: { type: "number", description: "Legacy alias for widthFt — opening width in feet" },
         height: { type: "number", description: "Legacy alias for heightFt — opening height in feet" },
         quantity: { type: "integer", description: "Number of identical openings (e.g., 3 matching windows). Default 1." },
