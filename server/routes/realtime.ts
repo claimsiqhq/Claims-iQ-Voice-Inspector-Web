@@ -35,9 +35,9 @@ export function realtimeRouter() {
       const voiceModel = s.voiceModel || 'alloy';
 
       const vadConfig = {
-        low:    { threshold: 0.85, silence_duration_ms: 1200, prefix_padding_ms: 600 },
-        medium: { threshold: 0.75, silence_duration_ms: 800,  prefix_padding_ms: 400 },
-        high:   { threshold: 0.60, silence_duration_ms: 500,  prefix_padding_ms: 300 },
+        low:    { threshold: 0.95, silence_duration_ms: 1500, prefix_padding_ms: 800 },
+        medium: { threshold: 0.90, silence_duration_ms: 1000, prefix_padding_ms: 600 },
+        high:   { threshold: 0.75, silence_duration_ms: 600,  prefix_padding_ms: 400 },
       };
       const sensitivity = (s.silenceDetectionSensitivity || 'medium') as keyof typeof vadConfig;
       const vad = vadConfig[sensitivity] || vadConfig.medium;
