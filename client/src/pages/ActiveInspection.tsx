@@ -643,18 +643,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         case "get_inspection_state": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const hierHeaders = await getAuthHeaders();
-          const hierRes = await fetch(`/api/inspection/${sessionId}/hierarchy`, { headers: hierHeaders });
+          const [hierRes, sessionRes] = await Promise.all([
+            fetch(`/api/inspection/${sessionId}/hierarchy`, { headers: hierHeaders }),
+            fetch(`/api/inspection/${sessionId}`, { headers: hierHeaders }),
+          ]);
           const hierarchy = await hierRes.json();
+          const sessionData = sessionRes.ok ? await sessionRes.json() : null;
           await refreshRooms();
           result = {
             success: true,
             ...hierarchy,
+            currentPhase: sessionData?.session?.currentPhase || currentPhase,
+            currentStructure: sessionData?.session?.currentStructure || currentStructure,
+            currentArea: currentArea || null,
             summary: {
               structureCount: hierarchy.structures?.length || 0,
               totalRooms: hierarchy.structures?.reduce((sum: number, s: any) => sum + (s.rooms?.length || 0), 0) || 0,
               totalSubAreas: hierarchy.structures?.reduce((sum: number, s: any) =>
                 sum + (s.rooms?.reduce((rsum: number, r: any) => rsum + (r.subAreas?.length || 0), 0) || 0), 0) || 0,
             },
+            phaseProgress: `You are currently on Phase ${sessionData?.session?.currentPhase || currentPhase}. All phases before this are complete. Continue from the current phase — do NOT revisit completed phases unless the adjuster asks.`,
           };
           break;
         }

@@ -113,15 +113,24 @@ export function realtimeRouter() {
         }
       }
 
+      const session = sessionId ? await storage.getInspectionSession(sessionId) : null;
+      const flowSteps = inspectionFlow ? (inspectionFlow.steps as any[]) || [] : [];
+
       res.json({
         clientSecret: data.client_secret.value,
         sessionId,
         transcriptSummary,
+        sessionPhase: session?.currentPhase || 1,
+        sessionStructure: session?.currentStructure || "Main Dwelling",
         activeFlow: inspectionFlow ? {
           id: inspectionFlow.id,
           name: inspectionFlow.name,
           perilType: inspectionFlow.perilType,
-          stepCount: (inspectionFlow.steps as any[])?.length || 0,
+          stepCount: flowSteps.length,
+          steps: flowSteps.map((s: any, i: number) => ({
+            phase: i + 1,
+            name: s.phaseName || s.name,
+          })),
         } : null,
       });
     } catch (error: any) {
