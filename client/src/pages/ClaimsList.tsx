@@ -9,6 +9,20 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
+interface InspectionProgress {
+  sessionId: number;
+  completenessScore: number;
+  currentPhase: number;
+  phaseName: string;
+  totalPhases: number;
+  totalRooms: number;
+  completedRooms: number;
+  damageCount: number;
+  lineItemCount: number;
+  photoCount: number;
+  missing: string[];
+}
+
 interface Claim {
   id: number;
   claimNumber: string;
@@ -21,6 +35,7 @@ interface Claim {
   perilType: string | null;
   status: string;
   documentCount?: number;
+  inspectionProgress?: InspectionProgress | null;
 }
 
 export default function ClaimsList() {
@@ -144,6 +159,7 @@ export default function ClaimsList() {
                 status={claim.status}
                 dateOfLoss={claim.dateOfLoss}
                 documentCount={claim.documentCount}
+                inspectionProgress={claim.inspectionProgress}
               />
             ))}
           </div>

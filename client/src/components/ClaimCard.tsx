@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, PerilBadge } from "./StatusBadge";
-import { Calendar, MapPin, ChevronRight, User, Trash2, Loader2 } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, User, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,6 +19,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+interface InspectionProgress {
+  sessionId: number;
+  completenessScore: number;
+  currentPhase: number;
+  phaseName: string;
+  totalPhases: number;
+  totalRooms: number;
+  completedRooms: number;
+  damageCount: number;
+  lineItemCount: number;
+  photoCount: number;
+  missing: string[];
+}
+
 interface ClaimCardProps {
   id: number;
   claimNumber: string;
@@ -28,6 +42,24 @@ interface ClaimCardProps {
   status: string;
   dateOfLoss: string | null;
   documentCount?: number;
+  inspectionProgress?: InspectionProgress | null;
+}
+
+function ProgressRing({ score, size = 36 }: { score: number; size?: number }) {
+  const strokeWidth = 3;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+  const color = score >= 75 ? "#22c55e" : score >= 40 ? "#eab308" : score >= 15 ? "#f97316" : "#ef4444";
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-muted/20" />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color }}>{score}%</span>
+    </div>
+  );
 }
 
 export default function ClaimCard({
@@ -39,6 +71,7 @@ export default function ClaimCard({
   status,
   dateOfLoss,
   documentCount = 0,
+  inspectionProgress,
 }: ClaimCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
@@ -150,6 +183,35 @@ export default function ClaimCard({
               <span className="line-clamp-2 leading-snug">{address || "No address"}</span>
             </div>
           </div>
+
+          {inspectionProgress && (
+            <div className="flex items-center gap-3 py-2 px-2 bg-muted/30 rounded-md">
+              <ProgressRing score={inspectionProgress.completenessScore} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-foreground">
+                    Phase {inspectionProgress.currentPhase}/{inspectionProgress.totalPhases}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {inspectionProgress.phaseName}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {inspectionProgress.completedRooms}/{inspectionProgress.totalRooms} rooms
+                  {inspectionProgress.damageCount > 0 && <> &middot; {inspectionProgress.damageCount} damages</>}
+                  {inspectionProgress.photoCount > 0 && <> &middot; {inspectionProgress.photoCount} photos</>}
+                </div>
+                {inspectionProgress.missing.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 truncate">
+                      {inspectionProgress.missing.join(" · ")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-3 border-t border-border/50">
             <div className="flex items-center gap-3">

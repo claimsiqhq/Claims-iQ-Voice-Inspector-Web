@@ -162,13 +162,69 @@ async function ensurePolicyRules(claimId: number, userId?: string) {
   return created;
 }
 
-async function enrichClaimsWithDocCounts(claims: any[]) {
+async function enrichClaimsWithProgress(claims: any[]) {
   return Promise.all(claims.map(async (claim) => {
     try {
-      const docs = await storage.getDocuments(claim.id);
-      return { ...claim, documentCount: docs.length };
+      const [docs, sessions] = await Promise.all([
+        storage.getDocuments(claim.id),
+        storage.getInspectionSessions(claim.id),
+      ]);
+      const activeSession = sessions.find(s => s.status === "active" || s.status === "in_progress") || sessions[0];
+
+      let inspectionProgress = null;
+      if (activeSession) {
+        const [rooms, damages, lineItems, photos] = await Promise.all([
+          storage.getRooms(activeSession.id),
+          storage.getDamagesForSession(activeSession.id),
+          storage.getLineItems(activeSession.id),
+          storage.getPhotos(activeSession.id),
+        ]);
+        const currentPhase = (activeSession as any).currentPhase || 1;
+        const totalPhases = 8;
+        const completedRooms = rooms.filter(r => r.status === "complete").length;
+        const totalRooms = rooms.length;
+
+        const completedPhases = currentPhase - 1;
+        const phaseComponent = (completedPhases / totalPhases) * 50;
+        const roomRatio = totalRooms > 0 ? completedRooms / totalRooms : 0;
+        const roomComponent = roomRatio * 30;
+        let docScore = 0;
+        if (totalRooms > 0) {
+          const damageDepth = Math.min((damages.length / totalRooms) / 2, 1);
+          const itemDepth = Math.min((lineItems.length / totalRooms) / 5, 1);
+          const photoDepth = Math.min((photos.length / totalRooms) / 2, 1);
+          docScore = (damageDepth * 0.3) + (itemDepth * 0.4) + (photoDepth * 0.3);
+        }
+        const docComponent = docScore * 20;
+        const rawScore = phaseComponent + roomComponent + docComponent;
+        const phaseCap = ((currentPhase / totalPhases) * 100) + 15;
+        const completenessScore = Math.min(Math.round(rawScore), Math.round(phaseCap));
+
+        const PHASE_NAMES = ["", "Pre-Inspection", "Setup", "Exterior", "Interior", "Moisture", "Evidence", "Estimate", "Finalize"];
+        const missing: string[] = [];
+        if (rooms.length === 0) missing.push("Add rooms");
+        if (damages.length === 0) missing.push("Document damages");
+        if (lineItems.length === 0) missing.push("Add line items");
+        if (photos.length === 0) missing.push("Take photos");
+
+        inspectionProgress = {
+          sessionId: activeSession.id,
+          completenessScore,
+          currentPhase,
+          phaseName: PHASE_NAMES[currentPhase] || "Unknown",
+          totalPhases,
+          totalRooms,
+          completedRooms,
+          damageCount: damages.length,
+          lineItemCount: lineItems.length,
+          photoCount: photos.length,
+          missing: missing.slice(0, 2),
+        };
+      }
+
+      return { ...claim, documentCount: docs.length, inspectionProgress };
     } catch {
-      return { ...claim, documentCount: 0 };
+      return { ...claim, documentCount: 0, inspectionProgress: null };
     }
   }));
 }
@@ -179,7 +235,7 @@ export function claimsRouter(): Router {
   router.get("/", authenticateRequest, async (req, res) => {
     try {
       const claims = await storage.getClaims();
-      const enriched = await enrichClaimsWithDocCounts(claims);
+      const enriched = await enrichClaimsWithProgress(claims);
       res.json(enriched);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
@@ -191,7 +247,7 @@ export function claimsRouter(): Router {
     try {
       if (req.user) {
         const userClaims = await storage.getClaimsForUser(req.user.id);
-        const enriched = await enrichClaimsWithDocCounts(userClaims);
+        const enriched = await enrichClaimsWithProgress(userClaims);
         return res.json(enriched);
       }
       res.json([]);
