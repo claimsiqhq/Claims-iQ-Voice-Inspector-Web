@@ -424,14 +424,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   }, [sessionId, addStructureName, addStructureType, getAuthHeaders, queryClient]);
 
   const handleDeleteStructure = useCallback(async (structureId: number, structureName: string) => {
-    if (!sessionId || !window.confirm(`Delete structure "${structureName}"? This will fail if it has any rooms.`)) return;
+    if (!sessionId || !window.confirm(`Delete structure "${structureName}"? This will also remove all rooms, openings, and related data inside it.`)) return;
     setDeletingStructureId(structureId);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/inspection/${sessionId}/structures/${structureId}`, { method: "DELETE", headers });
+      const res = await fetch(`/api/inspection/${sessionId}/structures/${structureId}?cascade=true`, { method: "DELETE", headers });
       if (res.status === 400) {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Cannot delete: structure has rooms.");
+        alert(data.message || "Cannot delete structure.");
         return;
       }
       if (!res.ok) return;
