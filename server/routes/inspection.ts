@@ -292,7 +292,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
   app.delete("/api/inspection/:sessionId/structures/:structureId", authenticateRequest, async (req, res) => {
     try {
       const structureId = parseInt(param(req.params.structureId));
-      await storage.deleteStructure(structureId);
+      const cascade = req.query.cascade === "true" || req.query.cascade === "1";
+      await storage.deleteStructure(structureId, cascade);
       res.status(204).send();
     } catch (error: any) {
       if (error?.message?.includes("Cannot delete structure")) {

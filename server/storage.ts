@@ -557,10 +557,15 @@ export class DatabaseStorage implements IStorage {
     return structure;
   }
 
-  async deleteStructure(structureId: number): Promise<void> {
+  async deleteStructure(structureId: number, cascade = false): Promise<void> {
     const rooms = await this.getRoomsForStructure(structureId);
-    if (rooms.length > 0) {
+    if (rooms.length > 0 && !cascade) {
       throw new Error("Cannot delete structure that has rooms. Delete or move the rooms first.");
+    }
+    if (rooms.length > 0 && cascade) {
+      for (const room of rooms) {
+        await this.deleteRoom(room.id);
+      }
     }
     await db.delete(structures).where(eq(structures.id, structureId));
   }

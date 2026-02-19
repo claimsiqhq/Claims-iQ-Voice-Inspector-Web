@@ -6,6 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
+import { useToast } from "@/hooks/use-toast";
 import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers, DollarSign, ChevronDown, ChevronUp, Zap, Ruler } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview, type RoomCostData } from "./SketchRenderer";
@@ -120,6 +121,7 @@ export default function SketchEditor({
   getAuthHeaders,
 }: SketchEditorProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("interior");
@@ -1129,22 +1131,28 @@ export default function SketchEditor({
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           name: `${ELEVATION_LABELS[side]} Elevation`,
-          structure: structureName,
+          structure: structureName || "Main Dwelling",
           viewType: "elevation",
           roomType: ELEVATION_ROOM_TYPES[side],
           dimensions: { length: 40, height: 10 },
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
         onRoomUpdate?.();
         markSaved();
+        toast({ title: "Elevation created", description: `${ELEVATION_LABELS[side]} Elevation added to ${structureName || "Main Dwelling"}.` });
+      } else {
+        toast({ title: "Could not create elevation", description: data.message || data.errors?.structure?.[0] || "Please try again.", variant: "destructive" });
+        setSaveStatus("idle");
       }
     } catch (e) {
       logger.error("SketchEditor", "Create elevation error", e);
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to create elevation", variant: "destructive" });
       setSaveStatus("idle");
     }
-  }, [sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]);
+  }, [sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved, toast]);
 
   const getElevSvgPoint = useCallback(
     (clientX: number, clientY: number) => {
