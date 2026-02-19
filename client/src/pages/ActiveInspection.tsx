@@ -2976,23 +2976,30 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   <Building2 size={14} />
                   Add structure
                 </Button>
-                <div className="flex bg-slate-100 rounded-lg p-0.5" data-testid="sketch-mode-toggle">
-                  <button
-                    onClick={() => setSketchEditMode(false)}
-                    className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
-                      !sketchEditMode ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-                    data-testid="button-sketch-view-mode"
-                  >
-                    View
-                  </button>
-                  <button
-                    onClick={() => setSketchEditMode(true)}
-                    className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
-                      sketchEditMode ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}
-                    data-testid="button-sketch-edit-mode"
-                  >
-                    Edit
-                  </button>
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-slate-100 rounded-lg p-0.5" data-testid="sketch-mode-toggle">
+                    <button
+                      onClick={() => setSketchEditMode(false)}
+                      className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                        !sketchEditMode ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                      data-testid="button-sketch-view-mode"
+                    >
+                      View
+                    </button>
+                    <button
+                      onClick={() => setSketchEditMode(true)}
+                      className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                        sketchEditMode ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}
+                      data-testid="button-sketch-edit-mode"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {sketchEditMode && (
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                      Drag corners to resize · Add doors/windows from toolbar
+                    </span>
+                  )}
                 </div>
                 <Button
                   size="sm"
@@ -3018,7 +3025,6 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   }}
                   onRoomUpdate={() => refreshRooms()}
                   onAddRoom={() => setShowAddRoom(true)}
-                  onEditRoom={(roomId) => setEditingRoomId(roomId)}
                   getAuthHeaders={getAuthHeaders}
                   className="flex-1 rounded-none border-0"
                 />
@@ -3033,7 +3039,11 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                         setCurrentRoomId(roomId);
                         setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                       }}
-                      onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                      onEditRoom={(roomId) => {
+                        setCurrentRoomId(roomId);
+                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setSketchEditMode(true);
+                      }}
                       onAddRoom={() => setShowAddRoom(true)}
                       onStructureChange={(name) => setCurrentStructure(name)}
                       expanded

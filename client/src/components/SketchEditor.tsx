@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers, DollarSign, ChevronDown, ChevronUp, Zap } from "lucide-react";
+import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers, DollarSign, ChevronDown, ChevronUp, Zap, Ruler } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview, type RoomCostData } from "./SketchRenderer";
 import PropertySketch from "./PropertySketch";
@@ -894,24 +894,34 @@ export default function SketchEditor({
     ]
   );
 
+  const lastRoomClickRef = useRef<{ roomId: number; time: number } | null>(null);
+
   const handleRoomPointerDown = useCallback(
     (roomId: number) => {
       if (tool === "select") {
+        const now = Date.now();
+        const isDoubleClick = lastRoomClickRef.current?.roomId === roomId && now - lastRoomClickRef.current.time < 400;
+        lastRoomClickRef.current = { roomId, time: now };
+
         setSelectedRoomId(roomId);
         setSelectedOpeningId(null);
         setSelectedAnnotationId(null);
         setOpeningEditor(null);
-        setAnnotationEditor(null);
-        const room = interiorRooms.find((r) => r.id === roomId);
-        const dims = room?.dimensions as { length?: number; width?: number; height?: number } | undefined;
-        setRoomInspector(room ? {
-          roomId,
-          name: room.name,
-          length: String(dims?.length ?? ""),
-          width: String(dims?.width ?? ""),
-          height: String(dims?.height ?? 8),
-        } : null);
         onRoomSelect?.(roomId);
+
+        if (isDoubleClick) {
+          const room = interiorRooms.find((r) => r.id === roomId);
+          const dims = room?.dimensions as { length?: number; width?: number; height?: number } | undefined;
+          setRoomInspector(room ? {
+            roomId,
+            name: room.name,
+            length: String(dims?.length ?? ""),
+            width: String(dims?.width ?? ""),
+            height: String(dims?.height ?? 8),
+          } : null);
+        } else {
+          setRoomInspector(null);
+        }
       }
     },
     [tool, interiorRooms, onRoomSelect]
@@ -1308,24 +1318,14 @@ export default function SketchEditor({
   }, [viewMode, activeElevation, activeElevRoom?.id]);
 
   const hasAnyRooms = structureRooms.length > 0;
-  const hasEditableRooms = interiorRooms.length > 0 || elevationRooms.length > 0;
+  const hasInteriorRooms = interiorRooms.length > 0;
+  const hasElevationRooms = elevationRooms.length > 0;
 
   if (!hasAnyRooms) {
     return (
       <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
         <div className="flex items-center justify-center p-8 text-slate-500 text-sm">
           No rooms yet. Add rooms first.
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasEditableRooms) {
-    return (
-      <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
-        <div className="flex flex-col items-center justify-center p-8 text-slate-500 text-sm gap-2 text-center">
-          <p>This structure has {structureRooms.length} roof or exterior area{structureRooms.length !== 1 ? "s" : ""}.</p>
-          <p className="text-xs">The sketch editor supports interior rooms and elevations. Add interior rooms via the voice session, or switch to a structure that has them.</p>
         </div>
       </div>
     );
@@ -1412,6 +1412,26 @@ export default function SketchEditor({
           >
             <Square className="w-3.5 h-3.5" />
           </button>
+          {!isElevView && selectedRoomId && (
+            <button
+              onClick={() => {
+                const room = interiorRooms.find((r) => r.id === selectedRoomId);
+                const dims = room?.dimensions as { length?: number; width?: number; height?: number } | undefined;
+                setRoomInspector(room ? {
+                  roomId: selectedRoomId,
+                  name: room.name,
+                  length: String(dims?.length ?? ""),
+                  width: String(dims?.width ?? ""),
+                  height: String(dims?.height ?? 8),
+                } : null);
+              }}
+              className={cn("p-1.5 rounded transition-colors", roomInspector ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
+              title="Edit dimensions (or double-click room)"
+              data-testid="tool-edit-dimensions"
+            >
+              <Ruler className="w-3.5 h-3.5" />
+            </button>
+          )}
           {!isElevView && (
             <button
               onClick={() => setTool("add_damage")}
@@ -1566,10 +1586,10 @@ export default function SketchEditor({
         </div>
       )}
 
-      {/* Room inspector */}
+      {/* Room inspector (double-click room or click ruler icon to open) */}
       {roomInspector && selectedRoomId === roomInspector.roomId && (
         <div className="absolute top-14 left-3 z-10 bg-white border border-slate-200 rounded-lg shadow-lg p-3 min-w-[160px]" onClick={(e) => e.stopPropagation()}>
-          <div className="text-xs font-semibold text-slate-600 mb-2">Room</div>
+          <div className="text-xs font-semibold text-slate-600 mb-2">Dimensions</div>
           <input type="text" value={roomInspector.name} onChange={(e) => setRoomInspector((r) => r ? { ...r, name: e.target.value } : null)} className="w-full px-2 py-1 text-sm border rounded mb-2" />
           <div className="flex gap-1 mb-2">
             <input type="number" value={roomInspector.length} onChange={(e) => setRoomInspector((r) => r ? { ...r, length: e.target.value } : null)} placeholder="L" className="w-14 px-1 py-1 text-xs border rounded" />
