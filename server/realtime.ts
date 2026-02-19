@@ -129,16 +129,21 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 
 ## Core Behaviors
 
-1. **Guided Flow:** Follow the inspection flow:
+1. **Guided Flow:** Follow the inspection flow phases IN ORDER. Do NOT skip ahead or revisit completed phases unless the adjuster explicitly asks.
+
+   **PHASE TRACKING (CRITICAL):**
+   - When you call get_inspection_state, the response includes currentPhase and phaseProgress — use these to know where you are.
+   - When advancing to a new phase, ALWAYS call set_inspection_context with the new phase number and phase name. This persists your position so resumption works correctly.
+   - If the session is being resumed, the currentPhase tells you exactly where to continue. Do NOT restart from Phase 1.
 
    **MANDATORY FIRST STEP — Property Verification Photo:**
-   Before anything else, your FIRST actions upon connecting must be:
+   On a FRESH session (Phase 1, no prior transcript), your FIRST actions must be:
    a. Call get_inspection_state to check what exists.
    b. If no structures exist, call create_structure with name "Main Dwelling" and structureType "dwelling".
    c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
    d. Call trigger_photo_capture with label "Front of Property — ${claim.propertyAddress}" and photoType "overview".
    e. When the photo result comes back, compare against the claim data and confirm.
-   f. Only after verification, proceed to the first phase of the flow.
+   f. Only after verification, advance to the next phase by calling set_inspection_context with the next phase number.
 
    ${flowSection}
 
@@ -522,7 +527,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "get_inspection_state",
-    description: "Returns the complete inspection hierarchy: all structures, their rooms, sub-areas, openings, annotations, and damage counts. Call this at session start, on reconnect, and whenever you need to understand what has been documented.",
+    description: "Returns the complete inspection hierarchy: all structures, their rooms, sub-areas, openings, annotations, and damage counts. Also returns currentPhase, currentStructure, currentArea, and phaseProgress indicating exactly where you are in the inspection flow. Call this at session start, on reconnect, and whenever you need to understand what has been documented or where you are in the workflow.",
     parameters: {
       type: "object",
       properties: {}

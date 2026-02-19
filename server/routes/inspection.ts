@@ -15,6 +15,9 @@ import { calculateItemDepreciation } from "../estimateEngine";
 
 const sessionUpdateSchema = z.object({
   currentPhase: z.number().int().positive().optional(),
+  completedPhases: z.array(z.number().int().positive()).optional(),
+  activeFlowId: z.number().int().positive().nullable().optional(),
+  currentStepIndex: z.number().int().min(0).optional(),
   currentRoomId: z.number().int().positive().nullable().optional(),
   currentStructure: z.string().min(1).optional(),
   status: z.string().min(1).optional(),

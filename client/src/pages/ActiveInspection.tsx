@@ -573,13 +573,20 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           let phaseValidationData: any = null;
           if (sessionId) {
             const headers = await getAuthHeaders();
+            const patchBody: any = {
+              currentPhase: args.phase,
+              currentStructure: args.structure,
+              currentStepIndex: args.phase ? (args.phase - 1) : undefined,
+            };
+            if (args.phase && args.phase > prevPhase) {
+              const completed: number[] = [];
+              for (let i = 1; i < args.phase; i++) completed.push(i);
+              patchBody.completedPhases = completed;
+            }
             await fetch(`/api/inspection/${sessionId}`, {
               method: "PATCH",
               headers,
-              body: JSON.stringify({
-                currentPhase: args.phase,
-                currentStructure: args.structure,
-              }),
+              body: JSON.stringify(patchBody),
             });
 
             if (args.phase && args.phase !== prevPhase) {
@@ -650,10 +657,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const hierarchy = await hierRes.json();
           const sessionData = sessionRes.ok ? await sessionRes.json() : null;
           await refreshRooms();
+          const sessionPhaseNum = sessionData?.session?.currentPhase || currentPhase;
+          const sessionCompleted: number[] = sessionData?.session?.completedPhases || [];
           result = {
             success: true,
             ...hierarchy,
-            currentPhase: sessionData?.session?.currentPhase || currentPhase,
+            currentPhase: sessionPhaseNum,
+            completedPhases: sessionCompleted,
+            currentStepIndex: sessionData?.session?.currentStepIndex || 0,
             currentStructure: sessionData?.session?.currentStructure || currentStructure,
             currentArea: currentArea || null,
             summary: {
@@ -662,7 +673,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               totalSubAreas: hierarchy.structures?.reduce((sum: number, s: any) =>
                 sum + (s.rooms?.reduce((rsum: number, r: any) => rsum + (r.subAreas?.length || 0), 0) || 0), 0) || 0,
             },
-            phaseProgress: `You are currently on Phase ${sessionData?.session?.currentPhase || currentPhase}. All phases before this are complete. Continue from the current phase — do NOT revisit completed phases unless the adjuster asks.`,
+            phaseProgress: `You are currently on Phase ${sessionPhaseNum}.${sessionCompleted.length > 0 ? ` Phases ${sessionCompleted.join(", ")} are complete.` : ""} Continue from the current phase — do NOT revisit completed phases unless the adjuster asks.`,
           };
           break;
         }
@@ -1623,6 +1634,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }
 
       const previousTranscript: string | null = tokenData.transcriptSummary || null;
+      const serverPhase: number = tokenData.sessionPhase || currentPhase || 1;
+      const completedPhasesFromServer: number[] = tokenData.completedPhases || [];
+      const serverStructure: string = tokenData.sessionStructure || currentStructure || "Main Dwelling";
+      const activeFlow: any = tokenData.activeFlow || null;
+      const flowStepNames: string[] = activeFlow?.steps?.map((s: any) => `Phase ${s.phase}: ${s.name}`) || [];
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -1650,19 +1666,48 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         if (!hasGreetedRef.current) {
           hasGreetedRef.current = true;
+          const flowContext = flowStepNames.length > 0
+            ? `\n\nINSPECTION FLOW (${activeFlow.name} — ${activeFlow.perilType}):\n${flowStepNames.join("\n")}\n`
+            : "";
+
           if (previousTranscript) {
+            const completedInfo = completedPhasesFromServer.length > 0
+              ? `\nCOMPLETED PHASES: ${completedPhasesFromServer.join(", ")} (these are finished — do NOT repeat them).`
+              : "";
+            const resumeInstructions = `You are RESUMING an inspection that was previously interrupted.
+
+SESSION STATE: You were on Phase ${serverPhase}, working on structure "${serverStructure}".${completedInfo}${flowContext}
+PREVIOUS TRANSCRIPT (last portion):
+---
+${previousTranscript}
+---
+
+Execute these steps in order:
+1) Silently call get_inspection_state to understand current progress and confirm the phase.
+2) Based on the inspection state and transcript, determine exactly where the adjuster left off — the specific phase, structure, room, and what was being documented.
+3) Greet the adjuster: "Welcome back. Last time we were on Phase ${serverPhase}, working on [specific area/room]. Shall we pick up where we left off?"
+4) Wait for the adjuster to confirm before proceeding.
+5) If they confirm, briefly explain what you'll be continuing with (the current phase name and what's left), then resume from that exact point.
+6) If they want to go somewhere else, accommodate their request.
+7) Do NOT restart from Phase 1 or re-do completed phases (${completedPhasesFromServer.length > 0 ? `Phases ${completedPhasesFromServer.join(", ")} are done` : "none completed yet"}) unless explicitly asked.`;
+
             dc.send(JSON.stringify({
               type: "response.create",
-              response: {
-                instructions: `You are RESUMING an inspection that was previously interrupted. Here is the conversation transcript from the previous session:\n\n---\n${previousTranscript}\n---\n\nExecute these steps in order: 1) Silently call get_inspection_state to understand current progress. 2) Based on the transcript and inspection state, determine exactly where the adjuster left off. 3) Greet the adjuster briefly, acknowledge this is a resumption, tell them where you're picking back up (e.g., "Welcome back. We left off inspecting the master bedroom. Let's continue from there."). Keep it to 1-2 sentences. 4) Continue the inspection from that point — do NOT restart from the beginning or re-do completed steps.`,
-              },
+              response: { instructions: resumeInstructions },
             }));
           } else {
+            const freshInstructions = `Do NOT introduce yourself or make small talk.${flowContext}
+Execute these steps in order:
+1) Silently call get_inspection_state.
+2) If no structures exist, silently call create_structure for 'Main Dwelling'.
+3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state Phase 1 of the inspection flow.${flowStepNames.length > 0 ? ` The flow is "${activeFlow.name}" with ${flowStepNames.length} phases.` : ""}
+4) Explain what you'll be doing in Phase 1 in one sentence.
+5) Then call trigger_photo_capture for the property verification photo.
+6) Follow the inspection flow phases in order. When completing each phase, call set_inspection_context to advance to the next phase.`;
+
             dc.send(JSON.stringify({
               type: "response.create",
-              response: {
-                instructions: "Do NOT introduce yourself or make small talk. Execute these steps in order: 1) Silently call get_inspection_state. 2) If no structures exist, silently call create_structure for 'Main Dwelling'. 3) Only AFTER the tools complete, greet the adjuster with a brief welcome and state where the inspection will begin. Keep the greeting to one or two sentences. 4) Then call trigger_photo_capture for the property verification photo.",
-              },
+              response: { instructions: freshInstructions },
             }));
           }
         }

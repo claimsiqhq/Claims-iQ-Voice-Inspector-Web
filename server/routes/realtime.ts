@@ -90,7 +90,11 @@ export function realtimeRouter() {
       logger.voiceSession("created", { claimId, sessionId, voiceModel, flowId: inspectionFlow?.id });
 
       if (sessionId) {
-        await storage.updateSession(sessionId, { voiceSessionId: data.id });
+        const sessionUpdates: any = { voiceSessionId: data.id };
+        if (inspectionFlow?.id) {
+          sessionUpdates.activeFlowId = inspectionFlow.id;
+        }
+        await storage.updateSession(sessionId, sessionUpdates);
       }
 
       let transcriptSummary: string | null = null;
@@ -121,6 +125,7 @@ export function realtimeRouter() {
         sessionId,
         transcriptSummary,
         sessionPhase: session?.currentPhase || 1,
+        completedPhases: session?.completedPhases || [],
         sessionStructure: session?.currentStructure || "Main Dwelling",
         activeFlow: inspectionFlow ? {
           id: inspectionFlow.id,
