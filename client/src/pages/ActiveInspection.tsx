@@ -1000,12 +1000,20 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (!openingRoom) {
             const availableNames = freshRooms.map(r => r.name);
             result = toolValidationError(
-              `Room "${args.roomName}" not found.`,
-              { roomName: args.roomName, availableRooms: availableNames },
-              "Use an existing roomName from availableRooms or call create_room first.",
+              `Room "${args.roomName}" not found in this inspection.`,
+              { roomName: args.roomName, availableRooms: availableNames, currentRoomId },
+              `Available rooms: ${availableNames.join(", ") || "none yet"}. Call create_room("${args.roomName}", "interior", "Main Dwelling") to create it, or use one of the available rooms.`,
             );
             break;
           }
+
+          logger.info("VoiceTool", "add_opening room resolution", {
+            call_id,
+            requestedRoomName: args.roomName,
+            resolvedRoomId: openingRoom.id,
+            resolvedRoomName: openingRoom.name,
+            usedFallback: !openingRoomNameArg,
+          });
 
           const openType = (args.openingType || "").toLowerCase();
           const defaultW = openType.includes("overhead") || openType.includes("garage") ? 16
