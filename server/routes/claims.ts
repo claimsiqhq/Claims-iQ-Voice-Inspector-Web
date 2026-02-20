@@ -163,6 +163,42 @@ async function ensurePolicyRules(claimId: number, userId?: string) {
   return created;
 }
 
+async function generateAndPersistBriefing(claimId: number) {
+  const exts = await storage.getExtractions(claimId);
+  const fnolExt = exts.find((e) => e.documentType === "fnol");
+  const policyExt = exts.find((e) => e.documentType === "policy");
+  const endorsementsExt = exts.find((e) => e.documentType === "endorsements");
+
+  if (!fnolExt || !policyExt || !endorsementsExt) {
+    throw new Error("All 3 extractions required before generating briefing");
+  }
+
+  const briefingData = await generateBriefing(
+    fnolExt.extractedData,
+    policyExt.extractedData,
+    endorsementsExt.extractedData
+  );
+
+  const briefingFields = {
+    claimId,
+    propertyProfile: briefingData.propertyProfile,
+    coverageSnapshot: briefingData.coverageSnapshot,
+    perilAnalysis: briefingData.perilAnalysis,
+    endorsementImpacts: briefingData.endorsementImpacts,
+    inspectionChecklist: briefingData.inspectionChecklist,
+    dutiesAfterLoss: briefingData.dutiesAfterLoss,
+    redFlags: briefingData.redFlags,
+  };
+
+  const existing = await storage.getBriefing(claimId);
+  const briefing = existing
+    ? await storage.updateBriefing(claimId, briefingFields)
+    : await storage.createBriefing(briefingFields);
+
+  await storage.updateClaimStatus(claimId, "briefing_ready");
+  return briefing;
+}
+
 async function enrichClaimsWithProgress(claims: any[]) {
   return Promise.all(claims.map(async (claim) => {
     try {
@@ -667,6 +703,17 @@ export function claimsRouter(): Router {
       const allParsed = allDocs.length >= 3 && allDocs.every(d => d.status === "parsed");
       if (allParsed) {
         await storage.updateClaimStatus(claimId, "documents_uploaded");
+        const userSettings = await storage.getUserSettings(req.user!.id);
+        const autoGenerateBriefing =
+          (userSettings as Record<string, unknown> | null)?.autoGenerateBriefing !== false;
+        if (autoGenerateBriefing) {
+          try {
+            await generateAndPersistBriefing(claimId);
+          } catch (briefingError: unknown) {
+            const message = briefingError instanceof Error ? briefingError.message : "Unknown error";
+            logger.warn("Briefing", "Auto-generation skipped", { claimId, message });
+          }
+        }
       }
 
       res.json({ extraction, confidence: extractResult.confidence });
@@ -775,43 +822,12 @@ export function claimsRouter(): Router {
   router.post("/:id/briefing/generate", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(param(req.params.id));
-      const exts = await storage.getExtractions(claimId);
-
-      const fnolExt = exts.find(e => e.documentType === "fnol");
-      const policyExt = exts.find(e => e.documentType === "policy");
-      const endorsementsExt = exts.find(e => e.documentType === "endorsements");
-
-      if (!fnolExt || !policyExt || !endorsementsExt) {
-        return res.status(400).json({ message: "All 3 extractions required before generating briefing" });
-      }
-
-      const briefingData = await generateBriefing(
-        fnolExt.extractedData,
-        policyExt.extractedData,
-        endorsementsExt.extractedData
-      );
-
-      const existing = await storage.getBriefing(claimId);
-      const briefingFields = {
-        claimId,
-        propertyProfile: briefingData.propertyProfile,
-        coverageSnapshot: briefingData.coverageSnapshot,
-        perilAnalysis: briefingData.perilAnalysis,
-        endorsementImpacts: briefingData.endorsementImpacts,
-        inspectionChecklist: briefingData.inspectionChecklist,
-        dutiesAfterLoss: briefingData.dutiesAfterLoss,
-        redFlags: briefingData.redFlags,
-      };
-      let briefing;
-      if (existing) {
-        briefing = await storage.updateBriefing(claimId, briefingFields);
-      } else {
-        briefing = await storage.createBriefing(briefingFields);
-      }
-
-      await storage.updateClaimStatus(claimId, "briefing_ready");
+      const briefing = await generateAndPersistBriefing(claimId);
       res.json(briefing);
     } catch (error: any) {
+      if (error instanceof Error && error.message.includes("All 3 extractions required")) {
+        return res.status(400).json({ message: error.message });
+      }
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
     }

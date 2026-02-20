@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { useSettings } from "@/hooks/use-settings";
+import { SettingsContextProvider, useSettings } from "@/hooks/use-settings";
 
-export function SettingsProvider({ children }: { children: React.ReactNode }) {
+function SettingsEffects() {
   const { settings, loaded } = useSettings();
 
   useEffect(() => {
@@ -42,5 +42,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("compact-mode", settings.compactMode);
   }, [settings.compactMode, loaded]);
 
-  return <>{children}</>;
+  return null;
+}
+
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <SettingsContextProvider>
+      <SettingsEffects />
+      {children}
+    </SettingsContextProvider>
+  );
 }

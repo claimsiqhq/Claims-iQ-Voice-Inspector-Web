@@ -371,13 +371,17 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
       const claim = await storage.getClaim(session.claimId);
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const requirePhotoVerification =
+        (userSettings as Record<string, unknown> | null)?.requirePhotoVerification !== false;
       const currentPhase = req.query.phase ? parseInt(req.query.phase as string) : (session.currentPhase || 1);
       const { validatePhaseTransition } = await import("../phaseValidation");
       const validation = await validatePhaseTransition(
         storage,
         sessionId,
         currentPhase,
-        claim?.perilType || undefined
+        claim?.perilType || undefined,
+        { requirePhotoVerification }
       );
       res.json({
         currentPhase,
@@ -1171,7 +1175,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
       const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource, age, lifeExpectancy, depreciationPercentage } = parsed.data;
-      let wf = wasteFactor ?? 0;
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const defaultWasteFactor =
+        typeof (userSettings as Record<string, unknown> | null)?.defaultWasteFactor === "number"
+          ? ((userSettings as Record<string, unknown>).defaultWasteFactor as number)
+          : 0;
+      let wf = wasteFactor ?? defaultWasteFactor;
       const qty = quantity || 1;
       let up = unitPrice || 0;
       let finalDescription = description;
@@ -1185,7 +1194,11 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           catalogMatch = true;
           finalDescription = description || catalogItem.description || xactCode;
           finalUnit = unit || catalogItem.unit;
-          wf = wasteFactor ?? Math.round((catalogItem.defaultWasteFactor ?? 0));
+          wf = wasteFactor ?? (
+            catalogItem.defaultWasteFactor != null
+              ? Math.round(catalogItem.defaultWasteFactor)
+              : defaultWasteFactor
+          );
 
           let regionalPrice = await storage.getRegionalPrice(xactCode, "FLFM8X_NOV22", "install");
           if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL", "install");
@@ -1648,6 +1661,11 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
       const appliedItems: unknown[] = [];
       const suggestedItems: unknown[] = [];
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const defaultWasteFactor =
+        typeof (userSettings as Record<string, unknown> | null)?.defaultWasteFactor === "number"
+          ? ((userSettings as Record<string, unknown>).defaultWasteFactor as number)
+          : null;
 
       for (const templateItem of template.items) {
         if (includeAutoOnly && !templateItem.autoInclude) {
@@ -1677,7 +1695,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           provenance: "template",
           coverageType: (catalogItem.coverageType as string) || "A",
           activityType: (catalogItem.activityType as string) || "replace",
-          wasteFactor: catalogItem.defaultWasteFactor ?? null,
+          wasteFactor: catalogItem.defaultWasteFactor ?? defaultWasteFactor,
           status: "active",
           parentScopeItemId: null,
         });
@@ -1962,7 +1980,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
   app.post("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
-      const { roomId, damageId, imageBase64, autoTag, caption, photoType } = req.body;
+      const { roomId, damageId, imageBase64, autoTag, caption, photoType, captureMetadata } = req.body;
       if (!imageBase64) {
         return res.status(400).json({ message: "imageBase64 is required" });
       }
@@ -1999,6 +2017,11 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(502).json({ message: "Photo upload failed" });
       }
 
+      const normalizedCaptureMetadata =
+        captureMetadata && typeof captureMetadata === "object" && !Array.isArray(captureMetadata)
+          ? (captureMetadata as Record<string, unknown>)
+          : null;
+
       const photo = await storage.createPhoto({
         sessionId,
         roomId: roomId || null,
@@ -2007,6 +2030,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         autoTag: tag,
         caption: caption || null,
         photoType: photoType || null,
+        annotations: normalizedCaptureMetadata ? { captureMetadata: normalizedCaptureMetadata } : null,
       });
 
       if (roomId) {
@@ -2807,7 +2831,7 @@ Respond in JSON format:
 
       // Load user export preferences
       const userSettings = await storage.getUserSettings(req.user!.id);
-      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+      const exportPrefs = (userSettings as Record<string, any> | null) || {};
 
       const claim = await storage.getClaim(session.claimId);
       const rooms = await storage.getRooms(sessionId);
@@ -3024,7 +3048,7 @@ Respond in JSON format:
       const photos = await storage.getPhotos(sessionId);
 
       const userSettings = await storage.getUserSettings(req.user!.id);
-      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+      const exportPrefs = (userSettings as Record<string, any> | null) || {};
       const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
 
       const { generatePhotoReportPDF } = await import("../photoReportGenerator");
@@ -3063,7 +3087,7 @@ Respond in JSON format:
       const photos = await storage.getPhotos(sessionId);
 
       const userSettings = await storage.getUserSettings(req.user!.id);
-      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+      const exportPrefs = (userSettings as Record<string, any> | null) || {};
       const inspectorName = (await storage.getUser(req.user!.id))?.fullName || "Claims IQ Agent";
 
       const { generatePhotoReportDOCX } = await import("../photoReportGenerator");

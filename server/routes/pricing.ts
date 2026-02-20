@@ -5,6 +5,20 @@ import { logger } from "../logger";
 import { param } from "../utils";
 import { calculateLineItemPrice, calculateEstimateTotals, validateEstimate } from "../estimateEngine";
 
+function normalizeRegionId(regionId: unknown): string | undefined {
+  if (typeof regionId !== "string") return undefined;
+  const trimmed = regionId.trim();
+  if (!trimmed) return undefined;
+  return trimmed.toUpperCase().replace(/-/g, "_");
+}
+
+function normalizePercentToDecimal(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return value > 1 ? value / 100 : value;
+}
+
 export function pricingRouter() {
   const router = Router();
 
@@ -51,23 +65,23 @@ export function pricingRouter() {
     try {
       const { items, regionId, taxRate, overheadPercent, profitPercent } = req.body;
 
-      let effectiveRegion = regionId;
+      let effectiveRegion = normalizeRegionId(regionId);
       let effectiveTaxRate = taxRate;
       let effectiveOverhead = overheadPercent;
       let effectiveProfit = profitPercent;
 
       if (!effectiveRegion || effectiveTaxRate == null || effectiveOverhead == null || effectiveProfit == null) {
         const userSettings = await storage.getUserSettings(req.user!.id);
-        const s = userSettings?.settings as Record<string, any> | undefined;
+        const s = userSettings as Record<string, unknown> | null;
         if (s) {
-          if (!effectiveRegion) effectiveRegion = s.defaultRegion || 'US_NATIONAL';
-          if (effectiveTaxRate == null) effectiveTaxRate = s.defaultTaxRate ?? 0.08;
-          if (effectiveOverhead == null) effectiveOverhead = s.defaultOverheadPercent != null ? s.defaultOverheadPercent / 100 : undefined;
-          if (effectiveProfit == null) effectiveProfit = s.defaultProfitPercent != null ? s.defaultProfitPercent / 100 : undefined;
+          if (!effectiveRegion) effectiveRegion = normalizeRegionId(s.defaultRegion) || "US_NATIONAL";
+          if (effectiveTaxRate == null) effectiveTaxRate = normalizePercentToDecimal(s.defaultTaxRate) ?? 0.08;
+          if (effectiveOverhead == null) effectiveOverhead = normalizePercentToDecimal(s.defaultOverheadPercent);
+          if (effectiveProfit == null) effectiveProfit = normalizePercentToDecimal(s.defaultProfitPercent);
         }
       }
 
-      effectiveRegion = effectiveRegion || 'US_NATIONAL';
+      effectiveRegion = effectiveRegion || "US_NATIONAL";
       effectiveTaxRate = effectiveTaxRate ?? 0.08;
 
       if (!items || !Array.isArray(items)) {

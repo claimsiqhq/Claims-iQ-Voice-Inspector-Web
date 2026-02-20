@@ -68,6 +68,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
   const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const previousUnreadCountRef = useRef(0);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
@@ -87,11 +88,12 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
       const res = await apiRequest("GET", "/api/notifications");
       return res.json();
     },
-    refetchInterval: 60000,
-    enabled: !!user,
+    refetchInterval: settings.pushNotifications ? 60000 : false,
+    enabled: !!user && settings.pushNotifications,
   });
 
   const visibleNotifications = notifications.filter(n => {
+    if (!settings.pushNotifications) return false;
     if (dismissedIds.has(n.id)) return false;
     if (n.type === "inspection" && !settings.inspectionReminders) return false;
     if (n.type === "review" && !settings.claimStatusAlerts) return false;
@@ -99,6 +101,30 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
     return true;
   });
   const unreadCount = visibleNotifications.length;
+
+  useEffect(() => {
+    const prev = previousUnreadCountRef.current;
+    previousUnreadCountRef.current = unreadCount;
+    if (!settings.pushNotifications || !settings.soundEffects) return;
+    if (unreadCount <= prev) return;
+    try {
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextCtor) return;
+      const ctx = new AudioContextCtor();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.05;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.08);
+      osc.onended = () => {
+        void ctx.close();
+      };
+    } catch {}
+  }, [unreadCount, settings.pushNotifications, settings.soundEffects]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

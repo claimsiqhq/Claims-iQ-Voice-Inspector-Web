@@ -196,7 +196,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
   const [mobileTranscriptExpanded, setMobileTranscriptExpanded] = useState(false);
   const isMobile = useIsMobile();
+  const previousRoomIdRef = useRef<number | null>(null);
   useEffect(() => { if (isMobile) setSketchCollapsed(true); }, [isMobile]);
+
+  useEffect(() => {
+    if (!settings.autoRecordOnRoomEntry || !isConnected) {
+      previousRoomIdRef.current = currentRoomId;
+      return;
+    }
+
+    if (
+      previousRoomIdRef.current !== null &&
+      currentRoomId !== null &&
+      previousRoomIdRef.current !== currentRoomId &&
+      isPaused
+    ) {
+      setIsPaused(false);
+    }
+
+    previousRoomIdRef.current = currentRoomId;
+  }, [currentRoomId, isConnected, isPaused, settings.autoRecordOnRoomEntry]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -325,19 +344,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   }, [isConnected, isPaused]);
 
   useEffect(() => {
-    if (!ENABLE_MIC_GATING) return;
     const stream = streamRef.current;
     if (!stream) return;
     const audioTrack = stream.getAudioTracks()[0];
     if (!audioTrack) return;
-    const shouldEnableMic = !agentSpeakingRef.current;
+
+    const shouldEnableMic = !isPaused && (!ENABLE_MIC_GATING || !agentSpeakingRef.current);
     audioTrack.enabled = shouldEnableMic;
     logger.info("VoiceTimeline", "mic.gating.updated", {
       timestamp: new Date().toISOString(),
       eventType: "mic.gating.updated",
       enabled: shouldEnableMic,
+      paused: isPaused,
     });
-  }, [voiceState]);
+  }, [voiceState, isPaused, isConnected]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = settings.voiceSpeed;
+    }
+  }, [settings.voiceSpeed]);
 
   // Persist session state periodically (elapsed time, etc.)
   useEffect(() => {
@@ -2594,6 +2620,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
       const audio = document.createElement("audio");
       audio.autoplay = true;
+      audio.playbackRate = settings.voiceSpeed;
       audioRef.current = audio;
 
       pc.ontrack = (event) => {
@@ -2647,7 +2674,10 @@ ${previousTranscript}
 ---
 
 CRITICAL RULES:
-- Review the transcript carefully. Any step that was COMPLETED or SKIPPED must NOT be repeated. If the property verification photo was already taken or skipped, do NOT trigger it again.
+- Review the transcript carefully. Any step that was COMPLETED or SKIPPED must NOT be repeated.${settings.requirePhotoVerification
+    ? " If the property verification photo was already taken or skipped, do NOT trigger it again."
+    : " Property verification is optional for this adjuster."
+  }
 - Do NOT call any tools before speaking. Just greet the adjuster directly.
 
 YOUR GREETING: Say "Welcome back. We were on [describe where you left off based on the transcript and session state]. Shall we pick up where we left off?" Then WAIT for their response before doing anything else.`,
@@ -2661,7 +2691,10 @@ YOUR GREETING: Say "Welcome back. We were on [describe where you left off based 
 Say "One moment while I set things up" then immediately call get_inspection_state. After the tool result comes back:
 1) If no structures exist, call create_structure for "Main Dwelling".
 2) Then greet the adjuster with a brief welcome and explain Phase 1.${flowStepNames.length > 0 ? ` The flow is "${activeFlow.name}" with ${flowStepNames.length} phases.` : ""}
-3) Call trigger_photo_capture for the property verification photo.
+3) ${settings.requirePhotoVerification
+    ? "Call trigger_photo_capture for the property verification photo."
+    : "Offer (but do not require) a property verification photo."
+  }
 4) Follow the inspection flow phases in order. Call set_inspection_context when advancing phases.`,
               },
             }));
@@ -2702,7 +2735,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
       isConnectingRef.current = false;
       setIsConnecting(false);
     }
-  }, [sessionId, claimId, handleRealtimeEvent, getAuthHeaders]);
+  }, [sessionId, claimId, handleRealtimeEvent, getAuthHeaders, settings.requirePhotoVerification, settings.voiceSpeed]);
 
   const disconnectVoice = useCallback(() => {
     if (streamRef.current) {
@@ -2746,6 +2779,21 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
+    if (settings.timestampWatermark) {
+      const timestamp = new Date().toLocaleString();
+      const fontSize = Math.max(16, Math.round(canvas.width * 0.02));
+      const padding = Math.max(8, Math.round(canvas.width * 0.008));
+      ctx.font = `${fontSize}px sans-serif`;
+      const textMetrics = ctx.measureText(timestamp);
+      const textWidth = Math.ceil(textMetrics.width);
+      const textHeight = Math.ceil(fontSize * 1.4);
+      const x = canvas.width - textWidth - padding * 2;
+      const y = canvas.height - textHeight - padding;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.fillRect(x, y, textWidth + padding * 2, textHeight);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(timestamp, x + padding, y + Math.round(textHeight * 0.74));
+    }
     const jpegQuality = settings.photoQuality === "high" ? 0.92 : settings.photoQuality === "low" ? 0.6 : 0.8;
     const dataUrl = canvas.toDataURL("image/jpeg", jpegQuality);
 
@@ -2762,6 +2810,31 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
 
     if (sessionId) {
       try {
+        const captureMetadata: Record<string, unknown> = {
+          capturedAt: new Date().toISOString(),
+          timestampWatermarkApplied: settings.timestampWatermark,
+          gpsRequested: settings.gpsTagging,
+        };
+
+        if (settings.gpsTagging && navigator.geolocation) {
+          const geo = await new Promise<{ latitude: number; longitude: number; accuracy: number } | null>((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                resolve({
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                  accuracy: position.coords.accuracy,
+                });
+              },
+              () => resolve(null),
+              { enableHighAccuracy: true, timeout: 4000, maximumAge: 60000 }
+            );
+          });
+          if (geo) {
+            captureMetadata.gps = geo;
+          }
+        }
+
         // Step 1: Save photo to backend (uploads to Supabase)
         const sanitizedTag = cameraMode.label
           .replace(/[^\w\s-]/g, "")
@@ -2777,6 +2850,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
             autoTag: sanitizedTag,
             caption: cameraMode.label,
             photoType: cameraMode.photoType,
+            captureMetadata,
           }),
         });
         const savedPhoto = await saveRes.json();
@@ -2898,7 +2972,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         })
         .catch((e) => logger.error("Voice", "Unhandled error", e));
     }
-  }, [cameraMode.active]);
+  }, [cameraMode.active, settings.photoQuality]);
 
   const togglePause = () => {
     if (isPaused) {

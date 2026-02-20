@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { apiRequest } from "@/lib/queryClient";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { apiRequest, resilientMutation } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface AppSettings {
   // Voice & AI
@@ -103,14 +104,40 @@ function saveLocalSettings(settings: AppSettings) {
   } catch {}
 }
 
-export function useSettings() {
+interface SettingsState {
+  settings: AppSettings;
+  updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  resetSettings: () => void;
+  loaded: boolean;
+}
+
+const SettingsContext = createContext<SettingsState | null>(null);
+
+function useSettingsState(): SettingsState {
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
   const [settings, setSettingsState] = useState<AppSettings>(loadLocalSettings);
   const [loaded, setLoaded] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSettingsRef = useRef<AppSettings | null>(null);
+  const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
     let cancelled = false;
+
+    if (!isAuthenticated || !user?.id) {
+      loadedUserIdRef.current = null;
+      setLoaded(true);
+      return;
+    }
+
+    if (loadedUserIdRef.current === user.id) {
+      setLoaded(true);
+      return;
+    }
+
+    setLoaded(false);
+
     async function fetchFromDB() {
       try {
         const res = await apiRequest("GET", "/api/settings");
@@ -119,31 +146,59 @@ export function useSettings() {
           const merged = { ...DEFAULT_SETTINGS, ...dbSettings };
           setSettingsState(merged);
           saveLocalSettings(merged);
+        } else if (!cancelled) {
+          setSettingsState((prev) => ({ ...DEFAULT_SETTINGS, ...prev }));
         }
       } catch {}
-      if (!cancelled) setLoaded(true);
+
+      if (!cancelled) {
+        loadedUserIdRef.current = user?.id ?? null;
+        setLoaded(true);
+      }
     }
+
     fetchFromDB();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isAuthenticated, user?.id]);
+
+  const flushPendingToDB = useCallback(async () => {
+    const toSave = pendingSettingsRef.current;
+    if (!toSave || !isAuthenticated) return;
+    pendingSettingsRef.current = null;
+    try {
+      await resilientMutation("PUT", "/api/settings", toSave, {
+        label: "Save settings",
+      });
+    } catch {}
+  }, [isAuthenticated]);
 
   const persistToDB = useCallback((nextSettings: AppSettings) => {
     pendingSettingsRef.current = nextSettings;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      const toSave = pendingSettingsRef.current;
-      if (!toSave) return;
-      try {
-        await apiRequest("PUT", "/api/settings", toSave);
-      } catch {}
+    saveTimerRef.current = setTimeout(() => {
+      void flushPendingToDB();
     }, 800);
-  }, []);
+  }, [flushPendingToDB]);
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void flushPendingToDB();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [flushPendingToDB]);
 
   const updateSetting = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettingsState((prev) => {
@@ -161,5 +216,21 @@ export function useSettings() {
     persistToDB(defaults);
   }, [persistToDB]);
 
-  return { settings, updateSetting, resetSettings, loaded };
+  return useMemo(
+    () => ({ settings, updateSetting, resetSettings, loaded }),
+    [settings, updateSetting, resetSettings, loaded]
+  );
+}
+
+export function SettingsContextProvider({ children }: { children: ReactNode }) {
+  const state = useSettingsState();
+  return createElement(SettingsContext.Provider, { value: state }, children);
+}
+
+export function useSettings() {
+  const context = useContext(SettingsContext);
+  if (!context) {
+    throw new Error("useSettings must be used within SettingsContextProvider");
+  }
+  return context;
 }

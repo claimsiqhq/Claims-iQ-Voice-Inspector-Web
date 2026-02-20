@@ -20,6 +20,8 @@ export default function ExportPage({ params }: { params: { id: string } }) {
 
   const { toast } = useToast();
   const { settings } = useSettings();
+  const allowEsxExport = settings.exportFormat !== "pdf";
+  const allowPdfExport = settings.exportFormat !== "esx";
   const [esxUrl, setEsxUrl] = useState<string | null>(null);
   const [esxFileName, setEsxFileName] = useState("");
 
@@ -272,7 +274,8 @@ export default function ExportPage({ params }: { params: { id: string } }) {
             transition={{ delay: 0.1 }}
             className={cn(
               "border border-border rounded-xl p-4 md:p-6 bg-card",
-              !canExport && "opacity-50 pointer-events-none"
+              !canExport && "opacity-50 pointer-events-none",
+              !allowEsxExport && "opacity-60"
             )}
           >
             <div className="flex items-start gap-3 md:gap-4">
@@ -290,6 +293,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                 <p className="text-sm text-muted-foreground mt-1">
                   Export estimate as Xactimate-compatible ESX file
                 </p>
+                {!allowEsxExport && (
+                  <p className="text-xs text-muted-foreground mt-1">Disabled by your default Export Format setting.</p>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
                   {summary.lineItemCount || 0} line items &bull; {summary.roomCount || 0} rooms
                 </p>
@@ -299,7 +305,7 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                     <Button
                       className="bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={() => esxMutation.mutate()}
-                      disabled={esxMutation.isPending}
+                      disabled={esxMutation.isPending || !allowEsxExport}
                     >
                       {esxMutation.isPending ? (
                         <><Loader2 size={14} className="mr-1 animate-spin" /> Generating...</>
@@ -330,7 +336,8 @@ export default function ExportPage({ params }: { params: { id: string } }) {
             transition={{ delay: 0.2 }}
             className={cn(
               "border border-border rounded-xl p-4 md:p-6 bg-card",
-              !canExport && "opacity-50 pointer-events-none"
+              !canExport && "opacity-50 pointer-events-none",
+              !allowPdfExport && "opacity-60"
             )}
           >
             <div className="flex items-start gap-3 md:gap-4">
@@ -348,6 +355,9 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                 <p className="text-sm text-muted-foreground mt-1">
                   Professional inspection report with photos, damage documentation, and estimate
                 </p>
+                {!allowPdfExport && (
+                  <p className="text-xs text-muted-foreground mt-1">Disabled by your default Export Format setting.</p>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
                   {summary.photoCount || 0} photos &bull; {summary.lineItemCount || 0} line items &bull; {summary.roomCount || 0} rooms
                 </p>
@@ -356,7 +366,7 @@ export default function ExportPage({ params }: { params: { id: string } }) {
                   <Button
                     className="bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => pdfMutation.mutate()}
-                    disabled={pdfMutation.isPending}
+                    disabled={pdfMutation.isPending || !allowPdfExport}
                   >
                     {pdfMutation.isPending ? (
                       <><Loader2 size={14} className="mr-1 animate-spin" /> Generating PDF...</>
