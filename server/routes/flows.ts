@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { authenticateRequest } from "../auth";
+import { authenticateRequest, requireRole } from "../auth";
 import { logger } from "../logger";
 import { z } from "zod";
 import { param } from "../utils";
@@ -22,7 +22,10 @@ const flowBodySchema = z.object({
 export function flowsRouter() {
   const router = Router();
 
-  router.post("/seed", authenticateRequest, async (req, res) => {
+  const userCanAccessFlow = (flow: { isSystemDefault: boolean | null; userId: string | null }, userId: string) =>
+    flow.isSystemDefault === true || flow.userId === userId;
+
+  router.post("/seed", authenticateRequest, requireRole("admin"), async (req, res) => {
     try {
       const { seedInspectionFlows } = await import("../seed-flows");
       const count = await seedInspectionFlows();
@@ -52,6 +55,9 @@ export function flowsRouter() {
       const id = parseInt(param(req.params.id));
       const flow = await storage.getInspectionFlow(id);
       if (!flow) return res.status(404).json({ message: "Flow not found" });
+      if (!userCanAccessFlow(flow, req.user!.id)) {
+        return res.status(403).json({ message: "Cannot access flows owned by other users" });
+      }
       res.json(flow);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
@@ -82,6 +88,9 @@ export function flowsRouter() {
       const id = parseInt(param(req.params.id));
       const existing = await storage.getInspectionFlow(id);
       if (!existing) return res.status(404).json({ message: "Flow not found" });
+      if (!userCanAccessFlow(existing, req.user!.id)) {
+        return res.status(403).json({ message: "Cannot edit flows owned by other users" });
+      }
 
       if (existing.isSystemDefault && existing.userId !== req.user!.id) {
         return res.status(403).json({ message: "Cannot edit system default flows. Clone it first." });
@@ -124,6 +133,9 @@ export function flowsRouter() {
       const id = parseInt(param(req.params.id));
       const source = await storage.getInspectionFlow(id);
       if (!source) return res.status(404).json({ message: "Flow not found" });
+      if (!userCanAccessFlow(source, req.user!.id)) {
+        return res.status(403).json({ message: "Cannot clone flows owned by other users" });
+      }
 
       const cloneName = req.body.name || `${source.name} (Custom)`;
       const flow = await storage.createInspectionFlow({

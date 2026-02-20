@@ -74,13 +74,13 @@ export default function ClaimsList() {
   const filteredClaims = claims.filter((claim) => {
     if (showActiveOnly) {
       const s = claim.status.toLowerCase().replace(/\s+/g, "_");
-      if (s === "complete" || s === "review") return false;
+      if (s === "complete" || s === "completed" || s === "inspection_complete" || s === "review" || s === "closed") return false;
     }
     if (filter === "all") return true;
     const s = claim.status.toLowerCase().replace(/\s+/g, "_");
     if (filter === "pending") return s === "draft" || s === "documents_uploaded";
     if (filter === "in-progress") return s === "extractions_confirmed" || s === "briefing_ready" || s === "inspecting";
-    if (filter === "complete") return s === "complete" || s === "review";
+    if (filter === "complete") return s === "complete" || s === "completed" || s === "inspection_complete" || s === "review" || s === "closed";
     return true;
   });
 

@@ -6,6 +6,7 @@ import { generateESXFile } from "../esxGenerator";
 import { reviewEstimate } from "../aiReview";
 import { supabase, PHOTOS_BUCKET } from "../supabase";
 import { authenticateRequest } from "../auth";
+import { requireAdjacencyAccess, requireRoomAccess, requireSessionAccess } from "../authorization";
 import { lookupCatalogItem, getRegionalPrice, calculateDimVars, type RoomDimensions, type OpeningData } from "../estimateEngine";
 import { z } from "zod";
 import { logger } from "../logger";
@@ -222,6 +223,202 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     if (rejection) return res.status(403).json(rejection);
     next();
   });
+
+  const authorizeInspectionSession = async (req: any, res: any, next: any) => {
+    const sessionId = Number.parseInt(param(req.params.sessionId), 10);
+    if (Number.isNaN(sessionId)) {
+      return res.status(400).json({ message: "Invalid sessionId: must be a number" });
+    }
+    const session = await requireSessionAccess(req, res, sessionId);
+    if (!session) return;
+    next();
+  };
+
+  const authorizeRoom = async (req: any, res: any, next: any) => {
+    const roomId = Number.parseInt(param(req.params.roomId), 10);
+    if (Number.isNaN(roomId)) {
+      return res.status(400).json({ message: "Invalid roomId: must be a number" });
+    }
+    const room = await requireRoomAccess(req, res, roomId);
+    if (!room) return;
+    next();
+  };
+
+  const authorizeAdjacency = async (req: any, res: any, next: any) => {
+    const adjacencyId = Number.parseInt(param(req.params.id), 10);
+    if (Number.isNaN(adjacencyId)) {
+      return res.status(400).json({ message: "Invalid adjacency id: must be a number" });
+    }
+    const adjacency = await requireAdjacencyAccess(req, res, adjacencyId);
+    if (!adjacency) return;
+    next();
+  };
+
+  const parseRouteId = (req: any, res: any, key: string, label: string): number | null => {
+    const value = Number.parseInt(param(req.params[key]), 10);
+    if (Number.isNaN(value)) {
+      res.status(400).json({ message: `Invalid ${label}: must be a number` });
+      return null;
+    }
+    return value;
+  };
+
+  const parseSessionId = (req: any, res: any): number | null => parseRouteId(req, res, "sessionId", "sessionId");
+
+  const authorizeStructureForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const structureId = parseRouteId(req, res, "structureId", "structure id");
+    if (structureId === null) return;
+    const structure = await storage.getStructure(structureId);
+    if (!structure) return res.status(404).json({ message: "Structure not found" });
+    if (structure.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Structure does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeRoomForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const roomId = parseRouteId(req, res, "roomId", "roomId");
+    if (roomId === null) return;
+    const room = await storage.getRoom(roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+    if (room.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Room does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeOpeningForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const openingId = parseRouteId(req, res, "openingId", "opening id");
+    if (openingId === null) return;
+    const opening = await storage.getOpening(openingId);
+    if (!opening) return res.status(404).json({ message: "Opening not found" });
+    const inferredSessionId = opening.sessionId ?? (await storage.getRoom(opening.roomId))?.sessionId ?? null;
+    if (inferredSessionId !== sessionId) {
+      return res.status(403).json({ message: "Opening does not belong to this session" });
+    }
+    if (req.params.roomId) {
+      const roomId = parseRouteId(req, res, "roomId", "roomId");
+      if (roomId === null) return;
+      if (opening.roomId !== roomId) {
+        return res.status(403).json({ message: "Opening does not belong to this room" });
+      }
+    }
+    next();
+  };
+
+  const authorizeAnnotationForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const annotationId = parseRouteId(req, res, "annotationId", "annotation id");
+    if (annotationId === null) return;
+    const annotation = await storage.getSketchAnnotation(annotationId);
+    if (!annotation) return res.status(404).json({ message: "Annotation not found" });
+    if (annotation.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Annotation does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeDamageForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const damageId = parseRouteId(req, res, "damageId", "damage id");
+    if (damageId === null) return;
+    const damage = await storage.getDamage(damageId);
+    if (!damage) return res.status(404).json({ message: "Damage not found" });
+    if (damage.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Damage does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeLineItemForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const lineItemId = parseRouteId(req, res, "id", "line item id");
+    if (lineItemId === null) return;
+    const lineItem = await storage.getLineItemById(lineItemId);
+    if (!lineItem) return res.status(404).json({ message: "Line item not found" });
+    if (lineItem.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Line item does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeTestSquareForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const testSquareId = parseRouteId(req, res, "id", "test square id");
+    if (testSquareId === null) return;
+    const testSquare = await storage.getTestSquare(testSquareId);
+    if (!testSquare) return res.status(404).json({ message: "Test square not found" });
+    if (testSquare.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Test square does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeScopeItemForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const scopeItemId = parseRouteId(req, res, "id", "scope item id");
+    if (scopeItemId === null) return;
+    const scopeItem = await storage.getScopeItem(scopeItemId);
+    if (!scopeItem) return res.status(404).json({ message: "Scope item not found" });
+    if (scopeItem.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Scope item does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizeMoistureForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const moistureId = parseRouteId(req, res, "id", "moisture reading id");
+    if (moistureId === null) return;
+    const moisture = await storage.getMoistureReading(moistureId);
+    if (!moisture) return res.status(404).json({ message: "Moisture reading not found" });
+    if (moisture.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Moisture reading does not belong to this session" });
+    }
+    next();
+  };
+
+  const authorizePhotoForSession = async (req: any, res: any, next: any) => {
+    const sessionId = parseSessionId(req, res);
+    if (sessionId === null) return;
+    const photoId = parseRouteId(req, res, "photoId", "photo id");
+    if (photoId === null) return;
+    const photo = await storage.getPhoto(photoId);
+    if (!photo) return res.status(404).json({ message: "Photo not found" });
+    if (photo.sessionId !== sessionId) {
+      return res.status(403).json({ message: "Photo does not belong to this session" });
+    }
+    next();
+  };
+
+  // Object-level authorization for resources keyed by session/room/adjacency IDs.
+  app.use("/api/inspection/:sessionId", authenticateRequest, authorizeInspectionSession);
+  app.use("/api/sessions/:sessionId", authenticateRequest, authorizeInspectionSession);
+  app.use("/api/inspection/:sessionId/structures/:structureId", authenticateRequest, authorizeStructureForSession);
+  app.use("/api/inspection/:sessionId/rooms/:roomId", authenticateRequest, authorizeRoomForSession);
+  app.use("/api/inspection/:sessionId/openings/:openingId", authenticateRequest, authorizeOpeningForSession);
+  app.use("/api/inspection/:sessionId/rooms/:roomId/openings/:openingId", authenticateRequest, authorizeOpeningForSession);
+  app.use("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, authorizeAnnotationForSession);
+  app.use("/api/inspection/:sessionId/damages/:damageId", authenticateRequest, authorizeDamageForSession);
+  app.use("/api/inspection/:sessionId/line-items/:id", authenticateRequest, authorizeLineItemForSession);
+  app.use("/api/inspection/:sessionId/test-squares/:id", authenticateRequest, authorizeTestSquareForSession);
+  app.use("/api/inspection/:sessionId/scope/items/:id", authenticateRequest, authorizeScopeItemForSession);
+  app.use("/api/inspection/:sessionId/moisture/:id", authenticateRequest, authorizeMoistureForSession);
+  app.use("/api/inspection/:sessionId/photos/:photoId", authenticateRequest, authorizePhotoForSession);
+  app.use("/api/rooms/:roomId", authenticateRequest, authorizeRoom);
+  app.use("/api/adjacencies/:id", authenticateRequest, authorizeAdjacency);
 
   app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
@@ -738,6 +935,10 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid opening data", errors: parsed.error.flatten().fieldErrors });
       }
       const data = parsed.data;
+      const room = await storage.getRoom(data.roomId);
+      if (!room || room.sessionId !== sessionId) {
+        return res.status(400).json({ message: "roomId must belong to the target session" });
+      }
       // Auto-set goesToFloor for overhead doors
       const goesToFloor = data.openingType === "overhead_door" ? true : (data.goesToFloor || false);
       const opening = await storage.createOpening({
@@ -862,6 +1063,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const roomId = parseInt(param(req.params.roomId));
       const room = await storage.getRoom(roomId);
       if (!room) return res.status(404).json({ error: "Room not found" });
+      if (room.sessionId !== sessionId) {
+        return res.status(400).json({ error: "roomId must belong to the target session" });
+      }
 
       const existingDims = (room.dimensions as Record<string, any>) || {};
       const merged = { ...existingDims, ...req.body };
@@ -1015,22 +1219,26 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       if (!roomId || !description) {
         return res.status(400).json({ message: "roomId and description are required" });
       }
+      const normalizedRoomId = Number(roomId);
+      const room = await storage.getRoom(normalizedRoomId);
+      if (!room || room.sessionId !== sessionId) {
+        return res.status(400).json({ message: "roomId must belong to the target session" });
+      }
       const damage = await storage.createDamage({
         sessionId,
-        roomId,
+        roomId: normalizedRoomId,
         description,
         damageType: damageType || null,
         severity: severity || null,
         location: location || null,
         measurements: measurements || null,
       });
-      await storage.incrementRoomDamageCount(roomId);
-      emit({ type: "inspection.damageAdded", sessionId, userId: req.user?.id, meta: { roomId, damageId: damage.id } });
+      await storage.incrementRoomDamageCount(normalizedRoomId);
+      emit({ type: "inspection.damageAdded", sessionId, userId: req.user?.id, meta: { roomId: normalizedRoomId, damageId: damage.id } });
 
       // Auto-trigger scope assembly
       let autoScope: Record<string, unknown> | null = null;
       try {
-        const room = await storage.getRoom(roomId);
         if (room) {
           const { assembleScope } = await import("../scopeAssemblyService");
           const result = await assembleScope(storage, sessionId, room, damage);
@@ -1114,6 +1322,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
+      if (roomId) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
       const damages = roomId
         ? await storage.getDamages(roomId)
         : await storage.getDamagesForSession(sessionId);
@@ -1175,6 +1389,18 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
       }
       const { roomId, damageId, category, action, description, xactCode, quantity, unit, unitPrice, depreciationType, wasteFactor, coverageBucket, qualityGrade, applyOAndP, macroSource, age, lifeExpectancy, depreciationPercentage } = parsed.data;
+      if (roomId != null) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
+      if (damageId != null) {
+        const damage = await storage.getDamage(damageId);
+        if (!damage || damage.sessionId !== sessionId) {
+          return res.status(400).json({ message: "damageId must belong to the target session" });
+        }
+      }
       const userSettings = await storage.getUserSettings(req.user!.id);
       const defaultWasteFactor =
         typeof (userSettings as Record<string, unknown> | null)?.defaultWasteFactor === "number"
@@ -1279,6 +1505,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
   app.patch("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
       const id = parseInt(param(req.params.id));
+      const sessionId = parseInt(param(req.params.sessionId));
       const allowedFields = z.object({
         category: z.string().optional(),
         action: z.string().optional(),
@@ -1306,6 +1533,19 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       }
 
       const updates: any = { ...parsed.data };
+
+      if (updates.roomId !== undefined) {
+        const room = await storage.getRoom(updates.roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
+      if (updates.damageId !== undefined) {
+        const damage = await storage.getDamage(updates.damageId);
+        if (!damage || damage.sessionId !== sessionId) {
+          return res.status(400).json({ message: "damageId must belong to the target session" });
+        }
+      }
 
       if (updates.age !== undefined || updates.lifeExpectancy !== undefined || updates.quantity !== undefined || updates.unitPrice !== undefined) {
         const existing = await storage.getLineItemById(id);
@@ -1390,6 +1630,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const bundle = SMART_MACRO_BUNDLES[macroType];
       if (!bundle) {
         return res.status(400).json({ message: `Unknown macro type: ${macroType}` });
+      }
+      if (roomId != null) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
       }
 
       const createdItems = [];
@@ -1520,6 +1766,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid test square data", errors: parsed.error.flatten().fieldErrors });
       }
       const { roomId, hailHits, windCreases, pitch, result, notes } = parsed.data;
+      if (roomId != null) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
 
       const testSquare = await storage.createTestSquare({
         sessionId,
@@ -1557,6 +1809,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
+      if (roomId) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
       const squares = roomId
         ? await storage.getTestSquaresForRoom(roomId)
         : await storage.getTestSquares(sessionId);
@@ -1605,6 +1863,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
       const room = await storage.getRoom(roomId);
       if (!room) return res.status(404).json({ message: "Room not found" });
+      if (room.sessionId !== sessionId) {
+        return res.status(400).json({ message: "roomId must belong to the target session" });
+      }
 
       const damages = await storage.getDamages(roomId);
       const damage = damages.find(d => d.id === damageId);
@@ -1981,6 +2242,18 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const { roomId, damageId, imageBase64, autoTag, caption, photoType, captureMetadata } = req.body;
+      if (roomId != null) {
+        const room = await storage.getRoom(Number(roomId));
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
+      if (damageId != null) {
+        const damage = await storage.getDamage(Number(damageId));
+        if (!damage || damage.sessionId !== sessionId) {
+          return res.status(400).json({ message: "damageId must belong to the target session" });
+        }
+      }
       if (!imageBase64) {
         return res.status(400).json({ message: "imageBase64 is required" });
       }
@@ -2177,16 +2450,16 @@ Respond in JSON format:
         const fallbackAnalysis = {
           description: "Photo captured successfully. AI analysis unavailable.",
           damageVisible: [],
-          matchesExpected: true,
-          matchConfidence: 0.5,
-          matchExplanation: "Analysis unavailable — assuming match.",
+          matchesExpected: false,
+          matchConfidence: 0,
+          matchExplanation: "Analysis unavailable — unable to determine match.",
           qualityScore: 3,
           qualityNotes: "Unable to assess",
         };
         // Still save the fallback analysis
         await storage.updatePhoto(photoId, {
           analysis: fallbackAnalysis,
-          matchesRequest: true,
+          matchesRequest: false,
         });
         return res.json(fallbackAnalysis);
       }
@@ -2201,9 +2474,9 @@ Respond in JSON format:
         analysis = {
           description: analysisText,
           damageVisible: [],
-          matchesExpected: true,
-          matchConfidence: 0.5,
-          matchExplanation: "Parse error — raw response stored.",
+          matchesExpected: false,
+          matchConfidence: 0,
+          matchExplanation: "Parse error — unable to determine match.",
           qualityScore: 3,
           qualityNotes: "",
         };
@@ -2212,7 +2485,7 @@ Respond in JSON format:
       // Update the photo record with analysis
       await storage.updatePhoto(photoId, {
         analysis,
-        matchesRequest: analysis.matchesExpected ?? true,
+        matchesRequest: analysis.matchesExpected ?? false,
       });
 
       // Process photo analysis for damage suggestions (PROMPT-18 Part B)
@@ -2237,8 +2510,8 @@ Respond in JSON format:
       res.json({
         description: "Photo captured. Analysis failed.",
         damageVisible: [],
-        matchesExpected: true,
-        matchConfidence: 0.5,
+        matchesExpected: false,
+        matchConfidence: 0,
         matchExplanation: "Analysis error — photo saved without analysis.",
         qualityScore: 3,
         qualityNotes: error.message,
@@ -2255,9 +2528,14 @@ Respond in JSON format:
       if (!roomId || reading === undefined) {
         return res.status(400).json({ message: "roomId and reading are required" });
       }
+      const normalizedRoomId = Number(roomId);
+      const room = await storage.getRoom(normalizedRoomId);
+      if (!room || room.sessionId !== sessionId) {
+        return res.status(400).json({ message: "roomId must belong to the target session" });
+      }
       const entry = await storage.createMoistureReading({
         sessionId,
-        roomId,
+        roomId: normalizedRoomId,
         location: location || null,
         reading,
         materialType: materialType || null,
@@ -2273,6 +2551,12 @@ Respond in JSON format:
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
+      if (roomId) {
+        const room = await storage.getRoom(roomId);
+        if (!room || room.sessionId !== sessionId) {
+          return res.status(400).json({ message: "roomId must belong to the target session" });
+        }
+      }
       const readings = roomId
         ? await storage.getMoistureReadings(roomId)
         : await storage.getMoistureReadingsForSession(sessionId);
@@ -3124,9 +3408,24 @@ Respond in JSON format:
         return res.status(400).json({ message: "shapes array is required" });
       }
 
+      const existingPhoto = await storage.getPhoto(photoId);
+      if (!existingPhoto) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+
+      const existingAnalysis =
+        existingPhoto.analysis && typeof existingPhoto.analysis === "object" && !Array.isArray(existingPhoto.analysis)
+          ? (existingPhoto.analysis as Record<string, unknown>)
+          : {};
+      const nextAnalysis =
+        typeof annotatedImageBase64 === "string" && annotatedImageBase64.length > 0
+          ? { ...existingAnalysis, annotatedImageBase64 }
+          : existingPhoto.analysis;
+
       // Save annotation data to the photo record
       const updatedPhoto = await storage.updatePhoto(photoId, {
         annotations: shapes,
+        ...(nextAnalysis !== existingPhoto.analysis ? { analysis: nextAnalysis as any } : {}),
       });
 
       res.json({ success: true, photo: updatedPhoto });

@@ -38,6 +38,16 @@ const STATUS_CONFIG: Record<string, { label: string; icon: typeof FileText; colo
     icon: Search,
     colorClass: "bg-amber-50 text-amber-700 border-amber-200",
   },
+  inspection_complete: {
+    label: "Complete",
+    icon: Star,
+    colorClass: "bg-green-50 text-green-700 border-green-200",
+  },
+  completed: {
+    label: "Complete",
+    icon: Star,
+    colorClass: "bg-green-50 text-green-700 border-green-200",
+  },
   complete: {
     label: "Complete",
     icon: Star,

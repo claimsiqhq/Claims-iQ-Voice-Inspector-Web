@@ -225,49 +225,64 @@ export const inspectionRooms = pgTable(
 // "Holes" in walls: doors, windows, missing walls, overhead doors.
 // MUST belong to a specific wall of a specific room.
 // Creates MISS_WALL entries in ESX export and deducts from wall SF calculations.
-export const roomOpenings = pgTable("room_openings", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  openingType: varchar("opening_type", { length: 30 }).notNull().default("door"),
-    // openingType enum: "window" | "standard_door" | "overhead_door" | "missing_wall" | "pass_through" | "archway" | "cased_opening" | "door" | "sliding_door"
-  wallIndex: integer("wall_index"),       // 0-based index into polygon edges (for sketch placement)
-  wallDirection: varchar("wall_direction", { length: 20 }),
-    // wallDirection enum: "north" | "south" | "east" | "west" | "front" | "rear" | "left" | "right"
-  positionOnWall: real("position_on_wall").default(0.5), // 0.0=start, 1.0=end
-  widthFt: real("width_ft"),              // opening width in feet
-  heightFt: real("height_ft"),            // opening height in feet
-  width: real("width"),                   // legacy alias for widthFt
-  height: real("height"),                 // legacy alias for heightFt
-  quantity: integer("quantity").notNull().default(1),
-  label: varchar("label", { length: 50 }),
-  opensInto: varchar("opens_into", { length: 100 }),
-    // Room name (e.g., "Hallway", "Kitchen") or "E" for exterior
-  goesToFloor: boolean("goes_to_floor").default(false),
-    // true for garage doors / overhead doors that extend to floor level
-  goesToCeiling: boolean("goes_to_ceiling").default(false),
-    // true for pass-throughs that go to ceiling
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const roomOpenings = pgTable(
+  "room_openings",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+    openingType: varchar("opening_type", { length: 30 }).notNull().default("door"),
+      // openingType enum: "window" | "standard_door" | "overhead_door" | "missing_wall" | "pass_through" | "archway" | "cased_opening" | "door" | "sliding_door"
+    wallIndex: integer("wall_index"),       // 0-based index into polygon edges (for sketch placement)
+    wallDirection: varchar("wall_direction", { length: 20 }),
+      // wallDirection enum: "north" | "south" | "east" | "west" | "front" | "rear" | "left" | "right"
+    positionOnWall: real("position_on_wall").default(0.5), // 0.0=start, 1.0=end
+    widthFt: real("width_ft"),              // opening width in feet
+    heightFt: real("height_ft"),            // opening height in feet
+    width: real("width"),                   // legacy alias for widthFt
+    height: real("height"),                 // legacy alias for heightFt
+    quantity: integer("quantity").notNull().default(1),
+    label: varchar("label", { length: 50 }),
+    opensInto: varchar("opens_into", { length: 100 }),
+      // Room name (e.g., "Hallway", "Kitchen") or "E" for exterior
+    goesToFloor: boolean("goes_to_floor").default(false),
+      // true for garage doors / overhead doors that extend to floor level
+    goesToCeiling: boolean("goes_to_ceiling").default(false),
+      // true for pass-throughs that go to ceiling
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("room_openings_session_id_idx").on(table.sessionId),
+    roomIdIdx: index("room_openings_room_id_idx").on(table.roomId),
+  }),
+);
 
 // ── Room Adjacency (which rooms share walls) ────────────────
-export const roomAdjacencies = pgTable("room_adjacencies", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomIdA: integer("room_id_a").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  roomIdB: integer("room_id_b").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  // Which wall of Room A faces Room B
-  wallDirectionA: varchar("wall_direction_a", { length: 20 }),
-  // "north" | "south" | "east" | "west"
-  // Which wall of Room B faces Room A (should be opposite of wallDirectionA)
-  wallDirectionB: varchar("wall_direction_b", { length: 20 }),
-  // Shared wall length in feet (may be partial — rooms don't have to be the same width)
-  sharedWallLengthFt: real("shared_wall_length_ft"),
-  // If there's an opening in this shared wall, reference the opening
-  openingId: integer("opening_id").references(() => roomOpenings.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const roomAdjacencies = pgTable(
+  "room_adjacencies",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomIdA: integer("room_id_a").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+    roomIdB: integer("room_id_b").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+    // Which wall of Room A faces Room B
+    wallDirectionA: varchar("wall_direction_a", { length: 20 }),
+    // "north" | "south" | "east" | "west"
+    // Which wall of Room B faces Room A (should be opposite of wallDirectionA)
+    wallDirectionB: varchar("wall_direction_b", { length: 20 }),
+    // Shared wall length in feet (may be partial — rooms don't have to be the same width)
+    sharedWallLengthFt: real("shared_wall_length_ft"),
+    // If there's an opening in this shared wall, reference the opening
+    openingId: integer("opening_id").references(() => roomOpenings.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("room_adjacencies_session_id_idx").on(table.sessionId),
+    roomAIdx: index("room_adjacencies_room_id_a_idx").on(table.roomIdA),
+    roomBIdx: index("room_adjacencies_room_id_b_idx").on(table.roomIdB),
+  }),
+);
 
 export const insertRoomAdjacencySchema = createInsertSchema(roomAdjacencies).omit({
   id: true,
@@ -389,16 +404,23 @@ export const inspectionPhotos = pgTable(
   }),
 );
 
-export const moistureReadings = pgTable("moisture_readings", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
-  location: text("location"),
-  reading: real("reading").notNull(),
-  materialType: varchar("material_type", { length: 50 }),
-  dryStandard: real("dry_standard"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const moistureReadings = pgTable(
+  "moisture_readings",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    roomId: integer("room_id").notNull().references(() => inspectionRooms.id, { onDelete: "cascade" }),
+    location: text("location"),
+    reading: real("reading").notNull(),
+    materialType: varchar("material_type", { length: 50 }),
+    dryStandard: real("dry_standard"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdIdx: index("moisture_readings_session_id_idx").on(table.sessionId),
+    roomIdIdx: index("moisture_readings_room_id_idx").on(table.roomId),
+  }),
+);
 
 // ── Test Squares (Forensic Hail/Wind Assessment) ──────────────
 // Logs 10x10 test square results for hail/wind damage claims
@@ -491,21 +513,29 @@ export const xactPriceLists = pgTable("xact_price_lists", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const regionalPriceSets = pgTable("regional_price_sets", {
-  id: serial("id").primaryKey(),
-  regionId: varchar("region_id", { length: 50 }).notNull(),
-  regionName: text("region_name").notNull(),
-  lineItemCode: varchar("line_item_code", { length: 30 }).notNull(),
-  materialCost: numeric("material_cost", { precision: 12, scale: 2 }).default("0"),
-  laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).default("0"),
-  equipmentCost: numeric("equipment_cost", { precision: 12, scale: 2 }).default("0"),
-  effectiveDate: varchar("effective_date", { length: 20 }),
-  priceListVersion: varchar("price_list_version", { length: 20 }),
-  activityType: varchar("activity_type", { length: 20 }),
-  laborFormula: text("labor_formula"),
-  materialFormula: text("material_formula"),
-  equipmentFormula: text("equipment_formula"),
-});
+export const regionalPriceSets = pgTable(
+  "regional_price_sets",
+  {
+    id: serial("id").primaryKey(),
+    regionId: varchar("region_id", { length: 50 }).notNull(),
+    regionName: text("region_name").notNull(),
+    lineItemCode: varchar("line_item_code", { length: 30 }).notNull(),
+    materialCost: numeric("material_cost", { precision: 12, scale: 2 }).default("0"),
+    laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).default("0"),
+    equipmentCost: numeric("equipment_cost", { precision: 12, scale: 2 }).default("0"),
+    effectiveDate: varchar("effective_date", { length: 20 }),
+    priceListVersion: varchar("price_list_version", { length: 20 }),
+    activityType: varchar("activity_type", { length: 20 }),
+    laborFormula: text("labor_formula"),
+    materialFormula: text("material_formula"),
+    equipmentFormula: text("equipment_formula"),
+  },
+  (table) => ({
+    regionIdIdx: index("regional_price_sets_region_id_idx").on(table.regionId),
+    lineItemCodeIdx: index("regional_price_sets_line_item_code_idx").on(table.lineItemCode),
+    regionLineItemIdx: index("regional_price_sets_region_line_item_idx").on(table.regionId, table.lineItemCode),
+  }),
+);
 
 // ── Scope Trades (trade categories with O&P eligibility) ─────
 export const scopeTrades = pgTable("scope_trades", {
@@ -553,23 +583,30 @@ export type ScopeItem = typeof scopeItems.$inferSelect;
 export type InsertScopeItem = z.infer<typeof insertScopeItemSchema>;
 
 // ── Scope Summary (aggregate totals per trade per session) ───
-export const scopeSummary = pgTable("scope_summary", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
-  tradeCode: varchar("trade_code", { length: 10 }).notNull(),
-  tradeName: varchar("trade_name", { length: 100 }),
-  itemCount: integer("item_count").default(0),
-  quantitiesByUnit: jsonb("quantities_by_unit"),
-  totalMaterial: real("total_material").default(0),
-  totalLabor: real("total_labor").default(0),
-  totalEquipment: real("total_equipment").default(0),
-  totalTax: real("total_tax").default(0),
-  totalRCV: real("total_rcv").default(0),
-  totalDepreciation: real("total_depreciation").default(0),
-  totalACV: real("total_acv").default(0),
-  opEligible: boolean("op_eligible").default(true),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const scopeSummary = pgTable(
+  "scope_summary",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id").notNull().references(() => inspectionSessions.id, { onDelete: "cascade" }),
+    tradeCode: varchar("trade_code", { length: 10 }).notNull(),
+    tradeName: varchar("trade_name", { length: 100 }),
+    itemCount: integer("item_count").default(0),
+    quantitiesByUnit: jsonb("quantities_by_unit"),
+    totalMaterial: real("total_material").default(0),
+    totalLabor: real("total_labor").default(0),
+    totalEquipment: real("total_equipment").default(0),
+    totalTax: real("total_tax").default(0),
+    totalRCV: real("total_rcv").default(0),
+    totalDepreciation: real("total_depreciation").default(0),
+    totalACV: real("total_acv").default(0),
+    opEligible: boolean("op_eligible").default(true),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    sessionTradeUnique: uniqueIndex("scope_summary_session_trade_unique").on(table.sessionId, table.tradeCode),
+    sessionIdIdx: index("scope_summary_session_id_idx").on(table.sessionId),
+  }),
+);
 
 export const insertScopeSummarySchema = createInsertSchema(scopeSummary).omit({
   id: true, updatedAt: true,
@@ -670,27 +707,34 @@ export const userSettings = pgTable("user_settings", {
 export type UserSettings = typeof userSettings.$inferSelect;
 
 // ── Policy Coverage Rules ──────────────────────────
-export const policyRules = pgTable("policy_rules", {
-  id: serial("id").primaryKey(),
-  claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
-  coverageType: varchar("coverage_type", { length: 20 }).notNull(),
-  // coverageType enum: "Coverage A" | "Coverage B" | "Coverage C" | "Coverage D"
-  policyLimit: real("policy_limit"),
-  deductible: real("deductible"),
-  applyRoofSchedule: boolean("apply_roof_schedule").default(false),
-  // When true: roofing items under this coverage use Non-Recoverable depreciation regardless of depreciationType
-  roofScheduleAge: real("roof_schedule_age"),
-  // Age threshold in years — roofs older than this get roof schedule applied
-  overheadPct: real("overhead_pct").default(10),
-  profitPct: real("profit_pct").default(10),
-  taxRate: real("tax_rate").default(8),
-  // Tax rate as percentage (e.g., 8 for 8%)
-  opExcludedTrades: jsonb("op_excluded_trades").default([]),
-  // Array of trade codes excluded from O&P for this coverage.
-  // Example: ["RFG", "EXT"] means Roofing and Exterior/Siding don't get O&P.
-  // Empty array = all eligible trades get O&P (default behavior).
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const policyRules = pgTable(
+  "policy_rules",
+  {
+    id: serial("id").primaryKey(),
+    claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+    coverageType: varchar("coverage_type", { length: 20 }).notNull(),
+    // coverageType enum: "Coverage A" | "Coverage B" | "Coverage C" | "Coverage D"
+    policyLimit: real("policy_limit"),
+    deductible: real("deductible"),
+    applyRoofSchedule: boolean("apply_roof_schedule").default(false),
+    // When true: roofing items under this coverage use Non-Recoverable depreciation regardless of depreciationType
+    roofScheduleAge: real("roof_schedule_age"),
+    // Age threshold in years — roofs older than this get roof schedule applied
+    overheadPct: real("overhead_pct").default(10),
+    profitPct: real("profit_pct").default(10),
+    taxRate: real("tax_rate").default(8),
+    // Tax rate as percentage (e.g., 8 for 8%)
+    opExcludedTrades: jsonb("op_excluded_trades").default([]),
+    // Array of trade codes excluded from O&P for this coverage.
+    // Example: ["RFG", "EXT"] means Roofing and Exterior/Siding don't get O&P.
+    // Empty array = all eligible trades get O&P (default behavior).
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    claimCoverageUnique: uniqueIndex("policy_rules_claim_coverage_unique").on(table.claimId, table.coverageType),
+    claimIdIdx: index("policy_rules_claim_id_idx").on(table.claimId),
+  }),
+);
 
 export const insertPolicyRuleSchema = createInsertSchema(policyRules).omit({
   id: true,

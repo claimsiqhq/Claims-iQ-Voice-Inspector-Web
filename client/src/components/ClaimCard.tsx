@@ -100,6 +100,7 @@ export default function ClaimCard({
       case "inspecting":
       case "in_progress": return `/inspection/${id}`;
       case "review": return `/inspection/${id}/review`;
+      case "inspection_complete":
       case "completed":
       case "closed": return `/inspection/${id}/review`;
       default:

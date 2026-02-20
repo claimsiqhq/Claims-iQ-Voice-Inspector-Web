@@ -4,6 +4,7 @@ import { claims, inspectionSessions, inspectionPhotos, inspectionRooms, structur
 import { eq, desc } from "drizzle-orm";
 import { supabase, PHOTOS_BUCKET } from "../supabase";
 import { authenticateRequest } from "../auth";
+import { isPrivilegedRole } from "../authorization";
 import { logger } from "../logger";
 
 export function galleryRouter() {
@@ -11,13 +12,21 @@ export function galleryRouter() {
 
   router.get("/photos", authenticateRequest, async (req, res) => {
     try {
-      const allClaims = await db.select({
-        id: claims.id,
-        claimNumber: claims.claimNumber,
-        insuredName: claims.insuredName,
-        propertyAddress: claims.propertyAddress,
-      }).from(claims).orderBy(desc(claims.id));
+      const claimsToInclude = isPrivilegedRole(req.user?.role)
+        ? await db.select({
+            id: claims.id,
+            claimNumber: claims.claimNumber,
+            insuredName: claims.insuredName,
+            propertyAddress: claims.propertyAddress,
+          }).from(claims).orderBy(desc(claims.id))
+        : await db.select({
+            id: claims.id,
+            claimNumber: claims.claimNumber,
+            insuredName: claims.insuredName,
+            propertyAddress: claims.propertyAddress,
+          }).from(claims).where(eq(claims.assignedTo, req.user!.id)).orderBy(desc(claims.id));
 
+      const allClaims = claimsToInclude;
       const result: any[] = [];
       for (const claim of allClaims) {
         const sessions = await db.select({ id: inspectionSessions.id })
@@ -61,12 +70,19 @@ export function galleryRouter() {
 
   router.get("/sketches", authenticateRequest, async (req, res) => {
     try {
-      const allClaims = await db.select({
+      const allClaims = isPrivilegedRole(req.user?.role)
+        ? await db.select({
         id: claims.id,
         claimNumber: claims.claimNumber,
         insuredName: claims.insuredName,
         propertyAddress: claims.propertyAddress,
-      }).from(claims).orderBy(desc(claims.id));
+        }).from(claims).orderBy(desc(claims.id))
+        : await db.select({
+            id: claims.id,
+            claimNumber: claims.claimNumber,
+            insuredName: claims.insuredName,
+            propertyAddress: claims.propertyAddress,
+          }).from(claims).where(eq(claims.assignedTo, req.user!.id)).orderBy(desc(claims.id));
 
       const result: any[] = [];
       for (const claim of allClaims) {
