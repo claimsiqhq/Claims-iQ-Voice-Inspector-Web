@@ -108,7 +108,7 @@ export function adminRouter(): Router {
             const items = await storage.getLineItems(session.id);
             const photos = await storage.getPhotos(session.id);
             const damages = await storage.getDamagesForSession(session.id);
-            const overviewCount = photos.filter((p: { photoType?: string }) => p.photoType === "overview").length;
+            const overviewCount = photos.filter((p) => p.photoType === "overview").length;
             let passed = 0;
             if (overviewCount >= 4) passed++;
             if (rooms.length > 0) passed++;
@@ -150,7 +150,7 @@ export function adminRouter(): Router {
             const items = await storage.getLineItems(session.id);
             const photos = await storage.getPhotos(session.id);
             const damages = await storage.getDamagesForSession(session.id);
-            const overviewCount = photos.filter((p: { photoType?: string }) => p.photoType === "overview").length;
+            const overviewCount = photos.filter((p) => p.photoType === "overview").length;
             let passed = 0;
             if (overviewCount >= 4) passed++;
             if (rooms.length > 0) passed++;

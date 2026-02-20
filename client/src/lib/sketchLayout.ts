@@ -38,8 +38,15 @@ export function bfsLayout(
 ): LayoutRoom[] {
   if (rooms.length === 0) return [];
 
-  const roomMap = new Map<number, (typeof rooms)[0]>();
-  for (const r of rooms) roomMap.set(r.id, r);
+  const normalizedRooms = rooms.map((room) => ({
+    ...room,
+    status: room.status ?? "pending",
+    damageCount: room.damageCount ?? 0,
+    photoCount: room.photoCount ?? 0,
+  }));
+
+  const roomMap = new Map<number, (typeof normalizedRooms)[0]>();
+  for (const r of normalizedRooms) roomMap.set(r.id, r);
 
   const adjMap = new Map<number, Array<{ adj: Adjacency; otherId: number }>>();
   for (const a of adjacencies) {
@@ -70,7 +77,7 @@ export function bfsLayout(
   const placed = new Map<number, LayoutRoom>();
   const queue: number[] = [];
 
-  const first = rooms[0];
+  const first = normalizedRooms[0];
   const firstSize = getRoomSize(first);
   placed.set(first.id, { room: first, x: 0, y: 0, w: firstSize.w, h: firstSize.h });
   queue.push(first.id);
@@ -131,7 +138,7 @@ export function bfsLayout(
   }
 
   const placedArr = Array.from(placed.values());
-  const unplaced = rooms.filter((r) => !placed.has(r.id));
+  const unplaced = normalizedRooms.filter((r) => !placed.has(r.id));
   if (unplaced.length > 0) {
     const maxBfsY = placedArr.length > 0 ? Math.max(...placedArr.map((l) => l.y + l.h)) : 0;
     const gap = 6;

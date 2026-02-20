@@ -319,7 +319,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     if (annotationId === null) return;
     const annotation = await storage.getSketchAnnotation(annotationId);
     if (!annotation) return res.status(404).json({ message: "Annotation not found" });
-    if (annotation.sessionId !== sessionId) {
+    const annotationRoom = await storage.getRoom(annotation.roomId);
+    if (!annotationRoom || annotationRoom.sessionId !== sessionId) {
       return res.status(403).json({ message: "Annotation does not belong to this session" });
     }
     next();
@@ -1063,8 +1064,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       const roomId = parseInt(param(req.params.roomId));
       const room = await storage.getRoom(roomId);
       if (!room) return res.status(404).json({ error: "Room not found" });
-      if (room.sessionId !== sessionId) {
-        return res.status(400).json({ error: "roomId must belong to the target session" });
+      const requestedSessionId = Number(req.body?.sessionId);
+      if (Number.isFinite(requestedSessionId) && room.sessionId !== requestedSessionId) {
+        return res.status(400).json({ error: "roomId must belong to the target sessionId" });
       }
 
       const existingDims = (room.dimensions as Record<string, any>) || {};
@@ -1258,7 +1260,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           const allScopeItems = [...result.created, ...result.companionItems];
           for (const si of allScopeItems) {
             const actType = si.activityType || "install";
-            const up = await lookupPrice(si.catalogCode, actType);
+            const catalogCode = si.catalogCode || "";
+            const up = catalogCode ? await lookupPrice(catalogCode, actType) : 0;
             // Use the quantity already derived by assembleScope (via scopeQuantityEngine)
             // which uses the catalog's quantityFormula field for accurate derivation
             const qty = parseFloat((si.quantity || 1).toFixed(2));
@@ -1284,7 +1287,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             });
 
             items.push({
-              code: si.catalogCode,
+              code: catalogCode,
               description: si.description,
               quantity: qty,
               unit: si.unit || "EA",
@@ -1640,7 +1643,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
       const createdItems = [];
       for (const template of bundle) {
-        const wf = wasteFactor ?? template.defaultWaste;
+        const wf = Number(wasteFactor ?? template.defaultWaste ?? 0);
 
         // Look up catalog price for this line item
         let unitPrice = 0;
@@ -1650,9 +1653,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           let regionalPrice = await getRegionalPrice(template.xactCode, "FLFM8X_NOV22", "install");
           if (!regionalPrice) regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL", "install");
           if (regionalPrice) {
-            const materialCost = regionalPrice.materialCost || 0;
-            const laborCost = regionalPrice.laborCost || 0;
-            const equipmentCost = regionalPrice.equipmentCost || 0;
+            const materialCost = Number(regionalPrice.materialCost) || 0;
+            const laborCost = Number(regionalPrice.laborCost) || 0;
+            const equipmentCost = Number(regionalPrice.equipmentCost) || 0;
             unitPrice = Math.round((materialCost * (1 + wf / 100) + laborCost + equipmentCost) * 100) / 100;
             totalPrice = unitPrice; // quantity is 1
           }
@@ -1666,12 +1669,12 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           action: template.action,
           description: severity === "premium" ? `${template.description} - Premium Grade` : template.description,
           xactCode: template.xactCode,
-          quantity: 1,
+          quantity: "1",
           unit: template.unit,
-          unitPrice,
-          totalPrice,
+          unitPrice: unitPrice.toFixed(2),
+          totalPrice: totalPrice.toFixed(2),
           depreciationType: template.depreciationType,
-          wasteFactor: wf,
+          wasteFactor: Math.round(wf),
           coverageBucket: "Dwelling",
           qualityGrade: severity === "premium" ? "High Grade" : severity === "heavy" ? "Standard" : null,
           applyOAndP: false,
@@ -2092,9 +2095,13 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
         const allScopeItems = [...result.created, ...result.companionItems];
         for (const scopeItem of allScopeItems) {
-          const scopeActType = scopeItem.activityType || "install";
-          let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22", scopeActType);
-          if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL", scopeActType);
+          const scopeActType: string = scopeItem.activityType ?? "install";
+          const catalogCode = scopeItem.catalogCode ?? "";
+          let price = null;
+          if (catalogCode) {
+            price = await storage.getRegionalPrice(catalogCode, "FLFM8X_NOV22", scopeActType);
+            if (!price) price = await storage.getRegionalPrice(catalogCode, "US_NATIONAL", scopeActType);
+          }
           const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
           const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
           const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;
@@ -2159,9 +2166,13 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
           const allScopeItems = [...result.created, ...result.companionItems];
           for (const scopeItem of allScopeItems) {
-            const actType = scopeItem.activityType || "install";
-            let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22", actType);
-            if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL", actType);
+            const actType: string = scopeItem.activityType ?? "install";
+            const catalogCode = scopeItem.catalogCode ?? "";
+            let price = null;
+            if (catalogCode) {
+              price = await storage.getRegionalPrice(catalogCode, "FLFM8X_NOV22", actType);
+              if (!price) price = await storage.getRegionalPrice(catalogCode, "US_NATIONAL", actType);
+            }
             const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
             const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
             const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;
@@ -3052,7 +3063,10 @@ Respond in JSON format:
         warnings.push("No rooms marked as complete");
       }
 
-      const missingQty = items.filter(i => !i.quantity || i.quantity <= 0);
+      const missingQty = items.filter((i) => {
+        const qty = Number(i.quantity);
+        return !Number.isFinite(qty) || qty <= 0;
+      });
       if (missingQty.length > 0) {
         warnings.push(`${missingQty.length} line item(s) missing quantity`);
       }
@@ -3219,7 +3233,7 @@ Respond in JSON format:
             description,
             category,
             quantity: Number(item.quantity) || 0,
-            unit: item.unit,
+            unit: item.unit || "",
             unitPrice: Number(item.unitPrice) || 0,
             totalPrice: rcv,
             taxAmount: tax,
@@ -3259,6 +3273,7 @@ Respond in JSON format:
       const grandRecDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalRecoverableDepreciation || 0), 0);
       const grandNonRecDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalNonRecoverableDepreciation || 0), 0);
       const grandACVPdf = grandTotalPdf - grandDepPdf;
+      const estimateExt = estimate as Record<string, unknown> | null;
 
       // Build the data object for PDF generation
       const pdfData = {
@@ -3273,13 +3288,13 @@ Respond in JSON format:
           totalRCV: Number(estimate?.totalRCV) || 0,
           totalDepreciation: Number(estimate?.totalDepreciation) || 0,
           totalACV: Number(estimate?.totalACV) || 0,
-          recoverableDepreciation: Number(estimate?.recoverableDepreciation) || 0,
-          nonRecoverableDepreciation: Number(estimate?.nonRecoverableDepreciation) || 0,
-          overheadAmount: Number(estimate?.overheadAmount) || 0,
-          profitAmount: Number(estimate?.profitAmount) || 0,
-          qualifiesForOP: estimate?.qualifiesForOP || false,
-          deductible: Number(estimate?.deductible) || 0,
-          netClaim: Number(estimate?.netClaim) || 0,
+          recoverableDepreciation: Number(estimateExt?.["recoverableDepreciation"]) || 0,
+          nonRecoverableDepreciation: Number(estimateExt?.["nonRecoverableDepreciation"]) || 0,
+          overheadAmount: Number(estimateExt?.["overheadAmount"]) || 0,
+          profitAmount: Number(estimateExt?.["profitAmount"]) || 0,
+          qualifiesForOP: Boolean(estimateExt?.["qualifiesForOP"]),
+          deductible: Number(estimateExt?.["deductible"]) || 0,
+          netClaim: Number(estimateExt?.["netClaim"]) || 0,
           itemCount: items.length,
           categories,
         },

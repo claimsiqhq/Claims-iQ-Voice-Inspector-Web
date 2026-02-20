@@ -103,6 +103,9 @@ export default function SketchGallery() {
               const allRooms = claim.structures.flatMap(s =>
                 s.rooms.map(r => ({
                   ...r,
+                  roomType: r.roomType ?? undefined,
+                  viewType: r.viewType ?? undefined,
+                  shapeType: r.shapeType ?? undefined,
                   structure: s.name,
                   damageCount: 0,
                   photoCount: 0,

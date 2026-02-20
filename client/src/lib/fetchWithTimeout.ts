@@ -6,7 +6,7 @@ function supportsAbortSignalAny(): boolean {
   return typeof AbortSignal !== "undefined" && typeof (AbortSignal as any).any === "function";
 }
 
-function combineSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+function combineSignals(signals: Array<AbortSignal | null | undefined>): AbortSignal | undefined {
   const active = signals.filter(Boolean) as AbortSignal[];
   if (active.length === 0) return undefined;
   if (active.length === 1) return active[0];

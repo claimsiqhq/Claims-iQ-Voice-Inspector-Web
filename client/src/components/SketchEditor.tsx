@@ -1235,7 +1235,8 @@ export default function SketchEditor({
 
       if (tool === "select") {
         for (const op of activeElevOpenings) {
-          const opW = Math.min(op.widthFt * pxPerFt, wallW * 0.4);
+          const opWidthFt = op.widthFt ?? op.width ?? 3;
+          const opW = Math.min(opWidthFt * pxPerFt, wallW * 0.4);
           const opH = Math.min((op.heightFt || 7) * pxPerFt, wallH * 0.85);
           const isDoor = ["door", "french_door", "sliding_door", "standard_door"].includes(op.openingType);
           const opX = wallLeft + (op.positionOnWall ?? 0.5) * (wallW - opW);
@@ -1892,7 +1893,8 @@ export default function SketchEditor({
                         )}
 
                         {activeElevOpenings.map((op) => {
-                          const opW = Math.min(op.widthFt * pxPerFt, wallW * 0.4);
+                          const opWidthFt = op.widthFt ?? op.width ?? 3;
+                          const opW = Math.min(opWidthFt * pxPerFt, wallW * 0.4);
                           const opH = Math.min((op.heightFt || 7) * pxPerFt, wallH * 0.85);
                           const isDoor = ["door", "french_door", "sliding_door", "standard_door"].includes(op.openingType);
                           const isWindow = op.openingType === "window";
