@@ -1260,12 +1260,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUserSettings(userId: string, settings: Record<string, any>): Promise<UserSettings> {
+    const [existing] = await db
+      .select()
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+
+    const mergedSettings = {
+      ...((existing?.settings as Record<string, any> | undefined) || {}),
+      ...settings,
+    };
+
     const [row] = await db
       .insert(userSettings)
-      .values({ userId, settings, updatedAt: new Date() })
+      .values({ userId, settings: mergedSettings, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: userSettings.userId,
-        set: { settings, updatedAt: new Date() },
+        set: { settings: mergedSettings, updatedAt: new Date() },
       })
       .returning();
     return row;

@@ -22,7 +22,7 @@ export function realtimeRouter() {
       }
 
       const userSettings = await storage.getUserSettings(req.user!.id);
-      const s = (userSettings?.settings as Record<string, any>) || {};
+      const s = (userSettings as Record<string, any> | null) || {};
 
       const perilType = claim.perilType || "General";
       const flowId = req.body.flowId ? parseInt(req.body.flowId) : undefined;
@@ -57,7 +57,13 @@ export function realtimeRouter() {
       const workflowHint = workflowState
         ? `\n\n## WORKFLOW CONTRACT\nCurrent Phase: ${workflowState.phase}\nStep: ${workflowState.stepId}\nAllowed tools now: ${getAllowedTools(workflowState).join(", ")}\nRules: tool-first, talk-after. If a tool is not allowed, ask to move step or call set_phase. Never execute tools out of context.`
         : "";
-      const instructions = buildSystemInstructions(briefing, claim, inspectionFlow || undefined) + workflowHint + verbosityHint;
+      const instructions =
+        buildSystemInstructions(briefing, claim, inspectionFlow || undefined, {
+          measurementUnit: s.measurementUnit === "metric" ? "metric" : "imperial",
+          requirePhotoVerification: s.requirePhotoVerification !== false,
+        }) +
+        workflowHint +
+        verbosityHint;
 
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {

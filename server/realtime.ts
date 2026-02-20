@@ -23,7 +23,19 @@ function buildFlowInstructions(flow: InspectionFlow): string {
  * Now accepts an optional InspectionFlow to dynamically generate phase instructions.
  * Falls back to the hardcoded 8-phase system if no flow is provided.
  */
-export function buildSystemInstructions(briefing: any, claim: Claim, flow?: InspectionFlow): string {
+export type InstructionPreferences = {
+  measurementUnit?: "imperial" | "metric";
+  requirePhotoVerification?: boolean;
+};
+
+export function buildSystemInstructions(
+  briefing: any,
+  claim: Claim,
+  flow?: InspectionFlow,
+  preferences: InstructionPreferences = {}
+): string {
+  const measurementUnit = preferences.measurementUnit === "metric" ? "metric" : "imperial";
+  const requirePhotoVerification = preferences.requirePhotoVerification !== false;
   const capabilityText = autoScopeActive
     ? `\n\nIMPORTANT: Auto-scope is ACTIVE for this session. Every add_damage call will attempt to auto-generate line items. Pay attention to the autoScope field in tool results and narrate the results to the adjuster.\n`
     : "";
@@ -32,6 +44,28 @@ export function buildSystemInstructions(briefing: any, claim: Claim, flow?: Insp
   const flowSection = flow
     ? `## CURRENT INSPECTION FLOW: "${flow.name}" (${flow.perilType})\n${flow.description ? flow.description + "\n\n" : ""}${buildFlowInstructions(flow)}`
     : buildDefaultFlowSection(claim);
+
+  const measurementPreferenceText =
+    measurementUnit === "metric"
+      ? `## Measurement Unit Preference
+- The adjuster prefers metric measurements.
+- Accept metric values naturally in conversation (meters/centimeters), but convert to feet before tool calls since tool schemas are in feet.
+- Helpful conversions: 1 meter = 3.28084 feet, 1 cm = 0.0328084 feet.`
+      : `## Measurement Unit Preference
+- The adjuster prefers imperial measurements (feet/inches).`;
+
+  const propertyVerificationText = requirePhotoVerification
+    ? `**MANDATORY FIRST STEP — Property Verification Photo:**
+  On a FRESH session (Phase 1, no prior transcript), your FIRST actions must be:
+  a. Call get_inspection_state to check what exists.
+  b. If no structures exist, call create_structure with name "Main Dwelling" and structureType "dwelling".
+  c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
+  d. Ask the adjuster: "Ready to take a verification photo of the front of the property?" — only call trigger_photo_capture after they confirm.
+  e. When the photo analysis result comes back, CHECK the addressVerification field carefully. If addressVerification.matches is false or the visible address doesn't match "${claim.propertyAddress}", you MUST alert the adjuster: "The address visible in the photo doesn't appear to match the claim address of ${claim.propertyAddress}. The photo shows [visible address]. Please confirm we're at the correct property." Do NOT proceed until the adjuster confirms the address is correct or retakes the photo.
+  f. Only after successful address verification (or adjuster override), advance to the next phase by calling set_inspection_context with the next phase number.`
+    : `**FIRST STEP — Property Verification (Optional):**
+  On a FRESH session (Phase 1, no prior transcript), begin by checking inspection state and creating "Main Dwelling" if needed.
+  You MAY offer a property verification photo, but it is optional for this adjuster and should not block progression.`;
 
   return `You are an expert insurance inspection assistant for Claims IQ. You guide a field adjuster through a property inspection via voice conversation on an iPad.
 
@@ -71,6 +105,8 @@ export function buildSystemInstructions(briefing: any, claim: Claim, flow?: Insp
 - Property: ${claim.propertyAddress}, ${claim.city}, ${claim.state} ${claim.zip}
 - Date of Loss: ${claim.dateOfLoss}
 - Peril: ${claim.perilType}
+
+${measurementPreferenceText}
 
 ## Briefing Summary
 - Property: ${JSON.stringify(briefing.propertyProfile)}
@@ -182,14 +218,7 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
    - When advancing to a new phase, ALWAYS call set_inspection_context with the new phase number and phase name. This persists your position so resumption works correctly.
    - If the session is being resumed, the currentPhase tells you exactly where to continue. Do NOT restart from Phase 1.
 
-   **MANDATORY FIRST STEP — Property Verification Photo:**
-   On a FRESH session (Phase 1, no prior transcript), your FIRST actions must be:
-   a. Call get_inspection_state to check what exists.
-   b. If no structures exist, call create_structure with name "Main Dwelling" and structureType "dwelling".
-   c. Greet the adjuster: "Welcome to the ${claim.claimNumber} inspection. Before we begin, let's verify the property."
-   d. Ask the adjuster: "Ready to take a verification photo of the front of the property?" — only call trigger_photo_capture after they confirm.
-   e. When the photo analysis result comes back, CHECK the addressVerification field carefully. If addressVerification.matches is false or the visible address doesn't match "${claim.propertyAddress}", you MUST alert the adjuster: "The address visible in the photo doesn't appear to match the claim address of ${claim.propertyAddress}. The photo shows [visible address]. Please confirm we're at the correct property." Do NOT proceed until the adjuster confirms the address is correct or retakes the photo.
-   f. Only after successful address verification (or adjuster override), advance to the next phase by calling set_inspection_context with the next phase number.
+   ${propertyVerificationText}
 
    ${flowSection}
 
@@ -515,7 +544,7 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
 
 7. **Smart Macros:** When the adjuster confirms a standard repair scope (e.g., "full roof replacement"), use apply_smart_macro to add all required line items at once. Always confirm: "I'll add the full roof replacement bundle — tear off, shingles, felt, ice barrier, drip edge, ridge vent. Sound right?"
 
-8. **Photo Management:**
+8. **Photo Triggers:**
    - list_photos: List all inspection photos, optionally filtered by room
    - delete_photo: Remove a photo from the inspection
    ALWAYS ask the adjuster verbally if they are ready before calling trigger_photo_capture. For example: "Ready to take a photo of this area?" or "Want to capture that damage?" Only call trigger_photo_capture AFTER the adjuster confirms verbally (e.g., "yes", "go ahead", "ready"). When the adjuster says "take a photo" that counts as confirmation. Do NOT continue talking until you receive the photo result.

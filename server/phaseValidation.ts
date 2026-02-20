@@ -14,6 +14,10 @@ export interface PhaseValidationResult {
   completionScore: number;
 }
 
+export interface PhaseValidationOptions {
+  requirePhotoVerification?: boolean;
+}
+
 /**
  * Validate readiness to transition FROM the given phase TO the next.
  */
@@ -21,11 +25,13 @@ export async function validatePhaseTransition(
   storage: IStorage,
   sessionId: number,
   currentPhase: number,
-  perilType?: string
+  perilType?: string,
+  options: PhaseValidationOptions = {}
 ): Promise<PhaseValidationResult> {
+  const requirePhotoVerification = options.requirePhotoVerification !== false;
   switch (currentPhase) {
     case 1:
-      return validatePhase1(storage, sessionId);
+      return validatePhase1(storage, sessionId, requirePhotoVerification);
     case 2:
       return validatePhase2();
     case 3:
@@ -43,7 +49,15 @@ export async function validatePhaseTransition(
   }
 }
 
-async function validatePhase1(storage: IStorage, sessionId: number): Promise<PhaseValidationResult> {
+async function validatePhase1(
+  storage: IStorage,
+  sessionId: number,
+  requirePhotoVerification: boolean
+): Promise<PhaseValidationResult> {
+  if (!requirePhotoVerification) {
+    return { canProceed: true, warnings: [], missingItems: [], completionScore: 100 };
+  }
+
   const warnings: string[] = [];
   const missingItems: string[] = [];
   const photos = await storage.getPhotos(sessionId);
