@@ -266,20 +266,46 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const normalizedUsername = username.trim().toLowerCase();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.username}) = ${normalizedUsername}`)
+      .limit(1);
     return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    const normalizedEmail = email.trim().toLowerCase();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${normalizedEmail}`)
+      .limit(1);
     return user;
   }
 
   async getUserByEmailOrUsername(identifier: string): Promise<User | undefined> {
-    if (identifier.includes("@")) {
-      return this.getUserByEmail(identifier);
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+    if (!normalizedIdentifier) {
+      return undefined;
     }
-    return this.getUserByUsername(identifier);
+
+    if (normalizedIdentifier.includes("@")) {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(sql`lower(${users.email}) = ${normalizedIdentifier}`)
+        .limit(1);
+      return user;
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.username}) = ${normalizedIdentifier}`)
+      .limit(1);
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -293,22 +319,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   async syncSupabaseUser(supabaseAuthId: string, email: string, fullName: string): Promise<User> {
-    const existing = await this.getUserBySupabaseId(supabaseAuthId);
-    if (existing) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedFullName = fullName.trim();
+
+    const existingBySupabaseId = await this.getUserBySupabaseId(supabaseAuthId);
+    if (existingBySupabaseId) {
       const [updated] = await db
         .update(users)
-        .set({ lastLoginAt: new Date() })
-        .where(eq(users.id, existing.id))
+        .set({
+          email: normalizedEmail || existingBySupabaseId.email,
+          fullName: existingBySupabaseId.fullName || normalizedFullName || null,
+          lastLoginAt: new Date(),
+        })
+        .where(eq(users.id, existingBySupabaseId.id))
         .returning();
       return updated;
     }
+
+    if (normalizedEmail) {
+      const existingByEmail = await this.getUserByEmail(normalizedEmail);
+      if (existingByEmail) {
+        if (existingByEmail.supabaseAuthId && existingByEmail.supabaseAuthId !== supabaseAuthId) {
+          throw new Error("Account already linked to a different Supabase identity");
+        }
+
+        const [linked] = await db
+          .update(users)
+          .set({
+            supabaseAuthId,
+            email: normalizedEmail,
+            fullName: existingByEmail.fullName || normalizedFullName || null,
+            lastLoginAt: new Date(),
+          })
+          .where(eq(users.id, existingByEmail.id))
+          .returning();
+        return linked;
+      }
+    }
+
+    const baseUsername =
+      (normalizedEmail.split("@")[0] || "user")
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "") || "user";
+
     const [newUser] = await db
       .insert(users)
       .values({
-        username: email.split("@")[0] + "_" + Date.now(),
+        username: `${baseUsername}_${Date.now().toString(36)}`,
         password: "disabled",
-        email,
-        fullName,
+        email: normalizedEmail,
+        fullName: normalizedFullName || null,
         supabaseAuthId,
         role: "adjuster",
         lastLoginAt: new Date(),
