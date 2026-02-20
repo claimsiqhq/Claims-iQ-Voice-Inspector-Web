@@ -113,8 +113,14 @@ export function calculateDimVars(
 
   const r2 = (n: number) => Math.round(n * 100) / 100;
   for (const key of Object.keys(afterMW) as Array<keyof DimVarsResult>) {
-    afterMW[key] = r2(afterMW[key]);
-    beforeMW[key] = r2(beforeMW[key]);
+    const afterValue = afterMW[key];
+    if (typeof afterValue === "number") {
+      afterMW[key] = r2(afterValue);
+    }
+    const beforeValue = beforeMW[key];
+    if (typeof beforeValue === "number") {
+      beforeMW[key] = r2(beforeValue);
+    }
   }
 
   return { beforeMW, afterMW };
@@ -167,8 +173,14 @@ export function calculateElevationDimVars(
 
   const r2 = (n: number) => Math.round(n * 100) / 100;
   for (const key of Object.keys(afterMW) as Array<keyof DimVarsResult>) {
-    afterMW[key] = r2(afterMW[key]);
-    beforeMW[key] = r2(beforeMW[key]);
+    const afterValue = afterMW[key];
+    if (typeof afterValue === "number") {
+      afterMW[key] = r2(afterValue);
+    }
+    const beforeValue = beforeMW[key];
+    if (typeof beforeValue === "number") {
+      beforeMW[key] = r2(beforeValue);
+    }
   }
 
   return { beforeMW, afterMW };

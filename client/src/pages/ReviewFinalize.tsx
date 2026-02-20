@@ -144,8 +144,8 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             <div className="p-4">
               <XactimateEstimateView
                 data={estimateByRoom}
-                claim={claim}
-                sessionId={sessionId}
+                claimNumber={claim?.claimNumber || undefined}
+                insuredName={claim?.insuredName || undefined}
               />
             </div>
           </TabsContent>

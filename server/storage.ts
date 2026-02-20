@@ -1559,6 +1559,12 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
+    const {
+      getPolicyOverridesAndLimits,
+      taxRulesToCategoryFormat,
+      calculateSettlement,
+    } = await import("./estimateEngine");
+
     const policyInput = rules.map(r => ({
       coverageType: r.coverageType,
       policyLimit: r.policyLimit,
@@ -1585,11 +1591,6 @@ export class DatabaseStorage implements IStorage {
       (claim as { carrierCode?: string })?.carrierCode ?? null
     );
 
-    const {
-      getPolicyOverridesAndLimits,
-      taxRulesToCategoryFormat,
-      calculateSettlement,
-    } = await import("./estimateEngine");
     const { overrides, limits } = getPolicyOverridesAndLimits(policyInput);
     const settlementRules = { ...baseRules, ...overrides };
 
