@@ -339,6 +339,10 @@ export class DatabaseStorage implements IStorage {
     if (normalizedEmail) {
       const existingByEmail = await this.getUserByEmail(normalizedEmail);
       if (existingByEmail) {
+        if (existingByEmail.supabaseAuthId && existingByEmail.supabaseAuthId !== supabaseAuthId) {
+          throw new Error("Account already linked to a different Supabase identity");
+        }
+
         const [linked] = await db
           .update(users)
           .set({
