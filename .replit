@@ -56,3 +56,8 @@ waitForPort = 5000
 stack = "MOCKUP_JS"
 mockupState = "FULLSTACK"
 integrations = ["javascript_openai_ai_integrations:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "fdfb593010ac91a8ad85cfd55b053fb510fdb767fbde1d3c0f82eeaa3f20dacf7e760e160ef96f451db4c2ee720a19ed4b5a326d76fded70134f43e45ec31e14"
