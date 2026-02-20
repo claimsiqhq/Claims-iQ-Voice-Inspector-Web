@@ -93,7 +93,7 @@ interface PendingToolCall {
 }
 
 const IMMEDIATE_TOOLS = new Set(["trigger_photo_capture"]);
-const ENABLE_MIC_GATING = true;
+const ENABLE_MIC_GATING = false;
 
 const PHASES = [
   { id: 1, name: "Pre-Inspection" },
