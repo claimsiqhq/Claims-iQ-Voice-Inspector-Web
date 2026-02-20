@@ -20,6 +20,27 @@ const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
+const cspAllowedOrigins = (process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const supabaseOrigin = (() => {
+  try {
+    const raw = process.env.SUPABASE_URL || "";
+    return raw ? new URL(raw).origin : "";
+  } catch {
+    return "";
+  }
+})();
+const cspConnectSrc = [
+  "'self'",
+  "https://api.openai.com",
+  "wss://api.openai.com",
+  "https://weather.visualcrossing.com",
+  ...cspAllowedOrigins,
+  ...(supabaseOrigin ? [supabaseOrigin] : []),
+];
+
 // Bare-minimum health endpoint — responds before any middleware.
 app.get("/health", (_req, res) => {
   res.json({ status: "healthy", uptime: process.uptime() });
@@ -27,7 +48,22 @@ app.get("/health", (_req, res) => {
 
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: process.env.NODE_ENV === "production"
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            connectSrc: cspConnectSrc,
+            imgSrc: ["'self'", "data:", "blob:", "https:"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            fontSrc: ["'self'", "data:"],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false,
   })
 );
@@ -119,12 +155,30 @@ const aiLimiter = rateLimit({
   message: { message: "Too many AI requests, please try again later" },
 });
 
+const realtimeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many realtime session requests, please try again later" },
+});
+
+const aiReviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many AI review requests, please try again later" },
+});
+
 app.use("/api/", generalLimiter);
 app.use("/api/auth/", authLimiter);
 app.use("/api/claims/:id/parse", aiLimiter);
 app.use("/api/claims/:id/parse-batch", aiLimiter);
 app.use("/api/claims/:id/briefing", aiLimiter);
 app.use("/api/inspection/:sessionId/photos/:photoId/analyze", aiLimiter);
+app.use("/api/realtime/session", realtimeLimiter);
+app.use("/api/inspection/:sessionId/review/ai", aiReviewLimiter);
 
 export function log(message: string, source = "express") {
   console.log(`[${source}] ${message}`);

@@ -50,6 +50,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Sessions
     createInspectionSession: vi.fn().mockResolvedValue({ id: 1 }),
+    getOrCreateActiveInspectionSession: vi.fn().mockResolvedValue({ session: { id: 1, claimId: 1, status: "in_progress" }, created: true }),
     getInspectionSession: vi.fn().mockResolvedValue(undefined),
     getInspectionSessionsForClaim: vi.fn().mockResolvedValue([]),
     getActiveSessionForClaim: vi.fn().mockResolvedValue(undefined),
@@ -94,6 +95,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     updateOpening: vi.fn().mockResolvedValue(undefined),
     deleteOpening: vi.fn().mockResolvedValue(undefined),
     createAdjacency: vi.fn().mockResolvedValue({ id: 1 }),
+    getAdjacency: vi.fn().mockResolvedValue(undefined),
     getAdjacenciesForRoom: vi.fn().mockResolvedValue([]),
     getAdjacenciesForSession: vi.fn().mockResolvedValue([]),
     deleteAdjacency: vi.fn().mockResolvedValue(undefined),
@@ -117,11 +119,13 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Damages
     createDamage: vi.fn().mockResolvedValue({ id: 1 }),
+    getDamage: vi.fn().mockResolvedValue(undefined),
     getDamages: vi.fn().mockResolvedValue([]),
     getDamagesForSession: vi.fn().mockResolvedValue([]),
 
     // Line Items
     createLineItem: vi.fn().mockResolvedValue({ id: 1 }),
+    getLineItemById: vi.fn().mockResolvedValue(undefined),
     getLineItems: vi.fn().mockResolvedValue([]),
     getLineItemsForRoom: vi.fn().mockResolvedValue([]),
     getEstimateSummary: vi.fn().mockResolvedValue({ totalRCV: 0, totalDepreciation: 0, totalACV: 0, itemCount: 0 }),
@@ -138,6 +142,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Moisture
     createMoistureReading: vi.fn().mockResolvedValue({ id: 1 }),
+    getMoistureReading: vi.fn().mockResolvedValue(undefined),
     getMoistureReadings: vi.fn().mockResolvedValue([]),
     getMoistureReadingsForSession: vi.fn().mockResolvedValue([]),
 
@@ -156,6 +161,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getScopeTrades: vi.fn().mockResolvedValue([]),
     getScopeTradeByCode: vi.fn().mockResolvedValue(undefined),
     createScopeItem: vi.fn().mockResolvedValue({ id: 1 }),
+    getScopeItem: vi.fn().mockResolvedValue(undefined),
     createScopeItems: vi.fn().mockResolvedValue([]),
     getScopeItems: vi.fn().mockResolvedValue([]),
     getScopeItemsForRoom: vi.fn().mockResolvedValue([]),
@@ -204,6 +210,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Test Squares
     createTestSquare: vi.fn().mockResolvedValue({ id: 1 }),
+    getTestSquare: vi.fn().mockResolvedValue(undefined),
     getTestSquares: vi.fn().mockResolvedValue([]),
     getTestSquaresForRoom: vi.fn().mockResolvedValue([]),
 

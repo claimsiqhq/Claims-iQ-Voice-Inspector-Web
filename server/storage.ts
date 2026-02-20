@@ -81,6 +81,10 @@ export interface IStorage {
   updateBriefing(claimId: number, data: Partial<InsertBriefing>): Promise<Briefing | undefined>;
 
   createInspectionSession(claimId: number): Promise<InspectionSession>;
+  getOrCreateActiveInspectionSession(
+    claimId: number,
+    inspectorId?: string | null,
+  ): Promise<{ session: InspectionSession; created: boolean }>;
   getInspectionSession(sessionId: number): Promise<InspectionSession | undefined>;
   getInspectionSessionsForClaim(claimId: number): Promise<InspectionSession[]>;
   getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined>;
@@ -128,6 +132,7 @@ export interface IStorage {
 
   // ── Room Adjacency ──────────────────────────
   createAdjacency(data: InsertRoomAdjacency): Promise<RoomAdjacency>;
+  getAdjacency(id: number): Promise<RoomAdjacency | undefined>;
   getAdjacenciesForRoom(roomId: number): Promise<RoomAdjacency[]>;
   getAdjacenciesForSession(sessionId: number): Promise<RoomAdjacency[]>;
   updateAdjacency(id: number, updates: Partial<Pick<RoomAdjacency, 'wallDirectionA' | 'wallDirectionB' | 'sharedWallLengthFt' | 'openingId'>>): Promise<RoomAdjacency | undefined>;
@@ -161,6 +166,7 @@ export interface IStorage {
   }>;
 
   createDamage(data: InsertDamageObservation): Promise<DamageObservation>;
+  getDamage(id: number): Promise<DamageObservation | undefined>;
   getDamages(roomId: number): Promise<DamageObservation[]>;
   getDamagesForSession(sessionId: number): Promise<DamageObservation[]>;
   updateDamage(id: number, updates: Partial<Pick<DamageObservation, 'description' | 'damageType' | 'severity' | 'location' | 'measurements'>>): Promise<DamageObservation | undefined>;
@@ -182,6 +188,7 @@ export interface IStorage {
   deletePhoto(id: number): Promise<InspectionPhoto | undefined>;
 
   createMoistureReading(data: InsertMoistureReading): Promise<MoistureReading>;
+  getMoistureReading(id: number): Promise<MoistureReading | undefined>;
   getMoistureReadings(roomId: number): Promise<MoistureReading[]>;
   getMoistureReadingsForSession(sessionId: number): Promise<MoistureReading[]>;
   updateMoistureReading(id: number, updates: Partial<Pick<MoistureReading, 'location' | 'reading' | 'materialType' | 'dryStandard'>>): Promise<MoistureReading | undefined>;
@@ -189,6 +196,7 @@ export interface IStorage {
 
   // Test squares (forensic hail/wind documentation)
   createTestSquare(data: InsertTestSquare): Promise<TestSquare>;
+  getTestSquare(id: number): Promise<TestSquare | undefined>;
   getTestSquares(sessionId: number): Promise<TestSquare[]>;
   getTestSquaresForRoom(roomId: number): Promise<TestSquare[]>;
   updateTestSquare(id: number, updates: Partial<Pick<TestSquare, 'hailHits' | 'windCreases' | 'pitch' | 'result' | 'notes' | 'roomId'>>): Promise<TestSquare | undefined>;
@@ -212,6 +220,7 @@ export interface IStorage {
 
   // ── Scope Items ──────────────────────────────────
   createScopeItem(data: InsertScopeItem): Promise<ScopeItem>;
+  getScopeItem(id: number): Promise<ScopeItem | undefined>;
   createScopeItems(data: InsertScopeItem[]): Promise<ScopeItem[]>;
   getScopeItems(sessionId: number): Promise<ScopeItem[]>;
   getScopeItemsForRoom(roomId: number): Promise<ScopeItem[]>;
@@ -550,6 +559,32 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
+  async getOrCreateActiveInspectionSession(
+    claimId: number,
+    inspectorId?: string | null,
+  ): Promise<{ session: InspectionSession; created: boolean }> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${claimId})`);
+
+      const [existing] = await tx
+        .select()
+        .from(inspectionSessions)
+        .where(and(eq(inspectionSessions.claimId, claimId), eq(inspectionSessions.status, "in_progress")))
+        .limit(1);
+
+      if (existing) {
+        return { session: existing, created: false };
+      }
+
+      const [created] = await tx
+        .insert(inspectionSessions)
+        .values({ claimId, inspectorId: inspectorId ?? null })
+        .returning();
+
+      return { session: created, created: true };
+    });
+  }
+
   async getInspectionSession(sessionId: number): Promise<InspectionSession | undefined> {
     const [session] = await db.select().from(inspectionSessions).where(eq(inspectionSessions.id, sessionId));
     return session;
@@ -790,6 +825,11 @@ export class DatabaseStorage implements IStorage {
     return adjacency;
   }
 
+  async getAdjacency(id: number): Promise<RoomAdjacency | undefined> {
+    const [adjacency] = await db.select().from(roomAdjacencies).where(eq(roomAdjacencies.id, id)).limit(1);
+    return adjacency;
+  }
+
   async getAdjacenciesForRoom(roomId: number): Promise<RoomAdjacency[]> {
     return db.select().from(roomAdjacencies)
       .where(
@@ -967,6 +1007,11 @@ export class DatabaseStorage implements IStorage {
     return damage;
   }
 
+  async getDamage(id: number): Promise<DamageObservation | undefined> {
+    const [damage] = await db.select().from(damageObservations).where(eq(damageObservations.id, id)).limit(1);
+    return damage;
+  }
+
   async getDamages(roomId: number): Promise<DamageObservation[]> {
     return db.select().from(damageObservations).where(eq(damageObservations.roomId, roomId));
   }
@@ -1064,6 +1109,11 @@ export class DatabaseStorage implements IStorage {
     return reading;
   }
 
+  async getMoistureReading(id: number): Promise<MoistureReading | undefined> {
+    const [reading] = await db.select().from(moistureReadings).where(eq(moistureReadings.id, id)).limit(1);
+    return reading;
+  }
+
   async getMoistureReadings(roomId: number): Promise<MoistureReading[]> {
     return db.select().from(moistureReadings).where(eq(moistureReadings.roomId, roomId));
   }
@@ -1088,6 +1138,11 @@ export class DatabaseStorage implements IStorage {
   async createTestSquare(data: InsertTestSquare): Promise<TestSquare> {
     const [sq] = await db.insert(testSquares).values(data).returning();
     return sq;
+  }
+
+  async getTestSquare(id: number): Promise<TestSquare | undefined> {
+    const [square] = await db.select().from(testSquares).where(eq(testSquares.id, id)).limit(1);
+    return square;
   }
 
   async getTestSquares(sessionId: number): Promise<TestSquare[]> {
@@ -1180,6 +1235,11 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async getScopeItem(id: number): Promise<ScopeItem | undefined> {
+    const [item] = await db.select().from(scopeItems).where(eq(scopeItems.id, id)).limit(1);
+    return item;
+  }
+
   async createScopeItems(data: InsertScopeItem[]): Promise<ScopeItem[]> {
     if (data.length === 0) return [];
     return db.insert(scopeItems).values(data).returning();
@@ -1224,22 +1284,15 @@ export class DatabaseStorage implements IStorage {
     tradeCode: string,
     data: Partial<InsertScopeSummary>
   ): Promise<ScopeSummary> {
-    const [existing] = await db.select().from(scopeSummary)
-      .where(and(eq(scopeSummary.sessionId, sessionId), eq(scopeSummary.tradeCode, tradeCode)))
-      .limit(1);
-
-    if (existing) {
-      const [updated] = await db.update(scopeSummary)
-        .set(data)
-        .where(eq(scopeSummary.id, existing.id))
-        .returning();
-      return updated;
-    }
-
-    const [created] = await db.insert(scopeSummary)
-      .values({ sessionId, tradeCode, ...data })
+    const now = new Date();
+    const [row] = await db.insert(scopeSummary)
+      .values({ sessionId, tradeCode, ...data, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [scopeSummary.sessionId, scopeSummary.tradeCode],
+        set: { ...data, updatedAt: now },
+      })
       .returning();
-    return created;
+    return row;
   }
 
   async getScopeSummary(sessionId: number): Promise<ScopeSummary[]> {
@@ -1422,7 +1475,13 @@ export class DatabaseStorage implements IStorage {
   // ── Policy Rules ──────────────────────────
 
   async createPolicyRule(data: InsertPolicyRule): Promise<PolicyRule> {
-    const [rule] = await db.insert(policyRules).values(data).returning();
+    const [rule] = await db.insert(policyRules)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [policyRules.claimId, policyRules.coverageType],
+        set: { ...data },
+      })
+      .returning();
     return rule;
   }
 

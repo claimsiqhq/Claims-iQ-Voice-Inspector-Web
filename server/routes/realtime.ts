@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { authenticateRequest } from "../auth";
+import { requireClaimAccess, requireSessionAccess } from "../authorization";
 import { buildSystemInstructions, realtimeTools } from "../realtime";
 import { logger } from "../logger";
 import { getAllowedTools, getWorkflowState, initSessionWorkflow } from "../workflow/orchestrator";
@@ -15,8 +16,26 @@ export function realtimeRouter() {
         return res.status(400).json({ message: "claimId is required" });
       }
 
-      const claim = await storage.getClaim(claimId);
-      const briefing = await storage.getBriefing(claimId);
+      const normalizedClaimId = Number.parseInt(String(claimId), 10);
+      if (Number.isNaN(normalizedClaimId)) {
+        return res.status(400).json({ message: "claimId must be a number" });
+      }
+      const claim = await requireClaimAccess(req, res, normalizedClaimId);
+      if (!claim) return;
+
+      const normalizedSessionId = sessionId == null ? null : Number.parseInt(String(sessionId), 10);
+      if (sessionId != null && Number.isNaN(normalizedSessionId as number)) {
+        return res.status(400).json({ message: "sessionId must be a number when provided" });
+      }
+      if (normalizedSessionId != null) {
+        const authorizedSession = await requireSessionAccess(req, res, normalizedSessionId);
+        if (!authorizedSession) return;
+        if (authorizedSession.claimId !== normalizedClaimId) {
+          return res.status(400).json({ message: "sessionId does not belong to claimId" });
+        }
+      }
+
+      const briefing = await storage.getBriefing(normalizedClaimId);
       if (!claim || !briefing) {
         return res.status(400).json({ message: "Claim or briefing not found" });
       }
@@ -29,6 +48,12 @@ export function realtimeRouter() {
       let inspectionFlow;
       if (flowId) {
         inspectionFlow = await storage.getInspectionFlow(flowId);
+        if (!inspectionFlow) {
+          return res.status(404).json({ message: "Inspection flow not found" });
+        }
+        if (inspectionFlow.userId !== req.user!.id && !inspectionFlow.isSystemDefault) {
+          return res.status(403).json({ message: "Cannot use flows owned by other users" });
+        }
       } else {
         inspectionFlow = await storage.getDefaultFlowForPeril(perilType, req.user!.id);
       }
@@ -50,9 +75,9 @@ export function realtimeRouter() {
         verbosityHint = '\n\nThe adjuster prefers detailed explanations. Narrate what you observe, explain your reasoning for suggested items, and provide thorough guidance at each step.';
       }
 
-      let workflowState = sessionId ? await getWorkflowState(Number(sessionId)) : null;
-      if (sessionId && !workflowState) {
-        workflowState = await initSessionWorkflow({ claimId: Number(claimId), sessionId: Number(sessionId), peril: perilType });
+      let workflowState = normalizedSessionId != null ? await getWorkflowState(normalizedSessionId) : null;
+      if (normalizedSessionId != null && !workflowState) {
+        workflowState = await initSessionWorkflow({ claimId: normalizedClaimId, sessionId: normalizedSessionId, peril: perilType });
       }
       const workflowHint = workflowState
         ? `\n\n## WORKFLOW CONTRACT\nCurrent Phase: ${workflowState.phase}\nStep: ${workflowState.stepId}\nAllowed tools now: ${getAllowedTools(workflowState).join(", ")}\nRules: tool-first, talk-after. If a tool is not allowed, ask to move step or call set_phase. Never execute tools out of context.`
@@ -101,20 +126,20 @@ export function realtimeRouter() {
         return res.status(500).json({ message: "Failed to create Realtime session", details: data });
       }
 
-      logger.voiceSession("created", { claimId, sessionId, voiceModel, flowId: inspectionFlow?.id });
+      logger.voiceSession("created", { claimId: normalizedClaimId, sessionId: normalizedSessionId, voiceModel, flowId: inspectionFlow?.id });
 
-      if (sessionId) {
+      if (normalizedSessionId != null) {
         const sessionUpdates: any = { voiceSessionId: data.id };
         if (inspectionFlow?.id) {
           sessionUpdates.activeFlowId = inspectionFlow.id;
         }
-        await storage.updateSession(sessionId, sessionUpdates);
+        await storage.updateSession(normalizedSessionId, sessionUpdates);
       }
 
       let transcriptSummary: string | null = null;
-      if (sessionId) {
+      if (normalizedSessionId != null) {
         try {
-          const transcripts = await storage.getTranscript(sessionId);
+          const transcripts = await storage.getTranscript(normalizedSessionId);
           if (transcripts.length > 0) {
             const recentEntries = transcripts.slice(-80);
             const lines = recentEntries.map(t => `${t.speaker === "user" ? "Adjuster" : "Agent"}: ${t.content}`);
@@ -131,13 +156,13 @@ export function realtimeRouter() {
         }
       }
 
-      const session = sessionId ? await storage.getInspectionSession(sessionId) : null;
+      const session = normalizedSessionId != null ? await storage.getInspectionSession(normalizedSessionId) : null;
       const flowSteps = inspectionFlow ? (inspectionFlow.steps as any[]) || [] : [];
 
       let hierarchySummary: string | null = null;
-      if (sessionId) {
+      if (normalizedSessionId != null) {
         try {
-          const hierarchy = await storage.getInspectionHierarchy(sessionId);
+          const hierarchy = await storage.getInspectionHierarchy(normalizedSessionId);
           const parts: string[] = [];
           for (const struct of hierarchy.structures) {
             const roomNames = struct.rooms.map(r => {
@@ -157,7 +182,7 @@ export function realtimeRouter() {
 
       res.json({
         clientSecret: data.client_secret.value,
-        sessionId,
+        sessionId: normalizedSessionId,
         transcriptSummary,
         hierarchySummary,
         sessionPhase: session?.currentPhase || 1,

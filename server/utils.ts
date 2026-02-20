@@ -20,6 +20,18 @@ export function parseIntParam(value: string, res: Response, label = "id"): numbe
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024; // 25 MB
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
 
+export function sanitizeStorageFileName(fileName: string): string {
+  const basename = fileName.split(/[\\/]/).pop() || "document.pdf";
+  const cleaned = basename
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_{2,}/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  const safeName = cleaned || "document.pdf";
+  return safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+}
+
 /**
  * Decode a base64 payload (optionally with data-URI prefix).
  * Returns the raw buffer and whether it exceeds the byte limit.
@@ -43,7 +55,8 @@ export async function uploadToSupabase(
   fileBuffer: Buffer,
   fileName: string
 ): Promise<string> {
-  const storagePath = `claims/${claimId}/${documentType}/${fileName}`;
+  const safeFileName = sanitizeStorageFileName(fileName);
+  const storagePath = `claims/${claimId}/${documentType}/${safeFileName}`;
   const { error } = await supabase.storage
     .from(DOCUMENTS_BUCKET)
     .upload(storagePath, fileBuffer, {

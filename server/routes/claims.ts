@@ -3,6 +3,7 @@ import { emit } from "../events";
 import { storage } from "../storage";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "../supabase";
 import { authenticateRequest, requireRole } from "../auth";
+import { isPrivilegedRole, requireClaimAccess } from "../authorization";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "../openai";
 import pdfParse from "pdf-parse";
 import { param, parseIntParam, MAX_DOCUMENT_BYTES, decodeBase64Payload, uploadToSupabase, downloadFromSupabase } from "../utils";
@@ -65,6 +66,18 @@ const taxRuleSchema = z.object({
   appliesToCostType: z.enum(["material", "labor", "all"]).default("all"),
   isDefault: z.boolean().default(false),
 });
+
+async function resolveAuthorizedClaim(
+  req: any,
+  res: any,
+  paramKey: string = "id",
+): Promise<{ claimId: number; claim: any } | null> {
+  const claimId = parseIntParam(param(req.params[paramKey]), res, "claim id");
+  if (claimId === null) return null;
+  const claim = await requireClaimAccess(req, res, claimId);
+  if (!claim) return null;
+  return { claimId, claim };
+}
 
 function claimFieldsFromFnol(data: any): Record<string, any> {
   const fields: Record<string, any> = {};
@@ -271,7 +284,9 @@ export function claimsRouter(): Router {
 
   router.get("/", authenticateRequest, async (req, res) => {
     try {
-      const claims = await storage.getClaims();
+      const claims = isPrivilegedRole(req.user?.role)
+        ? await storage.getClaims()
+        : await storage.getClaimsForUser(req.user!.id);
       const enriched = await enrichClaimsWithProgress(claims);
       res.json(enriched);
     } catch (error: any) {
@@ -312,12 +327,12 @@ export function claimsRouter(): Router {
 
   router.get("/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(param(req.params.id));
-      const claim = await storage.getClaim(id);
-      if (!claim) return res.status(404).json({ message: "Claim not found" });
-      const docs = await storage.getDocuments(id);
-      const exts = await storage.getExtractions(id);
-      const briefing = await storage.getBriefing(id);
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId, claim } = authorized;
+      const docs = await storage.getDocuments(claimId);
+      const exts = await storage.getExtractions(claimId);
+      const briefing = await storage.getBriefing(claimId);
       res.json({ ...claim, documents: docs, extractions: exts, briefing });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
@@ -429,7 +444,9 @@ export function claimsRouter(): Router {
 
   router.post("/:claimId/policy-rules", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.claimId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const parsed = policyRuleSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid policy rule data", errors: parsed.error.flatten().fieldErrors });
@@ -444,7 +461,9 @@ export function claimsRouter(): Router {
 
   router.get("/:claimId/policy-rules", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.claimId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const rules = await storage.getPolicyRulesForClaim(claimId);
       res.json(rules);
     } catch (error: any) {
@@ -455,10 +474,19 @@ export function claimsRouter(): Router {
 
   router.patch("/:claimId/policy-rules/:ruleId", authenticateRequest, async (req, res) => {
     try {
-      const ruleId = parseInt(param(req.params.ruleId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
+      const ruleId = parseIntParam(param(req.params.ruleId), res, "policy rule id");
+      if (ruleId === null) return;
       const parsed = policyRuleUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid policy rule update", errors: parsed.error.flatten().fieldErrors });
+      }
+      const claimRules = await storage.getPolicyRulesForClaim(claimId);
+      const existing = claimRules.find((rule) => rule.id === ruleId);
+      if (!existing) {
+        return res.status(404).json({ message: "Policy rule not found for this claim" });
       }
       const rule = await storage.updatePolicyRule(ruleId, parsed.data);
       res.json(rule);
@@ -472,7 +500,9 @@ export function claimsRouter(): Router {
 
   router.post("/:claimId/tax-rules", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.claimId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const parsed = taxRuleSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid tax rule data", errors: parsed.error.flatten().fieldErrors });
@@ -487,7 +517,9 @@ export function claimsRouter(): Router {
 
   router.get("/:claimId/tax-rules", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.claimId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const rules = await storage.getTaxRulesForClaim(claimId);
       res.json(rules);
     } catch (error: any) {
@@ -498,7 +530,15 @@ export function claimsRouter(): Router {
 
   router.delete("/:claimId/tax-rules/:ruleId", authenticateRequest, async (req, res) => {
     try {
-      const ruleId = parseInt(param(req.params.ruleId));
+      const authorized = await resolveAuthorizedClaim(req, res, "claimId");
+      if (!authorized) return;
+      const { claimId } = authorized;
+      const ruleId = parseIntParam(param(req.params.ruleId), res, "tax rule id");
+      if (ruleId === null) return;
+      const rules = await storage.getTaxRulesForClaim(claimId);
+      if (!rules.some((rule) => rule.id === ruleId)) {
+        return res.status(404).json({ message: "Tax rule not found for this claim" });
+      }
       await storage.deleteTaxRule(ruleId);
       res.json({ success: true });
     } catch (error: any) {
@@ -511,7 +551,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/documents", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const docs = await storage.getDocuments(claimId);
       res.json(docs);
     } catch (error: any) {
@@ -522,7 +564,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/documents/upload", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const parsed = uploadBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid upload data", errors: parsed.error.flatten().fieldErrors });
@@ -567,7 +611,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/documents/upload-batch", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const parsed = batchUploadBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid batch upload data", errors: parsed.error.flatten().fieldErrors });
@@ -620,7 +666,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/documents/:type/parse", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const documentType = param(req.params.type);
 
       const doc = await storage.getDocument(claimId, documentType);
@@ -727,7 +775,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/extractions", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const exts = await storage.getExtractions(claimId);
       res.json(exts);
     } catch (error: any) {
@@ -738,7 +788,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
       res.json(ext);
@@ -750,7 +802,9 @@ export function claimsRouter(): Router {
 
   router.put("/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
 
@@ -773,7 +827,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/extractions/:type/confirm", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
 
@@ -795,7 +851,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/extractions/confirm-all", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const exts = await storage.getExtractions(claimId);
       for (const ext of exts) {
         await storage.confirmExtraction(ext.id);
@@ -821,7 +879,9 @@ export function claimsRouter(): Router {
 
   router.post("/:id/briefing/generate", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const briefing = await generateAndPersistBriefing(claimId);
       res.json(briefing);
     } catch (error: any) {
@@ -835,7 +895,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/briefing", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const briefing = await storage.getBriefing(claimId);
       if (!briefing) return res.status(404).json({ message: "Briefing not found" });
       res.json(briefing);
@@ -849,7 +911,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/inspection/active", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
       const session = await storage.getActiveSessionForClaim(claimId);
       if (!session) {
         const latest = await storage.getLatestSessionForClaim(claimId);
@@ -865,18 +929,16 @@ export function claimsRouter(): Router {
 
   router.post("/:id/inspection/start", authenticateRequest, async (req: any, res) => {
     try {
-      const claimId = parseInt(param(req.params.id));
-      const existing = await storage.getActiveSessionForClaim(claimId);
-      if (existing) {
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId } = authorized;
+      const { session, created } = await storage.getOrCreateActiveInspectionSession(claimId, req.user?.id);
+      if (!created) {
         await ensurePolicyRules(claimId, req.user?.id);
-        return res.json({ sessionId: existing.id, session: existing });
+        return res.json({ sessionId: session.id, session });
       }
-      const session = await storage.createInspectionSession(claimId);
       const claim = await storage.getClaim(claimId);
       await initSessionWorkflow({ claimId, sessionId: session.id, peril: claim?.perilType || "General" });
-      if (req.user?.id) {
-        await storage.updateSession(session.id, { inspectorId: req.user.id });
-      }
       await storage.updateClaimStatus(claimId, "inspecting");
       emit({ type: "inspection.started", sessionId: session.id, claimId, userId: req.user?.id });
       await ensurePolicyRules(claimId, req.user?.id);
@@ -890,10 +952,9 @@ export function claimsRouter(): Router {
 
   router.get("/:id/weather-correlation", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseIntParam(param(req.params.id), res, "claimId");
-      if (claimId === null) return;
-      const claim = await storage.getClaim(claimId);
-      if (!claim) return res.status(404).json({ message: "Claim not found" });
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claim } = authorized;
 
       const apiKey = process.env.VISUAL_CROSSING_API_KEY;
       if (!apiKey) {
