@@ -679,6 +679,21 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     const toolApiError = (message: string, details?: Record<string, unknown>, hint?: string) =>
       buildToolError("API_ERROR", message, details, hint);
 
+    /** Detect workflow enforcement rejection (403 from middleware) in a parsed response body */
+    const isWorkflowRejection = (data: any): boolean =>
+      data?.error?.code === "TOOL_NOT_ALLOWED" || data?.error?.code === "MISSING_CONTEXT";
+
+    /** Extract a workflow enforcement rejection from a thrown error message ("403: {...}") */
+    const parseWorkflowRejection = (msg: string): any | null => {
+      if (!msg.startsWith("403:")) return null;
+      try {
+        const idx = msg.indexOf("{");
+        if (idx < 0) return null;
+        const body = JSON.parse(msg.substring(idx));
+        return isWorkflowRejection(body) ? body : null;
+      } catch { return null; }
+    };
+
     logger.info("VoiceTool", `▶ ${name}`, { call_id, args });
     sendLogToServer(name, "call", { call_id, args });
 
@@ -760,7 +775,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           });
           const structure = await structRes.json();
           if (!structRes.ok) {
-            result = { success: false, error: structure.message || "Failed to create structure" };
+            result = isWorkflowRejection(structure) ? structure : { success: false, error: structure.message || "Failed to create structure" };
             break;
           }
           if (args.name) setCurrentStructure(args.name);
@@ -956,7 +971,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             break;
           }
           if (!roomRes.ok) {
-            result = { success: false, error: room.message || "Failed to create room" };
+            result = isWorkflowRejection(room) ? room : { success: false, error: room.message || "Failed to create room" };
             break;
           }
           setCurrentRoomId(room.id);
@@ -1102,7 +1117,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           logger.info("VoiceTool", "add_opening API response", { call_id, status: openRes.status, ok: openRes.ok, payload: openPayload });
           const opening = await openRes.json();
           if (!openRes.ok) {
-            result = toolApiError(
+            result = isWorkflowRejection(opening) ? opening : toolApiError(
               opening.message || "Failed to add opening",
               { status: openRes.status, response: opening, payload: openPayload },
               "Retry add_opening with required fields: roomName, openingType, widthFt, heightFt.",
@@ -1188,7 +1203,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           });
           const patchJson = await patchRes.json();
           if (!patchRes.ok) {
-            result = toolApiError(
+            result = isWorkflowRejection(patchJson) ? patchJson : toolApiError(
               patchJson.message || "Failed to update opening",
               { status: patchRes.status, response: patchJson, patchBody, openingId: target.id },
               "Retry update_opening with valid fields and converted widthFt/heightFt values.",
@@ -1235,7 +1250,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const delRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings/${target.id}`, { method: "DELETE", headers });
           if (!delRes.ok) {
             const err = await delRes.json().catch(() => ({}));
-            result = toolApiError(
+            result = isWorkflowRejection(err) ? err : toolApiError(
               err.message || "Failed to delete opening",
               { status: delRes.status, response: err, openingId: target.id },
               "Retry delete_opening with a valid openingId or selector.",
@@ -1336,7 +1351,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           });
           const annotation = await annotRes.json();
           if (!annotRes.ok) {
-            result = { success: false, error: annotation.message || "Failed to add annotation" };
+            result = isWorkflowRejection(annotation) ? annotation : { success: false, error: annotation.message || "Failed to add annotation" };
             break;
           }
           result = {
@@ -2012,7 +2027,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             body: JSON.stringify(updateBody),
           });
           if (!updateLiRes.ok) {
-            result = { success: false, error: "Failed to update line item" };
+            const updateLiErr = await updateLiRes.json().catch(() => ({}));
+            result = isWorkflowRejection(updateLiErr) ? updateLiErr : { success: false, error: updateLiErr.message || "Failed to update line item" };
             break;
           }
           const updatedLi = await updateLiRes.json();
@@ -2417,12 +2433,17 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }
     } catch (error: any) {
       logger.error("VoiceTool", `Tool execution error for ${name}`, error);
-      result = buildToolError(
-        "RUNTIME_ERROR",
-        error?.message || `Unhandled runtime error while executing ${name}`,
-        { name, call_id, stack: error?.stack },
-        "Fix invalid arguments and retry the same tool call.",
-      );
+      const wfRejection = parseWorkflowRejection(error?.message || "");
+      if (wfRejection) {
+        result = wfRejection;
+      } else {
+        result = buildToolError(
+          "RUNTIME_ERROR",
+          error?.message || `Unhandled runtime error while executing ${name}`,
+          { name, call_id, stack: error?.stack },
+          "Fix invalid arguments and retry the same tool call.",
+        );
+      }
     }
 
     logger.info("VoiceTool", `◀ ${name}`, { call_id, result });
