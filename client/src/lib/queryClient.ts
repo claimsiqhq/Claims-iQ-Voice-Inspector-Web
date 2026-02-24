@@ -153,7 +153,7 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: 5 * 60_000,
+      staleTime: 30_000,
       retry: (failureCount, error) => {
         if (failureCount >= 3) return false;
         const msg = error instanceof Error ? error.message : "";

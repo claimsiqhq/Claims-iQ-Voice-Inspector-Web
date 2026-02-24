@@ -767,7 +767,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const structHeaders = await getAuthHeaders();
           const structRes = await fetch(`/api/inspection/${sessionId}/structures`, {
             method: "POST",
-            headers: structHeaders,
+            headers: { ...structHeaders, "Content-Type": "application/json" },
             body: JSON.stringify({
               name: args.name,
               structureType: args.structureType || "dwelling",
@@ -779,6 +779,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             break;
           }
           if (args.name) setCurrentStructure(args.name);
+          await refreshRooms();
+          queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
           result = { success: true, structureId: structure.id, name: structure.name, message: `Structure "${structure.name}" created.` };
           break;
         }
