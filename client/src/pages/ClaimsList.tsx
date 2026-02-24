@@ -46,7 +46,7 @@ export default function ClaimsList() {
   const { user, role } = useAuth();
 
   const { data: claims = [], isLoading, isError, refetch } = useQuery<Claim[]>({
-    queryKey: [role === "supervisor" ? "/api/claims" : `/api/claims/my-claims`],
+    queryKey: [(role === "supervisor" || role === "admin") ? "/api/claims" : `/api/claims/my-claims`],
   });
 
   const [creating, setCreating] = useState(false);

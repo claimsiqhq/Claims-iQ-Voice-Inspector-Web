@@ -336,7 +336,7 @@ function ClaimCard({ claim, docs }: { claim: Claim; docs: DocRecord[] }) {
 
 export default function DocumentsHub() {
   const { role } = useAuth();
-  const claimsEndpoint = role === "supervisor" ? "/api/claims" : "/api/claims/my-claims";
+  const claimsEndpoint = (role === "supervisor" || role === "admin") ? "/api/claims" : "/api/claims/my-claims";
 
   const { data: claims = [], isLoading: loadingClaims, isError: claimsError, refetch: refetchClaims } = useQuery<Claim[]>({
     queryKey: [claimsEndpoint],
