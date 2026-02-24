@@ -566,14 +566,22 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${claimId})`);
 
-      const [existing] = await tx
+      const existingSessions = await tx
         .select()
         .from(inspectionSessions)
-        .where(and(eq(inspectionSessions.claimId, claimId), eq(inspectionSessions.status, "in_progress")))
-        .limit(1);
+        .where(and(
+          eq(inspectionSessions.claimId, claimId),
+          or(
+            eq(inspectionSessions.status, "active"),
+            eq(inspectionSessions.status, "in_progress"),
+          ),
+        ));
 
-      if (existing) {
-        return { session: existing, created: false };
+      if (existingSessions.length > 0) {
+        const best = existingSessions.reduce((a, b) =>
+          (a.currentPhase || 1) > (b.currentPhase || 1) ? a : b
+        );
+        return { session: best, created: false };
       }
 
       const [created] = await tx
@@ -595,9 +603,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined> {
-    const [session] = await db.select().from(inspectionSessions)
-      .where(and(eq(inspectionSessions.claimId, claimId), eq(inspectionSessions.status, "active")));
-    return session;
+    const sessions = await db.select().from(inspectionSessions)
+      .where(and(
+        eq(inspectionSessions.claimId, claimId),
+        or(
+          eq(inspectionSessions.status, "active"),
+          eq(inspectionSessions.status, "in_progress"),
+        ),
+      ));
+    if (sessions.length === 0) return undefined;
+    return sessions.reduce((best, s) =>
+      (s.currentPhase || 1) > (best.currentPhase || 1) ? s : best
+    );
   }
 
   async getLatestSessionForClaim(claimId: number): Promise<InspectionSession | undefined> {
