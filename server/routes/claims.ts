@@ -219,7 +219,10 @@ async function enrichClaimsWithProgress(claims: any[]) {
         storage.getDocuments(claim.id),
         storage.getInspectionSessionsForClaim(claim.id),
       ]);
-      const activeSession = sessions.find(s => s.status === "active" || s.status === "in_progress") || sessions[0];
+      const activeSessions = sessions.filter(s => s.status === "active" || s.status === "in_progress");
+      const activeSession = activeSessions.length > 0
+        ? activeSessions.reduce((best, s) => ((s as any).currentPhase || 1) > ((best as any).currentPhase || 1) ? s : best)
+        : sessions[0];
 
       let inspectionProgress = null;
       if (activeSession) {
