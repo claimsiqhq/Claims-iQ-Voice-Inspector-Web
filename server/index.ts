@@ -6,7 +6,11 @@ import rateLimit from "express-rate-limit";
 import { createServer } from "http";
 import { readFileSync, existsSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import pinoInstance from "./logger";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Prevent unhandled errors from crashing the process on Cloud Run.
 process.on("uncaughtException", (err) => {

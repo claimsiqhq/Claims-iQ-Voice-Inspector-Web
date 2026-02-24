@@ -89,7 +89,7 @@ function RouterContent() {
     <Suspense fallback={<PageLoadingFallback />}>
       <Switch>
         <Route path="/" component={ClaimsList} />
-        {role === "supervisor" && <Route path="/dashboard" component={SupervisorDashboardWithBoundary} />}
+        {(role === "supervisor" || role === "admin") && <Route path="/dashboard" component={SupervisorDashboardWithBoundary} />}
         <Route path="/documents" component={DocumentsHub} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/settings/workflows" component={WorkflowBuilder} />
