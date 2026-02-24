@@ -57,11 +57,18 @@ app.use(
       ? {
           directives: {
             defaultSrc: ["'self'"],
-            connectSrc: cspConnectSrc,
+            connectSrc: [
+              ...cspConnectSrc,
+              "https://*.supabase.co",
+              "wss://*.supabase.co",
+              "blob:",
+            ],
             imgSrc: ["'self'", "data:", "blob:", "https:"],
+            mediaSrc: ["'self'", "blob:", "mediastream:"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
             fontSrc: ["'self'", "data:"],
+            workerSrc: ["'self'", "blob:"],
             objectSrc: ["'none'"],
             frameAncestors: ["'none'"],
             baseUri: ["'self'"],
