@@ -1083,7 +1083,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             : openType.includes("missing") ? 8
             : 7;
 
-          const { widthFt: normalizedWidthFt, heightFt: normalizedHeightFt } = normalizeOpeningDimensions(args, { widthFt: defaultW, heightFt: defaultH });
+          const { widthFt: normalizedWidthFt, heightFt: normalizedHeightFt } = normalizeOpeningDimensions({ ...args, openingType: args.openingType }, { widthFt: defaultW, heightFt: defaultH });
           const openQuantity = args.quantity || 1;
           const wallDirection = normalizeWallDirection(args.wallDirection);
 

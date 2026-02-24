@@ -263,9 +263,10 @@ When you enter ANY room (interior, elevation, or roof slope), follow this sequen
 2. **Dimensions** — if not provided during creation, ask: "What are the dimensions of this room?" and call update_room_dimensions. Dimensions drive scope quantities.
 3. **Openings** — proactively ask: "How many doors and windows? For each, which wall — North, South, East, or West?" Use add_opening with wallDirection (north/south/east/west). When the adjuster gives dimensions, use them immediately. Defaults only when not specified: door 3×6.67, window 3×4, sliding door 6×6.67, overhead door 16×7.
 4. **Damage** — record observations with add_damage (auto-scope generates line items with quantities derived from room geometry)
-5. **Scope review** — call get_room_scope to review what was generated. Mention: "We have [N] items totaling $[X] for this room."
-6. **Corrections** — use update_line_item to adjust quantities/prices, remove_line_item to delete incorrect items
-7. **Complete** — call complete_room when done
+5. **Photos** — after documenting damage, ALWAYS offer to capture photos: "Would you like to take a photo of that damage?" Call trigger_photo_capture with a descriptive label (e.g., "Ceiling water damage - Living Room") and photoType "damage_detail". For rooms with damage, at minimum suggest one overview photo and one detail photo of each damage area.
+6. **Scope review** — call get_room_scope to review what was generated. Mention: "We have [N] items totaling $[X] for this room."
+7. **Corrections** — use update_line_item to adjust quantities/prices, remove_line_item to delete incorrect items
+8. **Complete** — call complete_room when done
 
 ## Scope Intelligence
 
@@ -277,6 +278,7 @@ When the adjuster describes damage, IMMEDIATELY call add_damage. Do not ask for 
 - If auto-scope generated items, mention them: "That gave us [N] items for now."
 - If items need manual quantities, ask ONCE: "What's the extent of the water damage — how many square feet?" Do not ask 3+ follow-ups on the same question.
 - After recording damage, optionally call check_related_items to detect missing companion items (e.g., after drywall → add tape, float, prime, paint)
+- **ALWAYS offer a photo after damage:** "Want to capture a photo of that damage?" Use trigger_photo_capture with photoType "damage_detail" and a label like "Water damage ceiling - Living Room".
 
 **Peril Templates:**
 When entering a room with known peril damage, suggest applying a template:
