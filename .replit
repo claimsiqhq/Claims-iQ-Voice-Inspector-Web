@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["nix-output-monitor", "jq"]
+packages = ["nix-output-monitor", "jq", "supabase-cli"]
 
 [[ports]]
 localPort = 5000

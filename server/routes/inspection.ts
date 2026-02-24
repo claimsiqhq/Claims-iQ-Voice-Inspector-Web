@@ -212,15 +212,17 @@ export function resolveToolName(method: string, path: string): string | null {
 
 export async function registerInspectionRoutes(app: Express): Promise<void> {
 
-  // Workflow tool-allowlist enforcement middleware
+  // Workflow tool-allowlist tracking middleware (warn-only, never blocks)
   app.use("/api/inspection/:sessionId", async (req, res, next) => {
-    if (req.method === "GET") return next(); // reads are always allowed
+    if (req.method === "GET") return next();
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return next();
     const toolName = resolveToolName(req.method, req.path);
-    if (!toolName) return next(); // no mapped tool — allow
+    if (!toolName) return next();
     const rejection = await validateToolForWorkflow(sessionId, toolName, req.body);
-    if (rejection) return res.status(403).json(rejection);
+    if (rejection) {
+      logger.warn({ sessionId, toolName, phase: (rejection as any)?.workflow?.phase }, "Tool used outside recommended phase");
+    }
     next();
   });
 
