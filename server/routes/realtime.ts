@@ -81,7 +81,7 @@ export function realtimeRouter() {
         workflowState = await initSessionWorkflow({ claimId: normalizedClaimId, sessionId: normalizedSessionId, peril: perilType });
       }
       const workflowHint = workflowState
-        ? `\n\n## WORKFLOW CONTRACT\nCurrent Phase: ${workflowState.phase}\nStep: ${workflowState.stepId}\nAllowed tools now: ${getAllowedTools(workflowState).join(", ")}\nRules: tool-first, talk-after. If a tool is not allowed, ask to move step or call set_phase. Never execute tools out of context.`
+        ? `\n\n## WORKFLOW TRACKING\nCurrent Phase: ${workflowState.phase}\nUse set_phase to update tracking when moving between areas. All tools are available regardless of phase — never refuse a tool call because of phase.`
         : "";
       const instructions =
         buildSystemInstructions(briefing, claim, inspectionFlow || undefined, {
