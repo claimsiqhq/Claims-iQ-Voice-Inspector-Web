@@ -82,7 +82,7 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
 
   if (isLoading) {
     return (
-      <Layout title="Inspection Briefing" showBack>
+      <Layout title="Inspection Briefing" showBack backPath="/">
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-3 text-muted-foreground">Loading briefing...</span>
@@ -93,7 +93,7 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
 
   if (!briefing) {
     return (
-      <Layout title="Inspection Briefing" showBack>
+      <Layout title="Inspection Briefing" showBack backPath="/">
         <div className="text-center py-20 text-muted-foreground">
           <p className="text-lg mb-2">No briefing generated yet</p>
           <p className="text-sm">Go back to Extraction Review to confirm and generate.</p>
@@ -119,7 +119,7 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
   const propertyAddress = pp.address || claimDetail?.propertyAddress || "";
 
   return (
-    <Layout title="Inspection Briefing" showBack>
+    <Layout title="Inspection Briefing" showBack backPath="/">
       <div className="max-w-3xl mx-auto pb-20 px-3 md:px-0">
 
         {/* ─── HEADER ─── */}
