@@ -6,11 +6,9 @@ import rateLimit from "express-rate-limit";
 import { createServer } from "http";
 import { readFileSync, existsSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import pinoInstance from "./logger";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const rootDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 // Prevent unhandled errors from crashing the process on Cloud Run.
 process.on("uncaughtException", (err) => {
@@ -249,7 +247,7 @@ process.on("SIGTERM", () => {
       return res.status(status).json({ message: clientMessage });
     });
 
-    const isProduction = process.env.NODE_ENV === "production" || existsSync(path.resolve(__dirname, "public"));
+    const isProduction = process.env.NODE_ENV === "production" || existsSync(path.resolve(rootDir, "public"));
     if (isProduction) {
       const { serveStatic } = await import("./static");
       serveStatic(app);

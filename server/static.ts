@@ -2,13 +2,15 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 
+const rootDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+
 function findPublicDir(): string | null {
   const cwd = process.cwd();
   const candidates = [
-    path.resolve(__dirname, "public"),
+    path.resolve(rootDir, "public"),
     path.join(cwd, "dist", "public"),
     path.join(cwd, "public"),
-    path.resolve(__dirname, "..", "public"),
+    path.resolve(rootDir, "..", "public"),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
