@@ -397,14 +397,19 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       } catch {}
     })();
   }, [sessionId, currentRoomId, currentPhase, getAuthHeaders]);
+  const getJsonHeaders = useCallback(async () => {
+    const h = await getAuthHeaders();
+    return { ...h, "Content-Type": "application/json" };
+  }, [getAuthHeaders]);
+
   const sendLogToServer = useCallback(async (toolName: string, type: "call" | "result" | "error", data: any) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getJsonHeaders();
       fetch("/api/logs/voice-tool", {
         method: "POST", headers, body: JSON.stringify({ toolName, type, data }),
       }).catch(() => {});
     } catch {}
-  }, [getAuthHeaders]);
+  }, [getJsonHeaders]);
 
   const logVoiceTimeline = useCallback((eventType: string, details: Record<string, unknown> = {}) => {
     const payload = {
@@ -554,7 +559,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
     if (sessionId) {
       try {
-        const headers = await getAuthHeaders();
+        const headers = await getJsonHeaders();
         fetch(`/api/inspection/${sessionId}/transcript`, {
           method: "POST",
           headers,
@@ -562,7 +567,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }).catch((e) => logger.error("Voice", "Transcript save error", e));
       } catch (e) { logger.error("Voice", "Transcript error", e); }
     }
-  }, [sessionId, getAuthHeaders]);
+  }, [sessionId, getJsonHeaders]);
 
   // Initial data load when session is available
   useEffect(() => {
@@ -721,7 +726,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             }
             await fetch(`/api/inspection/${sessionId}`, {
               method: "PATCH",
-              headers,
+              headers: { ...headers, "Content-Type": "application/json" },
               body: JSON.stringify(patchBody),
             });
 
@@ -797,7 +802,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         case "set_phase": {
           if (!sessionId) { result = { success: false, error: { type: "CONTEXT_ERROR", code: "NO_SESSION", message: "No active session" } }; break; }
           const headers = await getAuthHeaders();
-          const phRes = await fetch(`/api/inspection/${sessionId}/workflow/set-phase`, { method: "POST", headers, body: JSON.stringify({ phase: args.phase, stepId: args.stepId }) });
+          const phRes = await fetch(`/api/inspection/${sessionId}/workflow/set-phase`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ phase: args.phase, stepId: args.stepId }) });
           result = await phRes.json();
           break;
         }
@@ -805,7 +810,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         case "set_context": {
           if (!sessionId) { result = { success: false, error: { type: "CONTEXT_ERROR", code: "NO_SESSION", message: "No active session" } }; break; }
           const headers = await getAuthHeaders();
-          const ctxRes = await fetch(`/api/inspection/${sessionId}/workflow/set-context`, { method: "POST", headers, body: JSON.stringify(args) });
+          const ctxRes = await fetch(`/api/inspection/${sessionId}/workflow/set-context`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(args) });
           result = await ctxRes.json();
           break;
         }
@@ -893,7 +898,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const newName = (args.newName || "").trim();
           if (!newName) { result = { success: false, error: "Room name cannot be empty." }; break; }
-          const renameHeaders = await getAuthHeaders();
+          const renameHeaders = await getJsonHeaders();
           const renameRes = await fetch(`/api/inspection/${sessionId}/rooms/${args.roomId}`, {
             method: "PATCH",
             headers: renameHeaders,
@@ -1003,7 +1008,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const subDimensions = args.length && args.width
             ? { length: args.length, width: args.width, height: args.height }
             : undefined;
-          const subHeaders = await getAuthHeaders();
+          const subHeaders = await getJsonHeaders();
           const subRes = await fetch(`/api/inspection/${sessionId}/rooms`, {
             method: "POST",
             headers: subHeaders,
@@ -1096,7 +1101,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             },
           });
 
-          const openHeaders = await getAuthHeaders();
+          const openHeaders = await getJsonHeaders();
           const openPayload = {
             openingType: args.openingType,
             wallIndex: args.wallIndex ?? null,
@@ -1200,7 +1205,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
           const patchRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings/${target.id}`, {
             method: "PATCH",
-            headers,
+            headers: { ...headers, "Content-Type": "application/json" },
             body: JSON.stringify(patchBody),
           });
           const patchJson = await patchRes.json();
@@ -1272,7 +1277,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const adjRoomB = adjRooms.find(r => r.name === args.roomNameB);
           if (!adjRoomA) { result = { error: `Room "${args.roomNameA}" not found. Create it first with create_room.` }; break; }
           if (!adjRoomB) { result = { error: `Room "${args.roomNameB}" not found. Create it first with create_room. I'll remember to link these rooms once "${args.roomNameB}" is created.` }; break; }
-          const adjHeaders = await getAuthHeaders();
+          const adjHeaders = await getJsonHeaders();
           const adjRes = await fetch(`/api/sessions/${sessionId}/adjacencies`, {
             method: "POST",
             headers: adjHeaders,
@@ -1303,7 +1308,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const dimRooms = await fetchFreshRooms();
           const dimRoom = dimRooms.find(r => r.name === args.roomName);
           if (!dimRoom) { result = { error: `Room "${args.roomName}" not found. Create it first with create_room.` }; break; }
-          const dimHeaders = await getAuthHeaders();
+          const dimHeaders = await getJsonHeaders();
           const dimBody: Record<string, any> = {};
           if (args.length !== undefined) dimBody.length = args.length;
           if (args.width !== undefined) dimBody.width = args.width;
@@ -1340,7 +1345,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             result = { success: false, error: `Room "${args.roomName}" not found` };
             break;
           }
-          const annotHeaders = await getAuthHeaders();
+          const annotHeaders = await getJsonHeaders();
           const annotRes = await fetch(`/api/inspection/${sessionId}/rooms/${annotRoom.id}/annotations`, {
             method: "POST",
             headers: annotHeaders,
@@ -1369,7 +1374,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const freshCompleteRooms = await fetchFreshRooms();
           const roomToComplete = freshCompleteRooms.find((r) => r.name === args.roomName);
           if (roomToComplete) {
-            const completeHeaders = await getAuthHeaders();
+            const completeHeaders = await getJsonHeaders();
             await fetch(`/api/inspection/${sessionId}/rooms/${roomToComplete.id}/complete`, { method: "POST", headers: completeHeaders });
             await refreshRooms();
           }
@@ -2139,7 +2144,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (args.damageType) udBody.damageType = args.damageType;
           if (args.severity) udBody.severity = args.severity;
           if (args.location) udBody.location = args.location;
-          const udPatchHeaders = await getAuthHeaders();
+          const udPatchHeaders = await getJsonHeaders();
           const udPatchRes = await fetch(`/api/inspection/${sessionId}/damages/${updateDamageId}`, {
             method: "PATCH", headers: udPatchHeaders, body: JSON.stringify(udBody),
           });
@@ -2198,7 +2203,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (args.pitch) utsBody.pitch = args.pitch;
           if (args.result) utsBody.result = args.result;
           if (args.notes !== undefined) utsBody.notes = args.notes;
-          const utsHeaders = await getAuthHeaders();
+          const utsHeaders = await getJsonHeaders();
           const utsRes = await fetch(`/api/inspection/${sessionId}/test-squares/${args.testSquareId}`, {
             method: "PATCH", headers: utsHeaders, body: JSON.stringify(utsBody),
           });
@@ -2237,7 +2242,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (args.reading !== undefined) umrBody.reading = args.reading;
           if (args.materialType) umrBody.materialType = args.materialType;
           if (args.dryStandard !== undefined) umrBody.dryStandard = args.dryStandard;
-          const umrHeaders = await getAuthHeaders();
+          const umrHeaders = await getJsonHeaders();
           const umrRes = await fetch(`/api/inspection/${sessionId}/moisture/${args.readingId}`, {
             method: "PATCH", headers: umrHeaders, body: JSON.stringify(umrBody),
           });
@@ -2327,7 +2332,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const usBody: Record<string, any> = {};
           if (args.newName) usBody.name = args.newName;
           if (args.structureType) usBody.structureType = args.structureType;
-          const usPatchHeaders = await getAuthHeaders();
+          const usPatchHeaders = await getJsonHeaders();
           const usPatchRes = await fetch(`/api/inspection/${sessionId}/structures/${usStructureId}`, {
             method: "PATCH", headers: usPatchHeaders, body: JSON.stringify(usBody),
           });
@@ -2619,7 +2624,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     setVoiceState("processing");
 
     try {
-      const authHeaders = await getAuthHeaders();
+      const authHeaders = await getJsonHeaders();
       const tokenRes = await fetch("/api/realtime/session", {
         method: "POST",
         headers: authHeaders,
@@ -2863,7 +2868,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           .replace(/[^\w\s-]/g, "")
           .replace(/\s+/g, "_")
           .substring(0, 40);
-        const photoHeaders = await getAuthHeaders();
+        const photoHeaders = await getJsonHeaders();
         const saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
           method: "POST",
           headers: photoHeaders,
@@ -2886,7 +2891,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         let analysis: any = null;
         if (settings.autoAnalyzePhotos) {
           try {
-            const analyzeHeaders = await getAuthHeaders();
+            const analyzeHeaders = await getJsonHeaders();
             const analyzeRes = await fetch(
               `/api/inspection/${sessionId}/photos/${savedPhoto.photoId}/analyze`,
               {

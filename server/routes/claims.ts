@@ -413,23 +413,27 @@ export function claimsRouter(): Router {
         return res.status(403).json({ message: "Not authorized to delete this claim" });
       }
 
-      const docs = await storage.getDocuments(id);
-      for (const doc of docs) {
-        if (doc.storagePath) {
-          const paths = doc.storagePath.split("|").map(p => p.trim()).filter(Boolean);
-          if (paths.length > 0) {
-            await supabase.storage.from(DOCUMENTS_BUCKET).remove(paths);
+      try {
+        const docs = await storage.getDocuments(id);
+        for (const doc of docs) {
+          if (doc.storagePath) {
+            const paths = doc.storagePath.split("|").map(p => p.trim()).filter(Boolean);
+            if (paths.length > 0) {
+              await supabase.storage.from(DOCUMENTS_BUCKET).remove(paths).catch(() => {});
+            }
           }
         }
-      }
-      const sessions = await storage.getInspectionSessionsForClaim(id);
-      for (const session of sessions) {
-        const photos = await storage.getPhotos(session.id);
-        const photoPaths = photos.map((p: any) => p.storagePath).filter(Boolean) as string[];
-        if (photoPaths.length > 0) {
-          await supabase.storage.from(PHOTOS_BUCKET).remove(photoPaths);
+      } catch (e) { logger.warn("Failed to clean up document storage files", e); }
+      try {
+        const sessions = await storage.getInspectionSessionsForClaim(id);
+        for (const session of sessions) {
+          const photos = await storage.getPhotos(session.id);
+          const photoPaths = photos.map((p: any) => p.storagePath).filter(Boolean) as string[];
+          if (photoPaths.length > 0) {
+            await supabase.storage.from(PHOTOS_BUCKET).remove(photoPaths).catch(() => {});
+          }
         }
-      }
+      } catch (e) { logger.warn("Failed to clean up photo storage files", e); }
       const deleted = await storage.deleteClaim(id);
       if (!deleted) return res.status(404).json({ message: "Claim not found" });
       emit({ type: "claim.deleted", claimId: id, userId: req.user?.id });
