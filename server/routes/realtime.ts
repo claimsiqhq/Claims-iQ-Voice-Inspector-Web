@@ -58,7 +58,8 @@ export function realtimeRouter() {
         inspectionFlow = await storage.getDefaultFlowForPeril(perilType, req.user!.id);
       }
 
-      const voiceModel = s.voiceModel || 'alloy';
+      const VALID_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
+      const voiceModel = VALID_VOICES.includes(s.voiceModel) ? s.voiceModel : 'alloy';
 
       const vadConfig = {
         low:    { threshold: 0.95, silence_duration_ms: 1500, prefix_padding_ms: 800 },

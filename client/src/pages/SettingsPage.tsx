@@ -217,11 +217,15 @@ export default function SettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="alloy">Alloy</SelectItem>
+                  <SelectItem value="ash">Ash</SelectItem>
+                  <SelectItem value="ballad">Ballad</SelectItem>
+                  <SelectItem value="coral">Coral</SelectItem>
                   <SelectItem value="echo">Echo</SelectItem>
-                  <SelectItem value="fable">Fable</SelectItem>
-                  <SelectItem value="onyx">Onyx</SelectItem>
-                  <SelectItem value="nova">Nova</SelectItem>
+                  <SelectItem value="sage">Sage</SelectItem>
                   <SelectItem value="shimmer">Shimmer</SelectItem>
+                  <SelectItem value="verse">Verse</SelectItem>
+                  <SelectItem value="marin">Marin</SelectItem>
+                  <SelectItem value="cedar">Cedar</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
