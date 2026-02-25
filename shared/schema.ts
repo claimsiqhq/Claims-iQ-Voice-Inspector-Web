@@ -499,9 +499,7 @@ export const scopeLineItems = pgTable("scope_line_items", {
   opEligibleDefault: boolean("op_eligible_default").default(true),
   isCodeUpgrade: boolean("is_code_upgrade").default(false),
   isActive: boolean("is_active").default(true),
-}, (table) => [
-  uniqueIndex("scope_line_items_xact_cat_sel_unique").on(table.xactCategoryCode, table.xactSelector),
-]);
+});
 
 export const xactPriceLists = pgTable("xact_price_lists", {
   id: uuid("id").primaryKey().defaultRandom(),
