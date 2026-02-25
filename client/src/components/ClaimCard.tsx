@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, PerilBadge } from "./StatusBadge";
-import { Calendar, MapPin, ChevronRight, User, Trash2, Loader2, AlertCircle } from "lucide-react";
-import { Link } from "wouter";
+import { Calendar, MapPin, User, Trash2, Loader2, AlertCircle, FileText, Mic } from "lucide-react";
+import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -92,21 +92,40 @@ export default function ClaimCard({
     },
   });
 
-  const getNextRoute = () => {
+  const [, setLocation] = useLocation();
+
+  const getDocsRoute = () => {
     const s = status.toLowerCase().replace(/\s+/g, "_");
     switch (s) {
       case "extractions_confirmed": return `/review/${id}`;
-      case "briefing_ready": return `/briefing/${id}`;
+      case "briefing_ready":
       case "inspecting":
-      case "in_progress": return `/inspection/${id}`;
-      case "review": return `/inspection/${id}/review`;
+      case "in_progress":
+      case "review":
       case "inspection_complete":
       case "completed":
-      case "closed": return `/inspection/${id}/review`;
+      case "closed":
+        return `/briefing/${id}`;
       default:
         return `/upload/${id}`;
     }
   };
+
+  const getInspectionRoute = () => {
+    const s = status.toLowerCase().replace(/\s+/g, "_");
+    switch (s) {
+      case "review":
+      case "inspection_complete":
+      case "completed":
+      case "closed":
+        return `/inspection/${id}/review`;
+      default:
+        return `/inspection/${id}`;
+    }
+  };
+
+  const hasInspection = ["inspecting", "in_progress", "review", "inspection_complete", "completed", "closed"]
+    .includes(status.toLowerCase().replace(/\s+/g, "_"));
 
   return (
     <Card
@@ -159,75 +178,96 @@ export default function ClaimCard({
         </AlertDialog>
       </div>
 
-      <Link href={getNextRoute()}>
-        <div className="p-4 flex flex-col gap-3 h-full cursor-pointer">
-          <div className="flex items-center justify-between gap-2 pr-8">
-            <span
-              data-testid={`text-claim-number-${id}`}
-              className="font-mono text-sm font-semibold text-foreground/70 tracking-wide"
-            >
-              {claimNumber}
-            </span>
-            <StatusBadge status={status} />
+      <div className="p-4 flex flex-col gap-3 h-full">
+        <div className="flex items-center justify-between gap-2 pr-8">
+          <span
+            data-testid={`text-claim-number-${id}`}
+            className="font-mono text-sm font-semibold text-foreground/70 tracking-wide"
+          >
+            {claimNumber}
+          </span>
+          <StatusBadge status={status} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <User className="h-4 w-4 text-primary shrink-0" />
+            <h3 className="font-display font-bold text-base text-foreground truncate">
+              {insuredName || "Unknown Insured"}
+            </h3>
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
-              <User className="h-4 w-4 text-primary shrink-0" />
-              <h3 className="font-display font-bold text-base text-foreground truncate group-hover:text-primary transition-colors">
-                {insuredName || "Unknown Insured"}
-              </h3>
-            </div>
-
-            <div className="flex items-start gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              <span className="line-clamp-2 leading-snug">{address || "No address"}</span>
-            </div>
+          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span className="line-clamp-2 leading-snug">{address || "No address"}</span>
           </div>
+        </div>
 
-          {inspectionProgress && (
-            <div className="flex items-center gap-3 py-2 px-2 bg-muted/30 rounded-md">
-              <ProgressRing score={inspectionProgress.completenessScore} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-foreground">
-                    Phase {inspectionProgress.currentPhase}/{inspectionProgress.totalPhases}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {inspectionProgress.phaseName}
-                  </span>
-                </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
-                  {inspectionProgress.completedRooms}/{inspectionProgress.totalRooms} rooms
-                  {inspectionProgress.damageCount > 0 && <> &middot; {inspectionProgress.damageCount} damages</>}
-                  {inspectionProgress.photoCount > 0 && <> &middot; {inspectionProgress.photoCount} photos</>}
-                </div>
-                {inspectionProgress.missing.length > 0 && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 truncate">
-                      {inspectionProgress.missing.join(" · ")}
-                    </span>
-                  </div>
-                )}
+        {inspectionProgress && (
+          <div className="flex items-center gap-3 py-2 px-2 bg-muted/30 rounded-md">
+            <ProgressRing score={inspectionProgress.completenessScore} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-foreground">
+                  Phase {inspectionProgress.currentPhase}/{inspectionProgress.totalPhases}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {inspectionProgress.phaseName}
+                </span>
               </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-3 border-t border-border/50">
-            <div className="flex items-center gap-3">
-              {peril && <PerilBadge peril={peril} />}
-              {dateOfLoss && (
-                <div className="flex items-center text-xs text-muted-foreground gap-1">
-                  <Calendar className="h-3 w-3" />
-                  <span>DOL {dateOfLoss}</span>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                {inspectionProgress.completedRooms}/{inspectionProgress.totalRooms} rooms
+                {inspectionProgress.damageCount > 0 && <> &middot; {inspectionProgress.damageCount} damages</>}
+                {inspectionProgress.photoCount > 0 && <> &middot; {inspectionProgress.photoCount} photos</>}
+              </div>
+              {inspectionProgress.missing.length > 0 && (
+                <div className="flex items-center gap-1 mt-1">
+                  <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 truncate">
+                    {inspectionProgress.missing.join(" · ")}
+                  </span>
                 </div>
               )}
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-3 border-t border-border/50">
+          <div className="flex items-center gap-3">
+            {peril && <PerilBadge peril={peril} />}
+            {dateOfLoss && (
+              <div className="flex items-center text-xs text-muted-foreground gap-1">
+                <Calendar className="h-3 w-3" />
+                <span>DOL {dateOfLoss}</span>
+              </div>
+            )}
           </div>
         </div>
-      </Link>
+
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs"
+            onClick={() => setLocation(getDocsRoute())}
+            data-testid={`button-docs-${id}`}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5" />
+            Docs & Briefing
+          </Button>
+          {hasInspection && (
+            <Button
+              size="sm"
+              className="flex-1 text-xs bg-primary hover:bg-primary/90"
+              onClick={() => setLocation(getInspectionRoute())}
+              data-testid={`button-inspection-${id}`}
+            >
+              <Mic className="h-3.5 w-3.5 mr-1.5" />
+              Inspection
+            </Button>
+          )}
+        </div>
+      </div>
     </Card>
   );
 }
