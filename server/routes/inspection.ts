@@ -2465,35 +2465,50 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           messages: [
             {
               role: "system",
-              content: `You are an expert insurance property inspection photo analyst with deep knowledge of Xactimate line items and construction materials. Analyze this photo and provide:
-1. A brief description of what you see (1-2 sentences)
-2. Any visible damage (type, severity, location in frame)
-3. Whether this photo matches the expected capture: "${expectedLabel}" (type: ${expectedPhotoType})
-4. Photo quality assessment (lighting, focus, framing)
-5. CRITICAL — Material & Finish Identification: Carefully identify ALL visible materials, finishes, and specialty items that would need to be documented for an insurance claim. This includes:
-   - Paint color/type (especially custom colors like purple, bright colors, faux finishes, accent walls)
-   - Crown molding, chair rail, wainscoting, custom trim profiles
-   - Baseboard type and height (e.g., "5.25 inch colonial baseboard")
+              content: `You are an expert insurance property inspection photo analyst with deep knowledge of Xactimate line items, construction materials, and claims documentation standards. Analyze this photo thoroughly and provide:
+
+1. DETAILED DESCRIPTION: Write a thorough 3-5 sentence description as an insurance field adjuster would for a claim file. Include what area/component is shown, its current condition, approximate age/wear, any visible damage or deficiencies, and relevant construction details. Be specific — "Water stain approximately 2x3 feet on the northeast ceiling corner, with discoloration indicating prolonged moisture exposure and early-stage mold growth at the perimeter" is better than "Water damage on ceiling."
+
+2. DAMAGE ANALYSIS: For each area of damage found:
+   - Classify the damage type precisely (e.g., "wind-lifted shingle tabs", "water intrusion staining with efflorescence", "impact fracture", "thermal cracking")
+   - Rate severity: minor (cosmetic only), moderate (functional impairment), severe (structural concern), or critical (safety hazard)
+   - Describe the specific location within the photo
+   - Estimate affected area dimensions if possible
+   - Provide a bounding box in normalized 0-1 coordinates { x, y, width, height } showing WHERE the damage appears in the image. x,y is the top-left corner relative to image dimensions.
+
+3. PHOTO MATCH: Whether this photo matches the expected capture: "${expectedLabel}" (type: ${expectedPhotoType})
+
+4. QUALITY ASSESSMENT: Lighting, focus, framing, and whether the photo adequately documents the area for claims purposes.
+
+5. MATERIAL & FINISH IDENTIFICATION: Carefully identify ALL visible materials, finishes, and specialty items:
+   - Paint color/type (custom colors, faux finishes, accent walls)
+   - Trim profiles (crown molding, chair rail, wainscoting, baseboard type and height)
    - Flooring type (hardwood species, tile pattern, luxury vinyl plank, carpet grade)
-   - Cabinet type and finish (oak, maple, thermofoil, painted)
-   - Countertop material (granite, quartz, laminate, marble)
+   - Cabinet type and finish, countertop material
    - Ceiling texture type (smooth, knockdown, popcorn, coffered)
    - Wallpaper or specialty wall coverings
-   - Light fixtures, ceiling fans
-   - Window treatments (blinds, shutters, drapes)
+   - Light fixtures, ceiling fans, window treatments
    - Any custom or upgraded features that affect replacement cost
-6. For EACH material/item identified, suggest specific Xactimate-compatible line items with trade codes where possible.${addressContext}
+
+6. LINE ITEMS: For EACH material/item identified, suggest specific Xactimate-compatible line items with trade codes.${addressContext}
 
 Respond in JSON format:
 {
-  "description": "string",
-  "damageVisible": [{ "type": "string", "severity": "string", "notes": "string", "confidence": 0.0-1.0 }],
+  "description": "Detailed 3-5 sentence narrative suitable for claim file documentation",
+  "damageVisible": [{
+    "type": "specific damage type",
+    "severity": "minor|moderate|severe|critical",
+    "notes": "detailed description of this specific damage area, dimensions, and implications",
+    "confidence": 0.0-1.0,
+    "bbox": { "x": 0.0-1.0, "y": 0.0-1.0, "width": 0.0-1.0, "height": 0.0-1.0 },
+    "repairSuggestion": "specific repair action needed"
+  }],
   "suggestedLineItems": [
     {
       "item": "Human-readable name (e.g., 'Crown molding - 3.5 inch colonial profile')",
       "category": "Trade category (PNT, DRY, FLR, TRIM, CAB, CNTOP, RFG, EXT, etc.)",
-      "reason": "Why this item needs to be documented (e.g., 'Custom paint color requires color-match', 'Crown molding visible with damage')",
-      "xactCode": "Suggested Xactimate code if known (e.g., 'TRIM-CROWN-LF', 'PNT-INT-SF') or null",
+      "reason": "Why this item needs to be documented",
+      "xactCode": "Suggested Xactimate code if known or null",
       "unit": "SF, LF, EA, SY, etc.",
       "materialDetails": "Specific details about the material (color, grade, profile, species)"
     }
@@ -2502,11 +2517,16 @@ Respond in JSON format:
   "matchConfidence": 0.0-1.0,
   "matchExplanation": "string",
   "qualityScore": 1-5,
-  "qualityNotes": "string"${expectedPhotoType === "address_verification" ? `,
+  "qualityNotes": "string",
+  "propertyContext": "Brief description of construction type, age, and general condition visible"${expectedPhotoType === "address_verification" ? `,
   "addressVerification": { "expectedAddress": "string", "visibleAddress": "string or null if not readable", "matches": true/false, "confidence": 0.0-1.0, "notes": "string" }` : ""}
 }
 
-IMPORTANT: Even if no damage is visible, ALWAYS identify materials and finishes in the photo and populate suggestedLineItems. Insurance claims require documenting what needs to be repaired or replaced at like kind and quality — the materials matter as much as the damage.`
+IMPORTANT RULES:
+- ALWAYS provide bounding boxes for every damage detection — this is critical for annotated photo reports.
+- Even if no damage is visible, ALWAYS identify materials and finishes and populate suggestedLineItems.
+- Write the description as if it will appear in a formal claims file — be professional, specific, and thorough.
+- Insurance claims require documenting what needs to be repaired or replaced at like kind and quality — the materials matter as much as the damage.`
             },
             {
               role: "user",
@@ -2525,7 +2545,7 @@ IMPORTANT: Even if no damage is visible, ALWAYS identify materials and finishes 
               ]
             }
           ],
-          max_tokens: 1500,
+          max_tokens: 2500,
           response_format: { type: "json_object" },
         }),
       });
