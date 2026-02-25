@@ -1417,29 +1417,77 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       let finalDescription = description;
       let finalUnit = unit || null;
       let catalogMatch = false;
+      let resolvedXactCode = xactCode || null;
 
-      // PROMPT-18 Part E: If xactCode provided, look up catalog pricing
+      async function lookupCatalogPrice(code: string): Promise<boolean> {
+        const catalogItem = await storage.getScopeLineItemByCode(code);
+        if (!catalogItem) return false;
+        catalogMatch = true;
+        resolvedXactCode = code;
+        finalDescription = description || catalogItem.description || code;
+        finalUnit = unit || catalogItem.unit;
+        wf = wasteFactor ?? (
+          catalogItem.defaultWasteFactor != null
+            ? Math.round(catalogItem.defaultWasteFactor)
+            : defaultWasteFactor
+        );
+        let regionalPrice = await storage.getRegionalPrice(code, "FLFM8X_NOV22", "install");
+        if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(code, "US_NATIONAL", "install");
+        if (regionalPrice) {
+          const baseCost =
+            (Number(regionalPrice.materialCost) || 0) +
+            (Number(regionalPrice.laborCost) || 0) +
+            (Number(regionalPrice.equipmentCost) || 0);
+          up = baseCost;
+        }
+        return true;
+      }
+
       if (xactCode) {
-        const catalogItem = await storage.getScopeLineItemByCode(xactCode);
-        if (catalogItem) {
-          catalogMatch = true;
-          finalDescription = description || catalogItem.description || xactCode;
-          finalUnit = unit || catalogItem.unit;
-          wf = wasteFactor ?? (
-            catalogItem.defaultWasteFactor != null
-              ? Math.round(catalogItem.defaultWasteFactor)
-              : defaultWasteFactor
-          );
+        await lookupCatalogPrice(xactCode);
+      }
 
-          let regionalPrice = await storage.getRegionalPrice(xactCode, "FLFM8X_NOV22", "install");
-          if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL", "install");
-          if (regionalPrice) {
-            const baseCost =
-              (Number(regionalPrice.materialCost) || 0) +
-              (Number(regionalPrice.laborCost) || 0) +
-              (Number(regionalPrice.equipmentCost) || 0);
-            up = baseCost;
+      if (!catalogMatch && up === 0) {
+        const CATEGORY_DEFAULT_CODES: Record<string, string[]> = {
+          "Roofing":       ["RFG-SHIN-AR", "RFG-SHIN-3T"],
+          "Siding":        ["SID-VINYL-SF", "SID-HARDI-SF"],
+          "Soffit/Fascia": ["SFF-ALUM-LF", "SFF-VINYL-LF"],
+          "Gutters":       ["GTR-ALUM-LF", "GTR-SEAM-LF"],
+          "Windows":       ["WIN-DBL-EA", "WIN-SGL-EA"],
+          "Doors":         ["DR-INT-EA", "DR-EXT-EA"],
+          "Drywall":       ["DRY-X-1-2", "DRY-X-5-8", "DRY-PATCH-SF"],
+          "Painting":      ["PNT-INT-SF", "PNT-CEILING-SF", "PNT-TRIM-LF"],
+          "Flooring":      ["FLR-CARPET-SF", "FLR-VINYL-SF", "FLR-LAMINATE-SF", "FLR-X-LAM"],
+          "Plumbing":      ["PLM-FIXTR-EA", "PLM-PIPE-LF"],
+          "Electrical":    ["ELC-OUTL-EA", "ELC-SWTCH-EA", "ELC-FIXTR-EA"],
+          "HVAC":          ["HVC-UNIT-EA"],
+          "Debris":        ["DEB-HAUL-EA", "DEB-DUMP-EA"],
+          "General":       ["GEN-LABOR-HR", "GEN-EQUIP-DAY"],
+          "Fencing":       ["FNC-WOOD-LF", "FNC-CHAIN-LF"],
+          "Cabinetry":     ["CAB-BASE-LF", "CAB-WALL-LF", "CAB-UPPER-LF"],
+        };
+
+        const descLower = (description || "").toLowerCase();
+        const candidateCodes: string[] = [];
+
+        if (category && CATEGORY_DEFAULT_CODES[category]) {
+          candidateCodes.push(...CATEGORY_DEFAULT_CODES[category]);
+        }
+
+        if (descLower) {
+          const allItems = await storage.getScopeLineItems();
+          const descMatch = allItems.find(item =>
+            item.description.toLowerCase().includes(descLower) ||
+            descLower.includes(item.description.toLowerCase())
+          );
+          if (descMatch) {
+            candidateCodes.unshift(descMatch.code);
           }
+        }
+
+        for (const code of candidateCodes) {
+          const found = await lookupCatalogPrice(code);
+          if (found && up > 0) break;
         }
       }
 
@@ -1464,7 +1512,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         category,
         action: action || null,
         description: finalDescription,
-        xactCode: xactCode || null,
+        xactCode: resolvedXactCode,
         quantity: qty,
         unit: finalUnit,
         unitPrice: up,
