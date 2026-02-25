@@ -3469,15 +3469,15 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           {isMobile && (
             <>
               {mobileTranscriptExpanded && (
-                <div className="absolute inset-0 z-30 bg-background/95 backdrop-blur-sm flex flex-col">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border safe-area-top">
                     <span className="text-xs font-semibold text-muted-foreground">Transcript</span>
                     <button
                       onClick={() => setMobileTranscriptExpanded(false)}
-                      className="flex items-center gap-1 text-xs text-primary"
+                      className="flex items-center gap-1 text-xs text-primary px-3 py-2 -mr-3 -my-2"
                       data-testid="button-collapse-transcript"
                     >
-                      <ChevronDown size={12} />
+                      <ChevronDown size={14} />
                       Close
                     </button>
                   </div>
