@@ -197,7 +197,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [mobileTranscriptExpanded, setMobileTranscriptExpanded] = useState(false);
   const isMobile = useIsMobile();
   const previousRoomIdRef = useRef<number | null>(null);
-  useEffect(() => { if (isMobile) setSketchCollapsed(true); }, [isMobile]);
+  useEffect(() => { if (isMobile) setSketchCollapsed(false); }, [isMobile]);
 
   useEffect(() => {
     if (!settings.autoRecordOnRoomEntry || !isConnected) {
@@ -3459,79 +3459,134 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
 
         {/* Main Content Area */}
         <div className="flex-1 relative flex flex-col bg-gradient-to-b from-background via-background to-muted/30 overflow-hidden">
-          {/* Mobile: Compact Transcript (last message + tap to expand) */}
+          {/* Mobile: Compact Transcript bar (last message, tap to expand full overlay) */}
           {isMobile && (
-            <div className="flex flex-col min-h-0" style={{ flex: mobileTranscriptExpanded ? "1 1 100%" : "0 0 auto" }}>
-              {mobileTranscriptExpanded ? (
-                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-                  <button
-                    onClick={() => setMobileTranscriptExpanded(false)}
-                    className="flex items-center gap-1 text-[10px] text-primary mb-1"
-                    data-testid="button-collapse-transcript"
-                  >
-                    <ChevronDown size={10} />
-                    Collapse transcript
-                  </button>
-                  <AnimatePresence>
-                    {transcript.map((entry, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={cn(
-                          "rounded-xl px-3 py-2",
-                          entry.role === "agent"
-                            ? "bg-primary/15 border border-primary/20 mr-auto"
-                            : "bg-primary/10 border border-primary/25 ml-auto"
-                        )}
-                      >
-                        <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">
-                          {entry.role === "agent" ? "Claims IQ" : "You"}
-                        </p>
-                        <p className="text-sm leading-relaxed text-foreground">{entry.text}</p>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                  {agentPartialText && (
-                    <div className="rounded-xl px-3 py-2 bg-primary/15 border border-primary/20 mr-auto">
-                      <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">Claims IQ</p>
-                      <p className="text-sm leading-relaxed text-foreground">{agentPartialText}<span className="animate-pulse">|</span></p>
-                    </div>
-                  )}
-                  <div ref={transcriptEndRef} />
+            <>
+              {mobileTranscriptExpanded && (
+                <div className="absolute inset-0 z-30 bg-background/95 backdrop-blur-sm flex flex-col">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                    <span className="text-xs font-semibold text-muted-foreground">Transcript</span>
+                    <button
+                      onClick={() => setMobileTranscriptExpanded(false)}
+                      className="flex items-center gap-1 text-xs text-primary"
+                      data-testid="button-collapse-transcript"
+                    >
+                      <ChevronDown size={12} />
+                      Close
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                    <AnimatePresence>
+                      {transcript.map((entry, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={cn(
+                            "rounded-xl px-3 py-2",
+                            entry.role === "agent"
+                              ? "bg-primary/15 border border-primary/20 mr-auto"
+                              : "bg-primary/10 border border-primary/25 ml-auto"
+                          )}
+                        >
+                          <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">
+                            {entry.role === "agent" ? "Claims IQ" : "You"}
+                          </p>
+                          <p className="text-sm leading-relaxed text-foreground">{entry.text}</p>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                    {agentPartialText && (
+                      <div className="rounded-xl px-3 py-2 bg-primary/15 border border-primary/20 mr-auto">
+                        <p className="text-[10px] uppercase tracking-wider mb-0.5 text-muted-foreground">Claims IQ</p>
+                        <p className="text-sm leading-relaxed text-foreground">{agentPartialText}<span className="animate-pulse">|</span></p>
+                      </div>
+                    )}
+                    <div ref={transcriptEndRef} />
+                  </div>
                 </div>
-              ) : (
-                <div
-                  onClick={() => { if (transcript.length > 0 || agentPartialText) setMobileTranscriptExpanded(true); }}
-                  className={cn("px-3 py-2 border-b border-border/50", (transcript.length > 0 || agentPartialText) && "cursor-pointer hover:bg-primary/5")}
-                  data-testid="mobile-compact-transcript"
-                >
-                  {transcript.length === 0 && !agentPartialText ? (
-                    <div className="flex items-center gap-2 py-1 text-muted-foreground/60">
-                      <Mic size={16} className="opacity-50" />
-                      <p className="text-xs">
-                        {isConnected ? "Listening... speak to begin." : "Tap the mic to start."}
+              )}
+              <div
+                onClick={() => { if (transcript.length > 0 || agentPartialText) setMobileTranscriptExpanded(true); }}
+                className={cn("px-3 py-1.5 border-b border-border/50 shrink-0", (transcript.length > 0 || agentPartialText) && "cursor-pointer hover:bg-primary/5")}
+                data-testid="mobile-compact-transcript"
+              >
+                {transcript.length === 0 && !agentPartialText ? (
+                  <div className="flex items-center gap-2 text-muted-foreground/60">
+                    <Mic size={14} className="opacity-50" />
+                    <p className="text-[11px]">
+                      {isConnected ? "Listening..." : "Tap mic to start."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                        {agentPartialText ? "Claims IQ" : transcript[transcript.length - 1]?.role === "agent" ? "Claims IQ" : "You"}
+                      </p>
+                      <p className="text-[11px] leading-snug text-foreground line-clamp-2">
+                        {agentPartialText || transcript[transcript.length - 1]?.text}
+                        {agentPartialText && <span className="animate-pulse">|</span>}
                       </p>
                     </div>
-                  ) : (
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
-                          {agentPartialText ? "Claims IQ" : transcript[transcript.length - 1]?.role === "agent" ? "Claims IQ" : "You"}
-                        </p>
-                        <p className="text-xs leading-snug text-foreground line-clamp-2">
-                          {agentPartialText || transcript[transcript.length - 1]?.text}
-                          {agentPartialText && <span className="animate-pulse">|</span>}
-                        </p>
-                      </div>
-                      {transcript.length > 1 && (
-                        <button className="flex items-center gap-0.5 text-[9px] text-primary shrink-0 mt-1">
-                          <ChevronUp size={10} />
-                          {transcript.length}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                    {transcript.length > 1 && (
+                      <button className="flex items-center gap-0.5 text-[9px] text-primary shrink-0 mt-1">
+                        <ChevronUp size={10} />
+                        {transcript.length}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Mobile: Floor Plan Sketch fills the main area */}
+          {isMobile && (
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              {(rooms.length > 0 || isConnected) ? (
+                <div className="flex-1 relative min-h-0">
+                  <div className="absolute top-1 right-1 z-10">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground bg-background/60 backdrop-blur-sm"
+                      onClick={() => setSketchExpanded(true)}
+                      data-testid="button-expand-sketch"
+                    >
+                      <Maximize2 size={14} />
+                    </Button>
+                  </div>
+                  <div className="h-full w-full px-1 py-1">
+                    <PropertySketch
+                      sessionId={sessionId}
+                      rooms={rooms}
+                      currentRoomId={currentRoomId}
+                      onRoomClick={(roomId) => {
+                        setCurrentRoomId(roomId);
+                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                      }}
+                      onEditRoom={(roomId) => {
+                        setCurrentRoomId(roomId);
+                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setSketchExpanded(true);
+                        setSketchEditMode(true);
+                      }}
+                      onAddRoom={() => setShowAddRoom(true)}
+                      onStructureChange={(name) => setCurrentStructure(name)}
+                    />
+                  </div>
+                  <div className="absolute bottom-1 left-2 flex items-center gap-1.5 bg-background/70 backdrop-blur-sm rounded-full px-2 py-0.5">
+                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">Floor Plan</span>
+                    <span className="text-[9px] text-muted-foreground/60">{rooms.length} area{rooms.length !== 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground/40">
+                  <div className="text-center">
+                    <Mic size={32} className="mx-auto mb-2 opacity-40" />
+                    <p className="text-xs">Start the voice agent to begin sketching</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -3583,25 +3638,19 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
           </div>
           )}
 
-          {/* Inline Floor Plan Sketch - primary on mobile when rooms exist */}
-          {(rooms.length > 0 || isConnected) && (
+          {/* Desktop: Inline Floor Plan Sketch */}
+          {!isMobile && (rooms.length > 0 || isConnected) && (
             <div
               className={cn(
                 "border-t border-border bg-card/60 backdrop-blur-sm transition-all",
                 sketchCollapsed ? "h-9" : "min-h-0"
               )}
-              style={!sketchCollapsed ? { flex: "0 0 auto", minHeight: 280, maxHeight: isMobile ? "45%" : "55%" } : undefined}
+              style={!sketchCollapsed ? { flex: "0 0 auto", minHeight: 280, maxHeight: "55%" } : undefined}
               data-testid="sketch-inline-panel"
             >
               <div
                 className="h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-primary/5"
-                onClick={() => {
-                  if (isMobile && sketchCollapsed) {
-                    setSketchExpanded(true);
-                  } else {
-                    setSketchCollapsed(!sketchCollapsed);
-                  }
-                }}
+                onClick={() => setSketchCollapsed(!sketchCollapsed)}
               >
                 <div className="flex items-center gap-2">
                   {sketchCollapsed ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
@@ -3617,7 +3666,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       e.stopPropagation();
                       setSketchExpanded(true);
                     }}
-                    data-testid="button-expand-sketch"
+                    data-testid="button-expand-sketch-desktop"
                   >
                     <Maximize2 size={12} />
                   </Button>
@@ -3647,16 +3696,16 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
             </div>
           )}
 
-          {/* Mobile: Compact progress strip below sketch (tap View All for full tracker) */}
-          {isMobile && !mobileTranscriptExpanded && (
-            <div className="flex-shrink-0 px-3 py-2 border-t border-border/50 bg-card/40">
+          {/* Mobile: Compact progress strip */}
+          {isMobile && (
+            <div className="flex-shrink-0 px-3 py-1.5 border-t border-border/50 bg-card/40">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <span className="text-[10px] font-bold text-primary">{currentPhase}</span>
+                  <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                    <span className="text-[9px] font-bold text-primary">{currentPhase}</span>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{PHASES.find(p => p.id === currentPhase)?.name || "Inspection"}</p>
+                    <p className="text-[11px] font-medium truncate">{PHASES.find(p => p.id === currentPhase)?.name || "Inspection"}</p>
                     <p className="text-[9px] text-muted-foreground">
                       {rooms.filter(r => r.status === "complete").length}/{rooms.length} rooms · {rooms.reduce((sum, r) => sum + (r.damageCount ?? 0), 0)} damages
                     </p>
