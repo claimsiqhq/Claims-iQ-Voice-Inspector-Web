@@ -941,14 +941,18 @@ export function claimsRouter(): Router {
       const { claimId } = authorized;
       const { session, created } = await storage.getOrCreateActiveInspectionSession(claimId, req.user?.id);
       if (!created) {
-        await ensurePolicyRules(claimId, req.user?.id);
+        ensurePolicyRules(claimId, req.user?.id).catch((e) =>
+          console.error("[inspection/start] ensurePolicyRules background error:", e?.message),
+        );
         return res.json({ sessionId: session.id, session });
       }
       const claim = await storage.getClaim(claimId);
       await initSessionWorkflow({ claimId, sessionId: session.id, peril: claim?.perilType || "General" });
       await storage.updateClaimStatus(claimId, "inspecting");
       emit({ type: "inspection.started", sessionId: session.id, claimId, userId: req.user?.id });
-      await ensurePolicyRules(claimId, req.user?.id);
+      ensurePolicyRules(claimId, req.user?.id).catch((e) =>
+        console.error("[inspection/start] ensurePolicyRules background error:", e?.message),
+      );
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
       console.error("[inspection/start] Error:", error?.message, error?.stack);
