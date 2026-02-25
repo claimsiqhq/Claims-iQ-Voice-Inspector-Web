@@ -1134,6 +1134,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             break;
           }
 
+          setCurrentRoomId(openingRoom.id);
+          setCurrentArea(openingRoom.name);
+
           const allOpeningsRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, { headers: openHeaders });
           const allOpenings = allOpeningsRes.ok ? await allOpeningsRes.json() : [];
           const totalDeductionSF = allOpenings.reduce(
@@ -1193,15 +1196,30 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             break;
           }
 
+          setCurrentRoomId(targetRoom.id);
+          setCurrentArea(targetRoom.name);
+
           const patchBody: Record<string, unknown> = {};
           if (args.openingType) patchBody.openingType = args.openingType;
           if (args.wallDirection) patchBody.wallDirection = selectorWall;
           if (args.wallIndex !== undefined) patchBody.wallIndex = args.wallIndex;
-          if (args.positionOnWall !== undefined) patchBody.positionOnWall = args.positionOnWall;
+          if (args.positionOnWall !== undefined) {
+            let pos = Number(args.positionOnWall);
+            if (pos > 1) {
+              const wallLengthFt = targetRoom.widthFt || targetRoom.lengthFt || 10;
+              const fraction = Math.min(1, Math.max(0, pos / wallLengthFt));
+              patchBody.positionOnWall = Math.round(fraction * 100) / 100;
+              const existingNotes = args.notes || "";
+              const distNote = `${pos} ft from corner`;
+              patchBody.notes = existingNotes ? `${existingNotes}; ${distNote}` : distNote;
+            } else {
+              patchBody.positionOnWall = Math.min(1, Math.max(0, pos));
+            }
+          }
           if (args.quantity !== undefined) patchBody.quantity = args.quantity;
           if (args.label !== undefined) patchBody.label = args.label;
           if (args.opensInto !== undefined) patchBody.opensInto = args.opensInto;
-          if (args.notes !== undefined) patchBody.notes = args.notes;
+          if (args.notes !== undefined && !patchBody.notes) patchBody.notes = args.notes;
           if (args.widthFt !== undefined || args.width !== undefined) patchBody.widthFt = parseFeetValue(args.widthFt) ?? parseFeetValue(args.width);
           if (args.heightFt !== undefined || args.height !== undefined) patchBody.heightFt = parseFeetValue(args.heightFt) ?? parseFeetValue(args.height);
 
@@ -1234,6 +1252,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             result = toolValidationError("Unable to resolve room for delete_opening.", { roomName: args.roomName }, "Provide roomName that exists or select a room first.");
             break;
           }
+          setCurrentRoomId(targetRoom.id);
+          setCurrentArea(targetRoom.name);
 
           const openingsRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings`, { headers });
           const openings = openingsRes.ok ? await openingsRes.json() : [];
