@@ -21,7 +21,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 ### Core Design Principles
 - **Voice-first**: The inspection is designed to be driven entirely by voice, with the UI providing visual feedback and manual fallbacks.
 - **Tool-gated phases**: Each workflow phase restricts available AI tools to prevent premature actions.
-- **Xactimate compatibility**: Settlement calculations, ESX export format, and line item structure all match Xactimate's order of operations and data format.
+- **Xactimate compliance**: All category codes use official Xactimate 3-letter codes (e.g., DMO for demolition, SDG for siding, SFG for soffit/fascia, HVC for HVAC, WDV/WDR for windows, FCC/FCR/FCT/FCV/FCW for flooring types, FRM for framing, STR for stairs, MAS for masonry, STU for stucco, DOR for doors, FEE for permits, LAB for labor, CLN for cleaning, CON for contents, TMP for temporary repairs, MPR for moisture protection, XST for exterior structures). ESX export uses `xactCategoryCode` and `xactSelector` from the `scope_line_items` catalog via a lookup map. Trade code mapping in `tradeCodeMapping.ts` resolves internal codes to official Xactimate categories. Reference: xactware.helpdocs.io category codes.
 - **Dual Authentication**: Supports local JWT for speed and Supabase Auth for social/managed flows, unified by a single middleware.
 - **BFS Layout Engine**: Room positioning uses a graph-based layout rather than manual coordinate placement, enabling AI to create sketches via voice without absolute coordinates.
 - **Photo Analysis Bridge**: Normalizes GPT-4o Vision output to standardized damage types for consistent scoping.

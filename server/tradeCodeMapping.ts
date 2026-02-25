@@ -1,15 +1,15 @@
 /**
  * tradeCodeMapping.ts
- * Comprehensive mapping of trade codes to Xactimate categories
- * with dynamic peril-aware categorization for mitigation work
+ * Maps internal trade codes to official Xactimate category codes.
+ * Reference: https://xactware.helpdocs.io/l/enUS/article/gb9lf49tdw-category-codes-in-xactimate-online
  */
 
 export const COMPLETE_TRADE_CODE_MAP: Record<string, string> = {
   RFG: "RFG",
   ROOF: "RFG",
-  SFT: "RFG",
-  FAS: "RFG",
-  GUT: "RFG",
+  SFT: "SFG",
+  FAS: "SFG",
+  GUT: "SFG",
   FLS: "RFG",
   SDG: "SDG",
   EXT: "SDG",
@@ -20,50 +20,69 @@ export const COMPLETE_TRADE_CODE_MAP: Record<string, string> = {
   DRYWALL: "DRY",
   PNT: "PNT",
   PAINT: "PNT",
-  FLR: "FLR",
-  FLOOR: "FLR",
-  CAR: "FLR",
-  CARPET: "FLR",
-  WIN: "WIN",
-  WINDOW: "WIN",
+  FLR: "FCC",
+  FLOOR: "FCC",
+  CAR: "FCC",
+  CARPET: "FCC",
+  TILE: "FCT",
+  VINYL: "FCV",
+  LAMINATE: "FCR",
+  HARDWOOD: "FCW",
+  WIN: "WDW",
+  WINDOW: "WDW",
   ELE: "ELE",
   ELEC: "ELE",
   ELECTRICAL: "ELE",
   PLM: "PLM",
   PLUMB: "PLM",
   PLUMBING: "PLM",
-  HVA: "HVA",
-  HVAC: "HVA",
-  MEC: "HVA",
-  MECHANICAL: "HVA",
+  HVA: "HVC",
+  HVAC: "HVC",
+  MEC: "HVC",
+  MECHANICAL: "HVC",
   INS: "INS",
   INSULATION: "INS",
   CAB: "CAB",
   CABINET: "CAB",
-  CTR: "CTR",
-  COUNTERTOP: "CTR",
-  COUNTER: "CTR",
+  CTR: "CAB",
+  COUNTERTOP: "CAB",
+  COUNTER: "CAB",
   FRM: "FRM",
   FRAME: "FRM",
   CARPENTRY: "FRM",
   STRUCTURE: "FRM",
-  APL: "APL",
-  APPLIANCE: "APL",
-  MAJOR_APL: "APL",
+  APL: "APP",
+  APPLIANCE: "APP",
+  MAJOR_APL: "APP",
   DOR: "DOR",
   DOOR: "DOR",
-  DEM: "DEM",
-  DEMO: "DEM",
-  DEMOLITION: "DEM",
+  DEM: "DMO",
+  DEMO: "DMO",
+  DEMOLITION: "DMO",
   MIT: "MIT",
   MITIGATION: "MIT",
   GEN: "GEN",
   GENERAL: "GEN",
+  CLN: "CLN",
+  CLEAN: "CLN",
+  FEE: "FEE",
+  PERMIT: "FEE",
+  LAB: "LAB",
+  LABOR: "LAB",
+  CON: "CON",
+  CONTENT: "CON",
+  FEN: "FEN",
+  FENCE: "FEN",
+  STU: "STU",
+  STUCCO: "STU",
+  MAS: "MAS",
+  MASONRY: "MAS",
+  SFG: "SFG",
+  SOFFIT: "SFG",
+  FASCIA: "SFG",
+  GUTTER: "SFG",
 };
 
-/**
- * Resolve mitigation category based on peril type
- */
 export function resolveMitigationCategory(perilType?: string): string {
   if (!perilType) return "WTR";
 
@@ -74,23 +93,20 @@ export function resolveMitigationCategory(perilType?: string): string {
     flooding: "WTR",
     "water damage": "WTR",
     wet: "WTR",
-    fire: "FIR",
-    smoke: "FIR",
-    "fire damage": "FIR",
-    wind: "WND",
-    hail: "WND",
-    windstorm: "WND",
-    mold: "MLR",
-    "mold damage": "MLR",
+    fire: "FRP",
+    smoke: "FRP",
+    "fire damage": "FRP",
+    wind: "TMP",
+    hail: "TMP",
+    windstorm: "TMP",
+    mold: "HMR",
+    "mold damage": "HMR",
     other: "GEN",
   };
 
   return perilCategoryMap[normalized] ?? "WTR";
 }
 
-/**
- * Resolve category for a trade code, with dynamic resolution for MIT
- */
 export function resolveCategory(tradeCode?: string, perilType?: string): string {
   if (!tradeCode) return "GEN";
 

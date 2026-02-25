@@ -40,8 +40,8 @@ export interface ESXOptions {
   isSupplemental?: boolean;
   supplementalReason?: string;
   removedItemIds?: number[];
-  /** Optional settlement rules for consistent tax/labor calculation */
   settlementRules?: SettlementRules;
+  catalogMap?: Map<string, { xactCategoryCode: string | null; xactSelector: string | null; activityType: string | null }>;
 }
 
 /**
@@ -66,6 +66,14 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
     (claim as { carrierCode?: string }).carrierCode ?? null
   );
 
+  const { scopeLineItems } = await import("@shared/schema");
+  const { db } = await import("./db");
+  const catalogItems = await db.select().from(scopeLineItems);
+  const catalogMap = new Map<string, { xactCategoryCode: string | null; xactSelector: string | null; activityType: string | null }>();
+  for (const ci of catalogItems) {
+    catalogMap.set(ci.code, { xactCategoryCode: ci.xactCategoryCode, xactSelector: ci.xactSelector, activityType: ci.activityType });
+  }
+
   return generateESXFromData({
     claim,
     session,
@@ -74,6 +82,7 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
     briefing,
     openings,
     settlementRules,
+    catalogMap,
   });
 }
 
@@ -93,6 +102,7 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
     supplementalReason,
     removedItemIds,
     settlementRules,
+    catalogMap,
   } = options;
 
   const rules = settlementRules ?? getDefaultSettlementRules();
@@ -235,8 +245,7 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
   // Generate XACTDOC.XML
   const xactdocXml = generateXactdocFromMetadata(metadata, isSupplemental, supplementalReason);
 
-  // Generate GENERIC_ROUGHDRAFT.XML
-  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems, openings || [], claim);
+  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems, openings || [], claim, catalogMap);
 
   // Create ZIP archive
   return new Promise((resolve, reject) => {
@@ -408,7 +417,7 @@ ${notesSection}
 </XACTDOC>`;
 }
 
-function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = [], claim?: any): string {
+function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = [], claim?: any, catalogMap?: Map<string, { xactCategoryCode: string | null; xactSelector: string | null; activityType: string | null }>): string {
   const roomGroups: { [key: string]: LineItemXML[] } = {};
   lineItems.forEach((item) => {
     const roomKey = item.room || "Unassigned";
@@ -451,14 +460,21 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
       "Clean": "C", "Tear Off": "-", "Labor Only": "L", "Install": "+",
     };
 
+    const actionToActInternal: Record<string, string> = {
+      "replace": "+", "install": "+", "remove": "-", "repair": "R",
+      "reset": "O", "clean": "C", "labor_only": "L",
+    };
+
     roomItems.forEach((item, idx) => {
       const origItem = originalItems.find((oi: any) => oi.id === item.id);
       const tradeCode = origItem?.tradeCode || "";
-      const category = resolveCategory(tradeCode, perilType) || (item.category || "").substring(0, 3).toUpperCase() || "GEN";
+      const catEntry = origItem?.xactCode ? catalogMap?.get(origItem.xactCode) : undefined;
+      const xactCatFromCatalog = catEntry?.xactCategoryCode || "";
+      const category = xactCatFromCatalog || resolveCategory(tradeCode, perilType) || (item.category || "").substring(0, 3).toUpperCase() || "GEN";
       const act = item.provenance === "supplemental_new" ? "ADD" :
         item.provenance === "supplemental_modified" ? "MOD" :
-        actionToAct[item.action] || "&";
-      const selector = origItem?.xactCode ? String(origItem.xactCode).split("-").slice(-1)[0] || "1/2++" : "1/2++";
+        actionToAct[item.action] || actionToActInternal[catEntry?.activityType || ""] || "&";
+      const selector = catEntry?.xactSelector || origItem?.xactCode || "GEN";
 
       itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(act)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" equipment="${(item.equipment ?? 0).toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}" depreciationPct="${(item.depreciationPercentage ?? 0).toFixed(2)}" depreciationAmt="${(item.depreciationAmount ?? 0).toFixed(2)}"/>\n`;
     });
