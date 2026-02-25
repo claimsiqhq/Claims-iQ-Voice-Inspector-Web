@@ -351,6 +351,14 @@ export async function analyzePhotoDamage(imageUrl: string): Promise<{
     bbox: { x: number; y: number; width: number; height: number };
     repairSuggestion: string;
   }>;
+  suggestedLineItems?: Array<{
+    item: string;
+    category: string;
+    reason: string;
+    xactCode: string | null;
+    unit: string;
+    materialDetails: string;
+  }>;
   overallSeverity: number;
   damageTypes: string[];
   suggestedRepairs: string[];
@@ -363,7 +371,7 @@ export async function analyzePhotoDamage(imageUrl: string): Promise<{
       messages: [
         {
           role: "system",
-          content: `You are an expert insurance property damage analyst. Analyze the provided photo for any property damage.
+          content: `You are an expert insurance property damage analyst with deep knowledge of Xactimate line items and construction materials. Analyze the provided photo for any property damage AND identify all visible materials, finishes, and specialty items.
 
 For each damage area you detect, provide:
 1. The type of damage (e.g., "hail damage", "water stain", "wind uplift", "cracking", "missing shingles", "mold", "fire damage", "structural damage", "rot/decay")
@@ -372,6 +380,18 @@ For each damage area you detect, provide:
 4. Confidence score 0-1 of your detection
 5. A bounding box (normalized 0-1 coordinates relative to image dimensions) indicating WHERE in the image the damage is located: { x, y, width, height } where x,y is the top-left corner
 6. A specific repair suggestion
+
+Also identify ALL visible materials and finishes that affect replacement cost:
+- Paint color/type (especially custom colors, accent walls, faux finishes)
+- Crown molding, chair rail, wainscoting, custom trim profiles
+- Baseboard type and height
+- Flooring type (hardwood species, tile, luxury vinyl plank, carpet grade)
+- Cabinet type and finish
+- Countertop material (granite, quartz, laminate, marble)
+- Ceiling texture (smooth, knockdown, popcorn, coffered)
+- Wallpaper or specialty wall coverings
+- Light fixtures, ceiling fans
+- Any custom or upgraded features
 
 Also provide:
 - An overall severity score (1-10, where 1 = no damage, 10 = catastrophic)
@@ -391,13 +411,23 @@ Return JSON:
       "repairSuggestion": "specific repair action"
     }
   ],
+  "suggestedLineItems": [
+    {
+      "item": "Human-readable name (e.g., 'Crown molding - 3.5 inch colonial')",
+      "category": "Trade category (PNT, TRIM, FLR, CAB, etc.)",
+      "reason": "Why this needs documenting",
+      "xactCode": "Xactimate code if known, or null",
+      "unit": "SF, LF, EA, etc.",
+      "materialDetails": "Specific material details (color, grade, profile)"
+    }
+  ],
   "overallSeverity": 5,
   "damageTypes": ["hail damage", "missing shingles"],
   "suggestedRepairs": ["Replace damaged shingles", "Apply sealant"],
   "propertyContext": "Asphalt shingle roof, approximately 15 years old"
 }
 
-If no damage is detected, return an empty damageDetections array with overallSeverity of 1 and a summary indicating no visible damage.`,
+If no damage is detected, return an empty damageDetections array with overallSeverity of 1. ALWAYS populate suggestedLineItems with any materials/finishes visible in the photo — these are critical for like kind and quality documentation.`,
         },
         {
           role: "user",
@@ -424,6 +454,7 @@ If no damage is detected, return an empty damageDetections array with overallSev
     return {
       summary: result.summary || "Analysis complete",
       damageDetections: result.damageDetections || [],
+      suggestedLineItems: result.suggestedLineItems || [],
       overallSeverity: result.overallSeverity || 1,
       damageTypes: result.damageTypes || [],
       suggestedRepairs: result.suggestedRepairs || [],

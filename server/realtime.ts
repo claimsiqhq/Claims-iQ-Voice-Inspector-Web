@@ -303,6 +303,14 @@ When photo analysis returns damageSuggestions (AI-detected damage):
 3. If confirmed, call add_damage — scope auto-generates
 4. If denied, move on
 
+When photo analysis returns lineItemSuggestions (materials, finishes, specialty items):
+1. Present what was identified: "I also noticed [item] — [materialDetails]. This would be documented as [xactCode]."
+2. For custom or upgraded items (custom paint colors, crown molding, specialty trim, etc.), emphasize: "That's [materialDetails] — I'll make sure we document it for like kind and quality replacement."
+3. Ask if the adjuster wants to add these as line items: "Should I add a line item for [item]?"
+4. If confirmed, call add_line_item with the suggested xactCode, category, and materialDetails in the notes.
+5. Group related items together: "I see crown molding and custom purple paint in this room. Want me to add line items for both?"
+6. ALWAYS mention the specific material details (color, profile, grade, species) — these are critical for accurate replacement cost.
+
 ## Financial & Coverage Reference
 
 4. **Quantity Trust Hierarchy:** For quantities, always prefer:
@@ -612,7 +620,7 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
     autoScope.warnings — any issues (e.g., "No catalog match for surface type")
     When autoScope is present: Acknowledge the auto-generated items naturally. If warnings exist, mention them. Do NOT read every line item in detail unless the adjuster asks. Summarize. If autoScope.itemsCreated is 0, say: "I wasn't able to auto-scope that damage automatically. Let's add line items manually — what do you need?"
 
-22. **Photo Intelligence Awareness:** When a photo is captured, the system runs AI analysis. The tool result from trigger_photo_capture may include damageSuggestions[], qualityScore, analysisNotes. When damageSuggestions are present: Acknowledge what the camera saw. If confidence is high (>0.8), offer to log it. If moderate (0.5-0.8), be tentative. If low (<0.5), mention it but don't push. NEVER auto-log damage from photo analysis without adjuster confirmation. If qualityScore is below 50, suggest retaking.
+22. **Photo Intelligence Awareness:** When a photo is captured, the system runs AI analysis. The tool result from trigger_photo_capture may include damageSuggestions[], lineItemSuggestions[], qualityScore, analysisNotes. When damageSuggestions are present: Acknowledge what the camera saw. If confidence is high (>0.8), offer to log it. If moderate (0.5-0.8), be tentative. If low (<0.5), mention it but don't push. NEVER auto-log damage from photo analysis without adjuster confirmation. If qualityScore is below 50, suggest retaking. When lineItemSuggestions are present: These are materials and finishes detected in the photo (paint colors, crown molding, custom trim, flooring type, etc.). Present them to the adjuster with their specific material details. Offer to add them as line items — these are critical for documenting like kind and quality for the claim estimate.
 
 23. **Phase Transition Protocol:** Before advancing to the next phase, the backend validates completeness. When you receive phase validation results (through set_inspection_context or request_phase_validation), the result may include warnings[], missingItems[], completionScore. If warnings exist: Read them conversationally. Ask: "Do you want to address these now, or proceed anyway?" Common warning responses: "No property verification photo" → offer trigger_photo_capture for address_verification; "Damages documented but no line items" → offer to review scope gaps; "Drywall without painting" → suggest adding paint finish items; "Elevated moisture but no mitigation" → suggest extraction/mitigation items. If completionScore is below 60, gently note it.
 
@@ -1113,7 +1121,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "trigger_photo_capture",
-    description: "Opens the camera on the adjuster's device. CRITICAL: You MUST verbally ask the adjuster if they are ready to take a photo BEFORE calling this tool. For example say 'Ready to take a photo of the north slope? Let me know when you are set.' Only call this tool AFTER the adjuster verbally confirms they are ready. The camera opens and waits for the adjuster to tap the capture button. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
+    description: "Opens the camera on the adjuster's device. CRITICAL: You MUST verbally ask the adjuster if they are ready to take a photo BEFORE calling this tool. For example say 'Ready to take a photo of the north slope? Let me know when you are set.' Only call this tool AFTER the adjuster verbally confirms they are ready. The camera opens and waits for the adjuster to tap the capture button. Do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If lineItemSuggestions are present, these are materials/finishes detected in the photo (paint colors, crown molding, custom trim, flooring, etc.) — present them with specific material details and offer to add as line items. If qualityScore is below 50, suggest retaking the photo.",
     parameters: {
       type: "object",
       properties: {

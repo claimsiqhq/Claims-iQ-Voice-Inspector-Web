@@ -2941,6 +2941,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                 description: analysis.description,
                 damageVisible: analysis.damageVisible,
                 damageSuggestions: analysis.damageSuggestions || [],
+                lineItemSuggestions: analysis.lineItemSuggestions || [],
                 matchesExpected: analysis.matchesExpected,
                 matchExplanation: analysis.matchExplanation,
                 qualityScore: analysis.qualityScore,
@@ -2956,6 +2957,11 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         // If AI detected damage, include suggestions for the agent to confirm
         if (analysis?.damageSuggestions?.length > 0) {
           photoResult.damageSuggestions = analysis.damageSuggestions;
+        }
+
+        // If AI detected materials/finishes, include line item suggestions
+        if (analysis?.lineItemSuggestions?.length > 0) {
+          photoResult.lineItemSuggestions = analysis.lineItemSuggestions;
         }
       } catch (e: any) {
         logger.error("Voice", "Camera capture error", e);
