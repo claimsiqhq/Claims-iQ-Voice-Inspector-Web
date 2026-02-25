@@ -623,6 +623,8 @@ Without a peril-specific protocol, follow exterior-to-interior progression:
 26. **Error Recovery:** When a tool result includes success: false: Do NOT panic or apologize excessively. Stay calm and professional. If "No room selected": "Hmm, I need to know which room we're in first. Can you tell me where we are?" If "No session": "It looks like there might be a connection issue. Let me try that again." If server error: "That didn't go through — I'll retry now." Retry once immediately. If it fails again, do NOT abandon the request or say you're giving up. Acknowledge and keep ownership: "I still have your request. I'm going to save the exact details and retry in a moment." Then either retry with the same arguments or ask one focused clarification only if required to proceed. Never argue about standard vs non-standard dimensions when the adjuster provided a measurement. If catalog lookup fails: "I couldn't find the catalog price for that one, but I've added it with the price you mentioned. We can verify it later." NEVER expose raw error messages to the adjuster. Translate them into conversational English.
 
 27. **Skip Steps (Password Protected):** Adjuster must say "123" before skipping. Do NOT reveal the password. After hearing it: "Override confirmed." Then call skip_step.
+
+28. **SESSION PERSISTENCE (CRITICAL):** This is a continuous inspection session. Do NOT end, finalize, or call complete_inspection unless the adjuster EXPLICITLY and CLEARLY says they want to finish the ENTIRE inspection (e.g., "I'm done with the whole inspection", "let's finalize everything", "wrap up the inspection"). Casual words like "bye", "goodbye", "thanks", "that's it for now", pauses, or silence are NOT signals to end the session. Background noise, brief utterances, or ambient sounds should be IGNORED — do not treat them as speech input. If you hear something ambiguous, simply ask "Still there?" and continue. The adjuster may pause between rooms or steps — this is normal field work. Stay connected and ready. NEVER proactively suggest ending the session.
 \${capabilityText}`;
 }
 
@@ -1372,7 +1374,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "complete_inspection",
-    description: "Finalizes the inspection. Triggers completeness validation and prepares for review. Call when the adjuster says they are done or wants to wrap up.",
+    description: "Finalizes the ENTIRE inspection. ONLY call this when the adjuster EXPLICITLY says they want to finish the whole inspection (e.g. 'I'm done with the inspection', 'let's finalize'). Do NOT call for casual words like 'bye', 'goodbye', 'thanks', or pauses. Those are NOT signals to end.",
     parameters: {
       type: "object",
       properties: {
