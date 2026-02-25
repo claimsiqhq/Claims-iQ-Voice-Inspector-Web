@@ -13,6 +13,10 @@
 
 BEGIN;
 
+-- Drop the unique constraint on (xact_category_code, xact_selector) — multiple items
+-- can legitimately share the same Xactimate category+selector (e.g., FCC+PAD)
+DROP INDEX IF EXISTS scope_line_items_xact_cat_sel_unique;
+
 -- ─── MIT: Mitigation (WTR) ──────────────────────────────────────────────────
 -- No changes needed — already using WTR
 
