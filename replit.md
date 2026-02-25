@@ -99,4 +99,5 @@ Additional docs in `docs/`:
 - `voice-tool-contract.md` — Voice tool specifications
 - `DOCUMENT_UPLOAD_PARSING_WORKFLOW.md` — Document processing flow
 - `PDF_REPORT_GUIDE.md` — PDF report generation rules, column layout, and common pitfalls
+- `XACTIMATE_CATEGORY_CODE_MIGRATION.md` — Full changelog of Xactimate category code corrections with SQL migration
 - `openapi.yaml` — OpenAPI specification
