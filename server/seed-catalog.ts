@@ -411,13 +411,49 @@ export async function seedCatalog() {
   await backfillZeroPriceLineItems();
 }
 
+const CATEGORY_DEFAULT_CODES: Record<string, string[]> = {
+  "Roofing":       ["RFG-SHIN-AR", "RFG-SHIN-3TAB"],
+  "Siding":        ["EXT-SIDING-SF"],
+  "Soffit/Fascia": ["EXT-SOFFIT-SF", "EXT-FASCIA-LF"],
+  "Gutters":       ["EXT-FASCIA-LF"],
+  "Windows":       ["WIN-DOUBLE-EA"],
+  "Doors":         ["EXT-DOOR-EA"],
+  "Drywall":       ["DRY-SHEET-SF", "DRY-PATCH-SF"],
+  "Painting":      ["PNT-INT-SF", "PNT-CEILING-SF", "PNT-TRIM-LF"],
+  "Flooring":      ["FLR-CARPET-SF", "FLR-VINYL-SF", "FLR-LAMINATE-SF"],
+  "Plumbing":      ["PLM-SINK-EA", "PLM-FAUCET-EA"],
+  "Electrical":    ["ELE-OUTL-EA", "ELE-SWCH-EA", "ELE-LITE-EA"],
+  "HVAC":          ["HVAC-VENT-EA"],
+  "Debris":        ["DEM-HAUL-LD", "DEM-DUMP-LD"],
+  "General":       ["GEN-SUPER-HR"],
+  "Fencing":       ["CAR-DECK-SF"],
+  "Cabinetry":     ["CAB-BASE-LF", "CAB-WALL-LF"],
+  "Insulation":    ["INS-BATTS-SF", "INS-BLOWN-SF"],
+  "Demolition":    ["DEM-DRY-SF", "DEM-FLR-SF"],
+};
+
+async function lookupPriceForCode(code: string): Promise<number> {
+  const rp = await db
+    .select()
+    .from(regionalPriceSets)
+    .where(
+      sql`${regionalPriceSets.lineItemCode} = ${code}
+          AND ${regionalPriceSets.regionId} IN ('FLFM8X_NOV22', 'US_NATIONAL')`
+    )
+    .limit(1);
+
+  if (rp.length === 0) return 0;
+  return (Number(rp[0].materialCost) || 0) +
+    (Number(rp[0].laborCost) || 0) +
+    (Number(rp[0].equipmentCost) || 0);
+}
+
 async function backfillZeroPriceLineItems() {
   const zeroItems = await db
     .select()
     .from(lineItems)
     .where(
-      sql`(${lineItems.unitPrice} IS NULL OR CAST(${lineItems.unitPrice} AS numeric) = 0)
-          AND ${lineItems.xactCode} IS NOT NULL`
+      sql`(${lineItems.unitPrice} IS NULL OR CAST(${lineItems.unitPrice} AS numeric) = 0)`
     );
 
   if (zeroItems.length === 0) {
@@ -426,26 +462,43 @@ async function backfillZeroPriceLineItems() {
   }
 
   logger.info("SeedCatalog", `Backfilling prices for ${zeroItems.length} line items with $0 pricing...`);
+
+  const allCatalogItems = await db.select().from(scopeLineItems);
   let updated = 0;
 
   for (const item of zeroItems) {
-    const code = item.xactCode!;
-    let rp = await db
-      .select()
-      .from(regionalPriceSets)
-      .where(
-        sql`${regionalPriceSets.lineItemCode} = ${code}
-            AND ${regionalPriceSets.regionId} IN ('FLFM8X_NOV22', 'US_NATIONAL')`
-      )
-      .limit(1);
+    let unitPrice = 0;
+    let resolvedCode = item.xactCode || null;
 
-    if (rp.length === 0) continue;
+    if (resolvedCode) {
+      unitPrice = await lookupPriceForCode(resolvedCode);
+    }
 
-    const price = rp[0];
-    const unitPrice =
-      (Number(price.materialCost) || 0) +
-      (Number(price.laborCost) || 0) +
-      (Number(price.equipmentCost) || 0);
+    if (unitPrice <= 0) {
+      const descLower = (item.description || "").toLowerCase();
+      const candidateCodes: string[] = [];
+
+      if (item.category && CATEGORY_DEFAULT_CODES[item.category]) {
+        candidateCodes.push(...CATEGORY_DEFAULT_CODES[item.category]);
+      }
+
+      if (descLower) {
+        const descMatch = allCatalogItems.find(ci =>
+          ci.description.toLowerCase().includes(descLower) ||
+          descLower.includes(ci.description.toLowerCase())
+        );
+        if (descMatch) candidateCodes.unshift(descMatch.code);
+      }
+
+      for (const code of candidateCodes) {
+        const price = await lookupPriceForCode(code);
+        if (price > 0) {
+          unitPrice = price;
+          resolvedCode = code;
+          break;
+        }
+      }
+    }
 
     if (unitPrice <= 0) continue;
 
@@ -465,6 +518,7 @@ async function backfillZeroPriceLineItems() {
         unitPrice: String(unitPrice),
         totalPrice: String(totalPrice),
         depreciationAmount: depAmount,
+        ...(resolvedCode && !item.xactCode ? { xactCode: resolvedCode } : {}),
       })
       .where(eq(lineItems.id, item.id));
     updated++;
