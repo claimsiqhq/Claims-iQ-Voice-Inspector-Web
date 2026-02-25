@@ -393,11 +393,17 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
   doc.font(FONTS.normal, 9).text(lossType, 510, y);
   y += 20;
 
-  const covA = br?.coverageSnapshot?.coverageA ?? 0;
-  const covB = br?.coverageSnapshot?.coverageB ?? 0;
-  const covC = br?.coverageSnapshot?.coverageC ?? 0;
-  const covD = br?.coverageSnapshot?.coverageD ?? 0;
-  const ded = br?.coverageSnapshot?.deductible ?? data.estimate.deductible ?? 0;
+  function extractLimit(val: unknown): number {
+    if (val == null) return 0;
+    if (typeof val === "number") return val;
+    if (typeof val === "object" && val !== null && "limit" in val) return Number((val as any).limit) || 0;
+    return Number(val) || 0;
+  }
+  const covA = extractLimit(br?.coverageSnapshot?.coverageA);
+  const covB = extractLimit(br?.coverageSnapshot?.coverageB);
+  const covC = extractLimit(br?.coverageSnapshot?.coverageC);
+  const covD = extractLimit(br?.coverageSnapshot?.coverageD);
+  const ded = Number(br?.coverageSnapshot?.deductible) || data.estimate.deductible || 0;
 
   doc.rect(MARGIN, y, CONTENT_WIDTH, 16).fill(COLORS.headerBg);
   doc.font(FONTS.bold, 8).fill(COLORS.black);
@@ -505,6 +511,7 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
 
 function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   for (const room of re.rooms) {
+    if (room.items.length === 0) continue;
     newPage(doc);
     let y = MARGIN;
 
@@ -594,7 +601,7 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
 
   doc.text(qty.toFixed(2), 100, y, { width: 65, align: "right" });
   doc.text(`${item.unit || "EA"}`, 170, y, { width: 25, align: "left" });
-  doc.text(fmt(unitPrice), 170, y, { width: 50, align: "right" });
+  doc.text(fmt(unitPrice), 195, y, { width: 50, align: "right" });
   doc.text(fmt(tax), 228, y, { width: 45, align: "right" });
   const itemRCV = rcv + tax;
   const itemACV = itemRCV - depAmt;
@@ -810,12 +817,30 @@ function renderTranscript(doc: Doc, transcript: any[]) {
   drawHLine(doc, y);
   y += 8;
 
+  const labelWidth = 75;
+  const contentX = MARGIN + labelWidth + 5;
+  const contentWidth = CONTENT_WIDTH - labelWidth - 5;
+
   for (const entry of transcript) {
-    y = checkPageBreak(doc, 16, y);
-    const speaker = entry.speaker === "agent" ? "AI Inspector" : "Adjuster";
-    doc.font(FONTS.bold, 8).fill(COLORS.darkGray).text(speaker, MARGIN, y, { continued: true });
-    doc.font(FONTS.normal, 8).fill(COLORS.black).text(`: ${entry.content}`);
-    y += 12;
+    const speaker = entry.speaker === "agent" ? "AI Inspector:" : "Adjuster:";
+    const content = (entry.content || "").trim();
+    if (!content) continue;
+
+    const textHeight = doc.font(FONTS.normal, 7.5).heightOfString(content, { width: contentWidth });
+    const rowHeight = Math.max(12, textHeight + 4);
+    y = checkPageBreak(doc, rowHeight, y);
+    if (y === MARGIN) {
+      doc.font(FONTS.bold, 14).fill(COLORS.black).text("VOICE TRANSCRIPT (Continued)", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+      y += 20;
+      drawHLine(doc, y);
+      y += 8;
+    }
+
+    doc.font(FONTS.bold, 7.5).fill(COLORS.darkGray);
+    doc.text(speaker, MARGIN, y, { width: labelWidth });
+    doc.font(FONTS.normal, 7.5).fill(COLORS.black);
+    doc.text(content, contentX, y, { width: contentWidth });
+    y += rowHeight;
   }
 }
 
