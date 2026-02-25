@@ -100,4 +100,5 @@ Additional docs in `docs/`:
 - `DOCUMENT_UPLOAD_PARSING_WORKFLOW.md` — Document processing flow
 - `PDF_REPORT_GUIDE.md` — PDF report generation rules, column layout, and common pitfalls
 - `XACTIMATE_CATEGORY_CODE_MIGRATION.md` — Full changelog of Xactimate category code corrections with SQL migration
+- `INSPECTION_WORKFLOWS_HANDOFF.md` — Complete developer handoff for the Inspection Workflows system (architecture, data model, API, UI components, common modifications)
 - `openapi.yaml` — OpenAPI specification
