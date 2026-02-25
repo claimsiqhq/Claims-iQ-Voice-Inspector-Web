@@ -76,3 +76,26 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Document Generation**: `docx` library for Word document generation.
 - **Archive Utilities**: `archiver` for ZIP/ESX file creation.
 - **Charting**: Recharts
+
+## Documentation
+
+Complete developer documentation is in `docs/DEVELOPER_GUIDE.md`. It covers:
+- Full architecture overview with diagrams
+- All 31 database tables with columns, types, and relationships
+- Complete API routes reference (80+ endpoints across 15 route files)
+- All 35+ voice agent tools with parameters
+- 12 backend services/engines with key functions
+- Workflow orchestration and 4 validation gates
+- BFS sketch/floor plan system architecture
+- All frontend pages (18) and components (25+)
+- Build pipeline (Vite + esbuild → CJS)
+- Authentication system (dual JWT + Supabase)
+- Environment variables and setup instructions
+- Key design decisions and data flow diagrams
+
+Additional docs in `docs/`:
+- `VOICE-SKETCH-DEVELOPER-GUIDE.md` — Voice-sketch integration details
+- `WORKFLOW_CONTRACT.md` — Workflow phase/tool contracts
+- `voice-tool-contract.md` — Voice tool specifications
+- `DOCUMENT_UPLOAD_PARSING_WORKFLOW.md` — Document processing flow
+- `openapi.yaml` — OpenAPI specification
