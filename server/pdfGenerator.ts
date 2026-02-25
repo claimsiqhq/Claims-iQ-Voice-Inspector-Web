@@ -482,6 +482,7 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
 
   for (const [structure, rooms] of Object.entries(structureGroups)) {
     for (const room of rooms) {
+      if (room.items.length === 0) continue;
       y = checkPageBreak(doc, 20, y);
       const rcvVal = room.subtotal + room.totalTax;
       doc.font(FONTS.normal, 8).fill(COLORS.black);
@@ -510,6 +511,8 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
 }
 
 function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  let lastY = MARGIN + 200;
+
   for (const room of re.rooms) {
     if (room.items.length === 0) continue;
     newPage(doc);
@@ -540,14 +543,15 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
     const roomACVCorrected = roomRCV - room.totalDepreciation;
     doc.font(FONTS.bold, 8).fill(COLORS.black);
     doc.text(`Totals: ${room.name}`, MARGIN + 5, y, { width: 150 });
-    doc.text(fmt(room.totalTax), 228, y, { width: 45, align: "right" });
-    doc.text(fmt(roomRCV), 278, y, { width: 60, align: "right" });
-    doc.text(fmt(room.totalDepreciation), 438, y, { width: 55, align: "right" });
-    doc.text(fmt(roomACVCorrected), PAGE_WIDTH - MARGIN - 55, y, { width: 55, align: "right" });
+    doc.text(fmt(room.totalTax), COL.taxX, y, { width: COL.taxW, align: "right" });
+    doc.text(fmt(roomRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
+    doc.text(fmt(room.totalDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
+    doc.text(fmt(roomACVCorrected), COL.acvX, y, { width: COL.acvW, align: "right" });
     y += 18;
+    lastY = y;
   }
 
-  let y = (doc as any).y || MARGIN + 200;
+  let y = lastY;
   y = checkPageBreak(doc, 40, y);
 
   drawThickLine(doc, y);
@@ -557,60 +561,78 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
   const totalACV = totalRCV - re.grandDepreciation;
   doc.font(FONTS.bold, 9).fill(COLORS.black);
   doc.text("Line Item Totals:", MARGIN + 5, y, { width: 180 });
-  doc.text(fmt(re.grandTax), 228, y, { width: 45, align: "right" });
-  doc.text(fmt(totalRCV), 278, y, { width: 60, align: "right" });
-  doc.text(fmt(re.grandDepreciation), 438, y, { width: 55, align: "right" });
-  doc.text(fmt(totalACV), PAGE_WIDTH - MARGIN - 55, y, { width: 55, align: "right" });
+  doc.text(fmt(re.grandTax), COL.taxX, y, { width: COL.taxW, align: "right" });
+  doc.text(fmt(totalRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
+  doc.text(fmt(re.grandDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
+  doc.text(fmt(totalACV), COL.acvX, y, { width: COL.acvW, align: "right" });
   y += 20;
 
   doc.font(FONTS.normal, 7).fill(COLORS.medGray);
   doc.text("[%] - Indicates that depreciate by percent was used for this item", MARGIN, y);
 }
 
+const COL = {
+  qtyX: MARGIN,
+  qtyW: 140,
+  taxX: 185,
+  taxW: 45,
+  rcvX: 235,
+  rcvW: 60,
+  ageX: 300,
+  ageW: 50,
+  condX: 355,
+  condW: 30,
+  depPctX: 385,
+  depPctW: 40,
+  deprecX: 425,
+  deprecW: 55,
+  acvX: PAGE_WIDTH - MARGIN - 55,
+  acvW: 55,
+};
+
 function drawLineItemHeader(doc: Doc, y: number): number {
   doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
   doc.font(FONTS.bold, 6).fill(COLORS.black);
-  doc.text("QUANTITY", 115, y + 4, { width: 50, align: "right" });
-  doc.text("UNIT", 170, y + 4, { width: 50, align: "right" });
-  doc.text("TAX", 228, y + 4, { width: 45, align: "right" });
-  doc.text("RCV", 278, y + 4, { width: 60, align: "right" });
-  doc.text("AGE/LIFE", 343, y + 4, { width: 45, align: "right" });
-  doc.text("COND.", 390, y + 4, { width: 30, align: "right" });
-  doc.text("DEP %", 418, y + 4, { width: 35, align: "right" });
-  doc.text("DEPREC.", 453, y + 4, { width: 50, align: "right" });
-  doc.text("ACV", PAGE_WIDTH - MARGIN - 55, y + 4, { width: 55, align: "right" });
+  doc.text("QUANTITY / UNIT PRICE", COL.qtyX + 5, y + 4, { width: COL.qtyW });
+  doc.text("TAX", COL.taxX, y + 4, { width: COL.taxW, align: "right" });
+  doc.text("RCV", COL.rcvX, y + 4, { width: COL.rcvW, align: "right" });
+  doc.text("AGE/LIFE", COL.ageX, y + 4, { width: COL.ageW, align: "right" });
+  doc.text("COND.", COL.condX, y + 4, { width: COL.condW, align: "right" });
+  doc.text("DEP %", COL.depPctX, y + 4, { width: COL.depPctW, align: "right" });
+  doc.text("DEPREC.", COL.deprecX, y + 4, { width: COL.deprecW, align: "right" });
+  doc.text("ACV", COL.acvX, y + 4, { width: COL.acvW, align: "right" });
   return y + 16;
 }
 
 function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
-  doc.font(FONTS.normal, 8).fill(COLORS.black);
-  doc.text(`${item.lineNumber}. ${item.description}`, MARGIN + 5, y, { width: 500 });
-  const descHeight = doc.heightOfString(`${item.lineNumber}. ${item.description}`, { width: 500 });
-  const descLines = Math.max(1, Math.ceil(descHeight / 10));
-  y += Math.max(12, descLines * 10);
-
-  doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
   const qty = Number(item.quantity) || 0;
   const unitPrice = Number(item.unitPrice) || 0;
   const rcv = Number(item.totalPrice) || 0;
   const tax = Number(item.taxAmount) || 0;
   const depAmt = Number(item.depreciationAmount) || 0;
   const depPct = Number(item.depreciationPercentage) || 0;
-  const acv = Number(item.acv) || 0;
   const depType = item.depreciationType || "recoverable";
-
-  doc.text(qty.toFixed(2), 100, y, { width: 65, align: "right" });
-  doc.text(`${item.unit || "EA"}`, 170, y, { width: 25, align: "left" });
-  doc.text(fmt(unitPrice), 195, y, { width: 50, align: "right" });
-  doc.text(fmt(tax), 228, y, { width: 45, align: "right" });
+  const unitLabel = item.unit || "EA";
   const itemRCV = rcv + tax;
   const itemACV = itemRCV - depAmt;
-  doc.text(fmt(itemRCV), 278, y, { width: 60, align: "right" });
-  doc.text(fmtAgeLife(item.age, item.lifeExpectancy), 338, y, { width: 50, align: "right" });
-  doc.text("Avg.", 393, y, { width: 27, align: "right" });
-  doc.text(fmtDepPercent(depPct, depType), 418, y, { width: 40, align: "right" });
-  doc.text(fmtDeprecAmount(depAmt, depType), 455, y, { width: 50, align: "right" });
-  doc.text(fmt(itemACV), PAGE_WIDTH - MARGIN - 55, y, { width: 55, align: "right" });
+
+  doc.font(FONTS.normal, 7.5).fill(COLORS.black);
+  const descText = `${item.lineNumber}. ${item.description}`;
+  const descW = CONTENT_WIDTH - 10;
+  doc.text(descText, MARGIN + 5, y, { width: descW });
+  const descHeight = doc.heightOfString(descText, { width: descW });
+  y += Math.max(11, Math.ceil(descHeight) + 2);
+
+  doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
+  const qtyLine = `${qty.toFixed(2)} ${unitLabel} @ ${fmt(unitPrice)}`;
+  doc.text(qtyLine, COL.qtyX + 15, y, { width: COL.qtyW - 10 });
+  doc.text(fmt(tax), COL.taxX, y, { width: COL.taxW, align: "right" });
+  doc.text(fmt(itemRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
+  doc.text(fmtAgeLife(item.age, item.lifeExpectancy), COL.ageX, y, { width: COL.ageW, align: "right" });
+  doc.text("Avg.", COL.condX, y, { width: COL.condW, align: "right" });
+  doc.text(fmtDepPercent(depPct, depType), COL.depPctX, y, { width: COL.depPctW, align: "right" });
+  doc.text(fmtDeprecAmount(depAmt, depType), COL.deprecX, y, { width: COL.deprecW, align: "right" });
+  doc.text(fmt(itemACV), COL.acvX, y, { width: COL.acvW, align: "right" });
   y += 14;
   return y;
 }

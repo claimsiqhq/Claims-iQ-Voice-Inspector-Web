@@ -71,10 +71,12 @@ export const LIFE_EXPECTANCY_TABLE: Record<string, CategoryEntry> = {
   },
   painting: {
     keywords: [
-      { match: "interior", life: 7 },
-      { match: "exterior", life: 7 },
+      { match: "interior", life: 15 },
+      { match: "exterior", life: 10 },
+      { match: "stain", life: 10 },
+      { match: "epoxy", life: 20 },
     ],
-    default: 7,
+    default: 15,
   },
   flooring: {
     keywords: [

@@ -98,4 +98,5 @@ Additional docs in `docs/`:
 - `WORKFLOW_CONTRACT.md` — Workflow phase/tool contracts
 - `voice-tool-contract.md` — Voice tool specifications
 - `DOCUMENT_UPLOAD_PARSING_WORKFLOW.md` — Document processing flow
+- `PDF_REPORT_GUIDE.md` — PDF report generation rules, column layout, and common pitfalls
 - `openapi.yaml` — OpenAPI specification
