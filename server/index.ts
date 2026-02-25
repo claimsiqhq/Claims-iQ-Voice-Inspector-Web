@@ -266,6 +266,9 @@ process.on("SIGTERM", () => {
     import("./seed-flows")
       .then((m) => m.seedInspectionFlows())
       .catch((e) => console.error("Flow seed error:", e));
+    import("./seed-catalog")
+      .then((m) => m.seedCatalog())
+      .catch((e) => console.error("Catalog seed error:", e));
   } catch (err) {
     console.error("FATAL: Route registration failed:", err);
   }

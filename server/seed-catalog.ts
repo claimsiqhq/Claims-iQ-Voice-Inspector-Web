@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { logger } from "./logger";
-import { scopeLineItems, regionalPriceSets } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { scopeLineItems, regionalPriceSets, lineItems } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 
 interface EnhancedCatalogItem {
   code: string;
@@ -339,64 +339,136 @@ const REGIONAL_PRICES: Record<string, { material: number; labor: number; equipme
 export async function seedCatalog() {
   logger.info("SeedCatalog", "Seeding enhanced pricing catalog...");
 
-  for (const item of ENHANCED_CATALOG) {
+  const BATCH_SIZE = 20;
+  const catalogValues = ENHANCED_CATALOG.map((item) => {
     const companionRules =
       Object.keys(item.companionRules).length > 0 ? item.companionRules : null;
+    return {
+      code: item.code,
+      description: item.desc,
+      unit: item.unit,
+      tradeCode: item.trade,
+      defaultWasteFactor: item.waste,
+      quantityFormula: item.quantityFormula,
+      activityType: item.activityType,
+      coverageType: item.coverageType,
+      xactCategoryCode: item.xactCategoryCode,
+      xactSelector: item.xactSelector,
+      notes: item.notes,
+      scopeConditions: item.scopeConditions,
+      companionRules,
+      isActive: true,
+      sortOrder: 0,
+    };
+  });
+
+  for (let i = 0; i < catalogValues.length; i += BATCH_SIZE) {
+    const batch = catalogValues.slice(i, i + BATCH_SIZE);
     await db
       .insert(scopeLineItems)
-      .values({
-        code: item.code,
-        description: item.desc,
-        unit: item.unit,
-        tradeCode: item.trade,
-        defaultWasteFactor: item.waste,
-        quantityFormula: item.quantityFormula,
-        activityType: item.activityType,
-        coverageType: item.coverageType,
-        xactCategoryCode: item.xactCategoryCode,
-        xactSelector: item.xactSelector,
-        notes: item.notes,
-        scopeConditions: item.scopeConditions,
-        companionRules,
-        isActive: true,
-        sortOrder: 0,
-      })
+      .values(batch)
       .onConflictDoUpdate({
         target: scopeLineItems.code,
         set: {
-          description: item.desc,
-          unit: item.unit,
-          tradeCode: item.trade,
-          defaultWasteFactor: item.waste,
-          quantityFormula: item.quantityFormula,
-          activityType: item.activityType,
-          coverageType: item.coverageType,
-          xactCategoryCode: item.xactCategoryCode,
-          xactSelector: item.xactSelector,
-          notes: item.notes,
-          scopeConditions: item.scopeConditions,
-          companionRules,
+          description: sql`excluded.description`,
+          unit: sql`excluded.unit`,
+          tradeCode: sql`excluded.trade_code`,
+          defaultWasteFactor: sql`excluded.default_waste_factor`,
+          quantityFormula: sql`excluded.quantity_formula`,
+          activityType: sql`excluded.activity_type`,
+          coverageType: sql`excluded.coverage_type`,
+          xactCategoryCode: sql`excluded.xact_category_code`,
+          xactSelector: sql`excluded.xact_selector`,
+          notes: sql`excluded.notes`,
+          scopeConditions: sql`excluded.scope_conditions`,
+          companionRules: sql`excluded.companion_rules`,
         },
       });
   }
 
   logger.info("SeedCatalog", `Upserted ${ENHANCED_CATALOG.length} enhanced catalog items`);
 
-  // Delete existing US_NATIONAL prices, then insert (regionalPriceSets has no unique on regionId+lineItemCode)
   await db.delete(regionalPriceSets).where(eq(regionalPriceSets.regionId, "US_NATIONAL"));
 
-  for (const [code, prices] of Object.entries(REGIONAL_PRICES)) {
-    await db.insert(regionalPriceSets).values({
-      regionId: "US_NATIONAL",
-      regionName: "United States (National Average)",
-      lineItemCode: code,
-      materialCost: String(prices.material),
-      laborCost: String(prices.labor),
-      equipmentCost: String(prices.equipment),
-      effectiveDate: new Date().toISOString().split("T")[0],
-      priceListVersion: "2.0",
-    });
+  const today = new Date().toISOString().split("T")[0];
+  const priceValues = Object.entries(REGIONAL_PRICES).map(([code, prices]) => ({
+    regionId: "US_NATIONAL",
+    regionName: "United States (National Average)",
+    lineItemCode: code,
+    materialCost: String(prices.material),
+    laborCost: String(prices.labor),
+    equipmentCost: String(prices.equipment),
+    effectiveDate: today,
+    priceListVersion: "2.0",
+  }));
+
+  for (let i = 0; i < priceValues.length; i += BATCH_SIZE) {
+    await db.insert(regionalPriceSets).values(priceValues.slice(i, i + BATCH_SIZE));
   }
 
-  logger.info("SeedCatalog", "Seeded regional prices for US_NATIONAL region");
+  logger.info("SeedCatalog", `Seeded ${priceValues.length} regional prices for US_NATIONAL region`);
+
+  await backfillZeroPriceLineItems();
+}
+
+async function backfillZeroPriceLineItems() {
+  const zeroItems = await db
+    .select()
+    .from(lineItems)
+    .where(
+      sql`(${lineItems.unitPrice} IS NULL OR CAST(${lineItems.unitPrice} AS numeric) = 0)
+          AND ${lineItems.xactCode} IS NOT NULL`
+    );
+
+  if (zeroItems.length === 0) {
+    logger.info("SeedCatalog", "No $0 line items to backfill");
+    return;
+  }
+
+  logger.info("SeedCatalog", `Backfilling prices for ${zeroItems.length} line items with $0 pricing...`);
+  let updated = 0;
+
+  for (const item of zeroItems) {
+    const code = item.xactCode!;
+    let rp = await db
+      .select()
+      .from(regionalPriceSets)
+      .where(
+        sql`${regionalPriceSets.lineItemCode} = ${code}
+            AND ${regionalPriceSets.regionId} IN ('FLFM8X_NOV22', 'US_NATIONAL')`
+      )
+      .limit(1);
+
+    if (rp.length === 0) continue;
+
+    const price = rp[0];
+    const unitPrice =
+      (Number(price.materialCost) || 0) +
+      (Number(price.laborCost) || 0) +
+      (Number(price.equipmentCost) || 0);
+
+    if (unitPrice <= 0) continue;
+
+    const qty = Number(item.quantity) || 1;
+    const wf = item.wasteFactor || 0;
+    let totalPrice = Math.round(qty * unitPrice * (1 + wf / 100) * 100) / 100;
+    if (item.applyOAndP) {
+      totalPrice = Math.round(totalPrice * 1.20 * 100) / 100;
+    }
+
+    const depPct = item.depreciationPercentage || 0;
+    const depAmount = Math.round(totalPrice * depPct / 100 * 100) / 100;
+
+    await db
+      .update(lineItems)
+      .set({
+        unitPrice: String(unitPrice),
+        totalPrice: String(totalPrice),
+        depreciationAmount: depAmount,
+      })
+      .where(eq(lineItems.id, item.id));
+    updated++;
+  }
+
+  logger.info("SeedCatalog", `Backfilled pricing for ${updated}/${zeroItems.length} line items`);
 }
