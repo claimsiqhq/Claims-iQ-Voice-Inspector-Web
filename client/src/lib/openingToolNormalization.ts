@@ -85,14 +85,30 @@ export function normalizeWallDirection(value: unknown): string | null {
   const v = value.trim().toLowerCase();
   if (!v) return null;
 
-  if (v.includes("north") || v === "n") return "north";
-  if (v.includes("south") || v === "s") return "south";
-  if (v.includes("east") || v === "e") return "east";
-  if (v.includes("west") || v === "w") return "west";
+  if (v.includes("north") || v === "n" || v.includes("upper")) return "north";
+  if (v.includes("south") || v === "s" || v.includes("lower")) return "south";
+  if (v.includes("east") || v === "e" || v === "right") return "east";
+  if (v.includes("west") || v === "w" || v === "left") return "west";
   if (v.includes("front")) return "front";
   if (v.includes("rear") || v.includes("back")) return "rear";
   if (v.includes("left")) return "left";
   if (v.includes("right")) return "right";
 
   return null;
+}
+
+const DIRECTION_TO_INDEX: Record<string, number> = {
+  north: 0,
+  east: 1,
+  south: 2,
+  west: 3,
+  front: 0,
+  rear: 2,
+  left: 3,
+  right: 1,
+};
+
+export function wallDirectionToIndex(direction: string | null): number | undefined {
+  if (!direction) return undefined;
+  return DIRECTION_TO_INDEX[direction];
 }

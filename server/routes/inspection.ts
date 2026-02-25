@@ -62,7 +62,7 @@ const roomCreateSchema = z.object({
 
 const roomOpeningCreateSchema = z.object({
   openingType: z.enum(["door", "window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "sliding_door", "french_door"]),
-  wallIndex: z.number().int().nonnegative().optional(),
+  wallIndex: z.number().int().nonnegative().nullable().optional(),
   wallDirection: z.enum(["north", "south", "east", "west", "front", "rear", "left", "right"]).nullable().optional(),
   positionOnWall: z.number().min(0).max(1).optional(),
   widthFt: z.number().positive().optional(),

@@ -46,7 +46,7 @@ import { apiRequest, resilientMutation, getAuthHeaders as getGlobalAuthHeaders }
 import { getSupabaseAsync } from "@/lib/supabaseClient";
 import { useSettings } from "@/hooks/use-settings";
 import { logger } from "@/lib/logger";
-import { normalizeOpeningDimensions, normalizeWallDirection, parseFeetValue } from "@/lib/openingToolNormalization";
+import { normalizeOpeningDimensions, normalizeWallDirection, wallDirectionToIndex, parseFeetValue } from "@/lib/openingToolNormalization";
 import { buildToolError, sendFunctionCallOutput } from "@/lib/realtimeTooling";
 import { drainToolQueue, shouldQueueToolCall } from "@/lib/realtimeVoiceState";
 
@@ -1101,10 +1101,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             },
           });
 
+          const resolvedWallIndex = args.wallIndex ?? wallDirectionToIndex(wallDirection);
+
           const openHeaders = await getJsonHeaders();
-          const openPayload = {
+          const openPayload: Record<string, unknown> = {
             openingType: args.openingType,
-            wallIndex: args.wallIndex ?? null,
+            ...(resolvedWallIndex !== undefined ? { wallIndex: resolvedWallIndex } : {}),
             wallDirection,
             widthFt: normalizedWidthFt,
             heightFt: normalizedHeightFt,
