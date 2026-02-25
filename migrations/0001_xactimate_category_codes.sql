@@ -5,7 +5,8 @@
 --
 -- SAFE TO RE-RUN: All statements use UPDATE...WHERE code = ... (idempotent)
 -- AFFECTS: scope_line_items table only (xact_category_code and xact_selector columns)
--- NO SCHEMA CHANGES: Column structure unchanged
+-- SCHEMA CHANGE: Drops the unique constraint on (xact_category_code, xact_selector)
+--                because multiple items can legitimately share the same category+selector
 --
 -- Run against any database sharing the same scope_line_items table:
 --   psql $SUPABASE_DATABASE_URL -f migrations/0001_xactimate_category_codes.sql
