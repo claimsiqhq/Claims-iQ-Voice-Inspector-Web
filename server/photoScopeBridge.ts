@@ -138,6 +138,126 @@ export function processPhotoAnalysis(
   return suggestions;
 }
 
+// ─── Material/Finish → Xactimate Code Mapping ─────────────────────────────
+
+const MATERIAL_XACT_CODES: Record<string, { xactCode: string; unit: string; category: string }> = {
+  "crown molding":       { xactCode: "TRIM-CROWN-LF", unit: "LF", category: "TRIM" },
+  "crown moulding":      { xactCode: "TRIM-CROWN-LF", unit: "LF", category: "TRIM" },
+  "chair rail":          { xactCode: "TRIM-CHAIR-LF", unit: "LF", category: "TRIM" },
+  "wainscoting":         { xactCode: "TRIM-WAINS-SF", unit: "SF", category: "TRIM" },
+  "baseboard":           { xactCode: "TRIM-BASE-LF",  unit: "LF", category: "TRIM" },
+  "base molding":        { xactCode: "TRIM-BASE-LF",  unit: "LF", category: "TRIM" },
+  "casing":              { xactCode: "TRIM-CASE-LF",  unit: "LF", category: "TRIM" },
+  "door casing":         { xactCode: "TRIM-CASE-LF",  unit: "LF", category: "TRIM" },
+  "window casing":       { xactCode: "TRIM-CASE-LF",  unit: "LF", category: "TRIM" },
+  "shoe molding":        { xactCode: "TRIM-SHOE-LF",  unit: "LF", category: "TRIM" },
+  "quarter round":       { xactCode: "TRIM-SHOE-LF",  unit: "LF", category: "TRIM" },
+
+  "interior paint":      { xactCode: "PNT-INT-SF",      unit: "SF", category: "PNT" },
+  "wall paint":          { xactCode: "PNT-INT-SF",      unit: "SF", category: "PNT" },
+  "ceiling paint":       { xactCode: "PNT-CEILING-SF",  unit: "SF", category: "PNT" },
+  "trim paint":          { xactCode: "PNT-TRIM-LF",     unit: "LF", category: "PNT" },
+  "exterior paint":      { xactCode: "PNT-EXT-SF",      unit: "SF", category: "PNT" },
+  "accent wall":         { xactCode: "PNT-INT-SF",      unit: "SF", category: "PNT" },
+  "custom paint":        { xactCode: "PNT-INT-SF",      unit: "SF", category: "PNT" },
+  "faux finish":         { xactCode: "PNT-FAUX-SF",     unit: "SF", category: "PNT" },
+  "stain":               { xactCode: "PNT-STAIN-SF",    unit: "SF", category: "PNT" },
+  "wood stain":          { xactCode: "PNT-STAIN-SF",    unit: "SF", category: "PNT" },
+
+  "hardwood floor":      { xactCode: "FLR-HDWD-SF",     unit: "SF", category: "FLR" },
+  "hardwood":            { xactCode: "FLR-HDWD-SF",     unit: "SF", category: "FLR" },
+  "laminate floor":      { xactCode: "FLR-LAMINATE-SF", unit: "SF", category: "FLR" },
+  "laminate":            { xactCode: "FLR-LAMINATE-SF", unit: "SF", category: "FLR" },
+  "vinyl plank":         { xactCode: "FLR-VINYL-SF",    unit: "SF", category: "FLR" },
+  "lvp":                 { xactCode: "FLR-VINYL-SF",    unit: "SF", category: "FLR" },
+  "tile floor":          { xactCode: "FLR-TILE-SF",     unit: "SF", category: "FLR" },
+  "ceramic tile":        { xactCode: "FLR-TILE-SF",     unit: "SF", category: "FLR" },
+  "porcelain tile":      { xactCode: "FLR-TILE-SF",     unit: "SF", category: "FLR" },
+  "carpet":              { xactCode: "FLR-CARPET-SF",   unit: "SF", category: "FLR" },
+  "carpet pad":          { xactCode: "FLR-PAD-SF",      unit: "SF", category: "FLR" },
+
+  "drywall":             { xactCode: "DRY-X-1-2",       unit: "SF", category: "DRY" },
+  "sheetrock":           { xactCode: "DRY-X-1-2",       unit: "SF", category: "DRY" },
+  "ceiling texture":     { xactCode: "DRY-TEXT-SF",      unit: "SF", category: "DRY" },
+  "knockdown texture":   { xactCode: "DRY-TEXT-SF",      unit: "SF", category: "DRY" },
+  "popcorn ceiling":     { xactCode: "DRY-POPCORN-SF",  unit: "SF", category: "DRY" },
+  "smooth ceiling":      { xactCode: "DRY-SMOOTH-SF",   unit: "SF", category: "DRY" },
+  "coffered ceiling":    { xactCode: "DRY-COFFER-SF",   unit: "SF", category: "DRY" },
+
+  "cabinet":             { xactCode: "CAB-BASE-LF",     unit: "LF", category: "CAB" },
+  "base cabinet":        { xactCode: "CAB-BASE-LF",     unit: "LF", category: "CAB" },
+  "wall cabinet":        { xactCode: "CAB-WALL-LF",     unit: "LF", category: "CAB" },
+  "upper cabinet":       { xactCode: "CAB-WALL-LF",     unit: "LF", category: "CAB" },
+
+  "granite countertop":  { xactCode: "CNTOP-GRAN-SF",   unit: "SF", category: "CNTOP" },
+  "quartz countertop":   { xactCode: "CNTOP-QRTZ-SF",   unit: "SF", category: "CNTOP" },
+  "laminate countertop": { xactCode: "CNTOP-LAM-LF",    unit: "LF", category: "CNTOP" },
+  "marble countertop":   { xactCode: "CNTOP-MARB-SF",   unit: "SF", category: "CNTOP" },
+  "countertop":          { xactCode: "CNTOP-LAM-LF",    unit: "LF", category: "CNTOP" },
+
+  "wallpaper":           { xactCode: "WC-PAPER-SF",     unit: "SF", category: "WC" },
+  "wall covering":       { xactCode: "WC-PAPER-SF",     unit: "SF", category: "WC" },
+
+  "ceiling fan":         { xactCode: "ELE-CFAN-EA",     unit: "EA", category: "ELE" },
+  "light fixture":       { xactCode: "ELE-LITE-EA",     unit: "EA", category: "ELE" },
+  "recessed light":      { xactCode: "ELE-RECES-EA",    unit: "EA", category: "ELE" },
+  "chandelier":          { xactCode: "ELE-CHAND-EA",    unit: "EA", category: "ELE" },
+
+  "blinds":              { xactCode: "WIN-BLIND-EA",    unit: "EA", category: "WIN" },
+  "shutters":            { xactCode: "WIN-SHUTT-EA",    unit: "EA", category: "WIN" },
+  "window blind":        { xactCode: "WIN-BLIND-EA",    unit: "EA", category: "WIN" },
+};
+
+export interface LineItemSuggestion {
+  item: string;
+  category: string;
+  reason: string;
+  xactCode: string | null;
+  unit: string;
+  materialDetails: string;
+}
+
+export function resolveLineItemSuggestions(
+  rawSuggestions: Array<{
+    item?: string;
+    category?: string;
+    reason?: string;
+    xactCode?: string | null;
+    unit?: string;
+    materialDetails?: string;
+  }>
+): LineItemSuggestion[] {
+  if (!rawSuggestions || !Array.isArray(rawSuggestions)) return [];
+
+  return rawSuggestions.map((raw) => {
+    const itemLower = (raw.item || "").toLowerCase();
+
+    let resolvedCode = raw.xactCode || null;
+    let resolvedUnit = raw.unit || "EA";
+    let resolvedCategory = raw.category || "GEN";
+
+    if (!resolvedCode || resolvedCode === "null") {
+      for (const [keyword, mapping] of Object.entries(MATERIAL_XACT_CODES)) {
+        if (itemLower.includes(keyword)) {
+          resolvedCode = mapping.xactCode;
+          resolvedUnit = mapping.unit;
+          resolvedCategory = mapping.category;
+          break;
+        }
+      }
+    }
+
+    return {
+      item: raw.item || "Unknown item",
+      category: resolvedCategory,
+      reason: raw.reason || "Identified in photo — document for like kind and quality",
+      xactCode: resolvedCode,
+      unit: resolvedUnit,
+      materialDetails: raw.materialDetails || "",
+    };
+  });
+}
+
 /**
  * Filter suggestions by auto-suggest threshold (HIGH and MODERATE only).
  * VERY_LOW and LOW are excluded unless includeAll is true.

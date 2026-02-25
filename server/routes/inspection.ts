@@ -2465,22 +2465,48 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           messages: [
             {
               role: "system",
-              content: `You are an insurance property inspection photo analyst. Analyze this photo and provide:
+              content: `You are an expert insurance property inspection photo analyst with deep knowledge of Xactimate line items and construction materials. Analyze this photo and provide:
 1. A brief description of what you see (1-2 sentences)
 2. Any visible damage (type, severity, location in frame)
 3. Whether this photo matches the expected capture: "${expectedLabel}" (type: ${expectedPhotoType})
-4. Photo quality assessment (lighting, focus, framing)${addressContext}
+4. Photo quality assessment (lighting, focus, framing)
+5. CRITICAL — Material & Finish Identification: Carefully identify ALL visible materials, finishes, and specialty items that would need to be documented for an insurance claim. This includes:
+   - Paint color/type (especially custom colors like purple, bright colors, faux finishes, accent walls)
+   - Crown molding, chair rail, wainscoting, custom trim profiles
+   - Baseboard type and height (e.g., "5.25 inch colonial baseboard")
+   - Flooring type (hardwood species, tile pattern, luxury vinyl plank, carpet grade)
+   - Cabinet type and finish (oak, maple, thermofoil, painted)
+   - Countertop material (granite, quartz, laminate, marble)
+   - Ceiling texture type (smooth, knockdown, popcorn, coffered)
+   - Wallpaper or specialty wall coverings
+   - Light fixtures, ceiling fans
+   - Window treatments (blinds, shutters, drapes)
+   - Any custom or upgraded features that affect replacement cost
+6. For EACH material/item identified, suggest specific Xactimate-compatible line items with trade codes where possible.${addressContext}
+
 Respond in JSON format:
 {
   "description": "string",
-  "damageVisible": [{ "type": "string", "severity": "string", "notes": "string" }],
+  "damageVisible": [{ "type": "string", "severity": "string", "notes": "string", "confidence": 0.0-1.0 }],
+  "suggestedLineItems": [
+    {
+      "item": "Human-readable name (e.g., 'Crown molding - 3.5 inch colonial profile')",
+      "category": "Trade category (PNT, DRY, FLR, TRIM, CAB, CNTOP, RFG, EXT, etc.)",
+      "reason": "Why this item needs to be documented (e.g., 'Custom paint color requires color-match', 'Crown molding visible with damage')",
+      "xactCode": "Suggested Xactimate code if known (e.g., 'TRIM-CROWN-LF', 'PNT-INT-SF') or null",
+      "unit": "SF, LF, EA, SY, etc.",
+      "materialDetails": "Specific details about the material (color, grade, profile, species)"
+    }
+  ],
   "matchesExpected": true/false,
   "matchConfidence": 0.0-1.0,
   "matchExplanation": "string",
   "qualityScore": 1-5,
   "qualityNotes": "string"${expectedPhotoType === "address_verification" ? `,
   "addressVerification": { "expectedAddress": "string", "visibleAddress": "string or null if not readable", "matches": true/false, "confidence": 0.0-1.0, "notes": "string" }` : ""}
-}`
+}
+
+IMPORTANT: Even if no damage is visible, ALWAYS identify materials and finishes in the photo and populate suggestedLineItems. Insurance claims require documenting what needs to be repaired or replaced at like kind and quality — the materials matter as much as the damage.`
             },
             {
               role: "user",
@@ -2499,7 +2525,7 @@ Respond in JSON format:
               ]
             }
           ],
-          max_tokens: 700,
+          max_tokens: 1500,
           response_format: { type: "json_object" },
         }),
       });
@@ -2561,9 +2587,24 @@ Respond in JSON format:
         }
       }
 
+      // Process material/finish line item suggestions from vision
+      let lineItemSuggestions: Array<{
+        item: string;
+        category: string;
+        reason: string;
+        xactCode: string | null;
+        unit: string;
+        materialDetails: string;
+      }> = [];
+      if (analysis.suggestedLineItems && Array.isArray(analysis.suggestedLineItems)) {
+        const { resolveLineItemSuggestions } = await import("../photoScopeBridge");
+        lineItemSuggestions = resolveLineItemSuggestions(analysis.suggestedLineItems);
+      }
+
       res.json({
         ...analysis,
         damageSuggestions,
+        lineItemSuggestions,
       });
     } catch (error: any) {
       logger.error("PhotoAnalysis", "Photo analysis error", error);
