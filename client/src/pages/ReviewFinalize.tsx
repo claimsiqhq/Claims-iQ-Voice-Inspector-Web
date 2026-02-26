@@ -21,6 +21,7 @@ import XactimateEstimateView from "@/components/XactimateEstimateView";
 export default function ReviewFinalize({ params }: { params: { id: string } }) {
   const claimId = parseInt(params.id);
   const [, setLocation] = useLocation();
+  const [claimSelectorOpen, setClaimSelectorOpen] = useState(false);
   // Fetch session data first
   const { data: claimData, isError: claimError, refetch: refetchClaim } = useQuery({
     queryKey: [`/api/claims/${claimId}`],
@@ -70,6 +71,11 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
     enabled: !!claimId,
   });
 
+  const { data: allClaimsData } = useQuery<any[]>({
+    queryKey: ["/api/claims"],
+  });
+  const allClaims = (allClaimsData || []) as any[];
+
   const { data: roomsData } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/rooms`],
     enabled: !!sessionId,
@@ -103,12 +109,48 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
       {/* Header */}
       <div className="h-14 bg-white border-b border-border flex items-center justify-between px-3 md:px-5 shrink-0">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          <button onClick={() => setLocation(`/inspection/${claimId}`)} className="text-muted-foreground hover:text-foreground shrink-0">
+          <button onClick={() => setLocation(`/inspection/${claimId}`)} className="text-muted-foreground hover:text-foreground shrink-0" data-testid="button-back-to-inspection">
             <ChevronLeft size={20} />
           </button>
-          <div className="min-w-0">
-            <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review</h1>
-            <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}</p>
+          <div className="min-w-0 relative">
+            <button
+              onClick={() => setClaimSelectorOpen(!claimSelectorOpen)}
+              className="flex items-center gap-1 hover:bg-muted/50 rounded-md px-1.5 py-0.5 transition-colors"
+              data-testid="button-claim-selector"
+            >
+              <div className="text-left min-w-0">
+                <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review</h1>
+                <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}{claim?.insuredName ? ` — ${claim.insuredName}` : ""}</p>
+              </div>
+              <ChevronDown size={14} className={cn("text-muted-foreground shrink-0 transition-transform", claimSelectorOpen && "rotate-180")} />
+            </button>
+            {claimSelectorOpen && allClaims.length > 0 && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setClaimSelectorOpen(false)} />
+                <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-border rounded-lg shadow-lg w-72 max-h-64 overflow-y-auto" data-testid="claim-selector-dropdown">
+                  {allClaims.map((c: any) => (
+                    <button
+                      key={c.id}
+                      data-testid={`claim-selector-item-${c.id}`}
+                      onClick={() => {
+                        setClaimSelectorOpen(false);
+                        if (c.id !== claimId) setLocation(`/inspection/${c.id}/review`);
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border last:border-0 flex items-center justify-between",
+                        c.id === claimId && "bg-primary/5"
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{c.claimNumber || `Claim #${c.id}`}</p>
+                        <p className="text-xs text-muted-foreground truncate">{c.insuredName || "Unknown Insured"}</p>
+                      </div>
+                      {c.id === claimId && <CheckCircle2 size={14} className="text-primary shrink-0 ml-2" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
