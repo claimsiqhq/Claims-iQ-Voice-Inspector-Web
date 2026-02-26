@@ -131,27 +131,67 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             {claimSelectorOpen && allClaims.length > 0 && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setClaimSelectorOpen(false)} />
-                <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-border rounded-lg shadow-lg w-72 max-h-64 overflow-y-auto" data-testid="claim-selector-dropdown">
-                  {allClaims.map((c: any) => (
-                    <button
-                      key={c.id}
-                      data-testid={`claim-selector-item-${c.id}`}
-                      onClick={() => {
-                        setClaimSelectorOpen(false);
-                        if (c.id !== claimId) setLocation(`/inspection/${c.id}/review`);
-                      }}
-                      className={cn(
-                        "w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border last:border-0 flex items-center justify-between",
-                        c.id === claimId && "bg-primary/5"
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{c.claimNumber || `Claim #${c.id}`}</p>
-                        <p className="text-xs text-muted-foreground truncate">{c.insuredName || "Unknown Insured"}</p>
-                      </div>
-                      {c.id === claimId && <CheckCircle2 size={14} className="text-primary shrink-0 ml-2" />}
-                    </button>
-                  ))}
+                <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-border rounded-lg shadow-lg w-80 max-h-80 overflow-y-auto" data-testid="claim-selector-dropdown">
+                  {allClaims.map((c: any) => {
+                    const prog = c.inspectionProgress;
+                    const pct = prog?.completenessScore ?? 0;
+                    const phase = prog?.phaseName || "";
+                    const status = (c.status || "").toLowerCase().replace(/_/g, " ");
+                    return (
+                      <button
+                        key={c.id}
+                        data-testid={`claim-selector-item-${c.id}`}
+                        onClick={() => {
+                          setClaimSelectorOpen(false);
+                          if (c.id !== claimId) setLocation(`/inspection/${c.id}/review`);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border last:border-0",
+                          c.id === claimId && "bg-primary/5"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-semibold truncate">{c.claimNumber || `Claim #${c.id}`}</p>
+                              {c.id === claimId && <CheckCircle2 size={12} className="text-primary shrink-0" />}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{c.insuredName || "Unknown Insured"}</p>
+                            {c.propertyAddress && <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">{c.propertyAddress}</p>}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className={cn(
+                              "text-[10px] font-medium px-1.5 py-0.5 rounded-full capitalize",
+                              status === "completed" ? "bg-green-100 text-green-700" :
+                              status === "inspecting" ? "bg-blue-100 text-blue-700" :
+                              status === "in progress" ? "bg-amber-100 text-amber-700" :
+                              "bg-gray-100 text-gray-600"
+                            )}>{status}</span>
+                          </div>
+                        </div>
+                        {prog && (
+                          <div className="mt-1.5">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] text-muted-foreground">{phase ? `Phase: ${phase}` : ""}</span>
+                              <span className="text-[10px] font-medium text-foreground">{pct}%</span>
+                            </div>
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all",
+                                  pct >= 80 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-primary"
+                                )}
+                                style={{ width: `${Math.max(pct, 2)}%` }}
+                              />
+                            </div>
+                            {prog.missing && prog.missing.length > 0 && (
+                              <p className="text-[10px] text-amber-600 mt-0.5 truncate">{prog.missing.join(" · ")}</p>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}
