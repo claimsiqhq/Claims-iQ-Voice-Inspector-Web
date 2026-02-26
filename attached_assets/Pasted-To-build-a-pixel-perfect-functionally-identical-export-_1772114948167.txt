@@ -1,0 +1,71 @@
+To build a pixel-perfect, functionally identical export of an Xactimate estimate for your developers, you need to structure the output into **six distinct sections**. Xactimate follows a very strict, linear report layout. 
+
+Here is the exact structural blueprint you should hand to your development team, based on the formatting found across the provided estimates.
+
+### 1. The Header & Administrative Block (Cover Page)
+Every estimate starts with a standard header containing the adjusting firm's details and the claim metadata.
+*   **Header Logo/Company Info:** Left-aligned company logo and address block.
+*   **Two-Column Contact Grid:**
+    *   *Left Column:* Insured Name, Home Address, Claim Rep Name/Company, Estimator Name/Company, Reference Company.
+    *   *Right Column:* Cell, E-mail, Business Phone.
+*   **Claim Identifiers (Bold row):** `Claim Number: [X]`, `Policy Number: [X]`, `Type of Loss: [X]`.
+*   **Dates Grid (2 columns):** Date Contacted, Date of Loss, Date Inspected, Date Est. Completed (Left) aligned with Date Received, Date Entered (Right).
+*   **Pricing Metadata:** `Price List: [e.g., TXDF8X_APR25]` followed by the `Estimate:` name.
+
+### 2. The Estimate Details (The Core Payload)
+This is the main body of the document and it loops recursively based on your 5-Level Hierarchy (`Coverage` $\rightarrow$ `Area/Room` $\rightarrow$ `Line Items`).
+
+**A. The Room/Area Header**
+Whenever a new room or roof begins, it displays a specific block:
+*   **Area Name:** e.g., **"Main Level"** or **"Dwelling Roof"** centered or left-aligned.
+*   **Sketch & Dimensions Matrix:**
+    *   *Left side:* The 2D SVG/Image of the specific room or roof facet.
+    *   *Right side (Interiors):* A text block listing dimensional variables: `SF Walls`, `SF Ceiling`, `SF Walls & Ceiling`, `SF Floor`, `SY Flooring`, `LF Floor Perimeter`, `LF Ceil. Perimeter`.
+    *   *Right side (Roofs):* `Surface Area`, `Number of Squares`, `Total Perimeter Length`, `Total Ridge Length`, `Total Hip Length`.
+*   **Openings:** Listed immediately below the dimensions (e.g., `Missing Wall - Goes to Floor 3' X 6' 8" Opens into Exterior`).
+
+**B. The Line Item Table**
+The developer must render a strict table for the line items inside that room.
+*   **Standard Columns:** `DESCRIPTION`, `QUANTITY`, `UNIT PRICE`, `TAX`, `RCV`, `DEPREC.`, `ACV`.
+*   *Conditional Columns:* Depending on settings, the table may also inject `O&P` or `AGE/LIFE`, `COND.`, `DEP %`.
+*   **Line Item Formatting:** 
+    *   The numbered action (e.g., `1. Tear off, haul and dispose...`).
+    *   Descriptions/Notes sit directly below the line item text.
+*   **Room Totals:** A bolded row at the end of the room: `Totals: [Room Name]` summing the Tax, O&P, RCV, Deprec, and ACV columns.
+
+### 3. Grand Total Areas
+After all rooms and elevations are listed, there is a master dimension summary.
+*   **Header:** **Grand Total Areas:**.
+*   **Matrix:** A 3-column grid summing every dimension variable from the entire estimate (e.g., Total SF Walls, Total Floor Area, Total Surface Area, Total Squares).
+
+### 4. Financial Summaries (The Math Logic)
+This section breaks down the actual payout calculations. The developer must ensure the math flows exactly in this vertical order:
+
+**A. Coverage Recap Table**
+*   Columns: `Coverage`, `Item Total`, `%`, `ACV Total`, `%`.
+*   Rows: `Dwelling`, `Other Structures`, `Contents`, followed by a `Total` row.
+
+**B. Summary for [Coverage Type]**
+A vertical accounting block that must be generated for *each* coverage bucket (e.g., Dwelling, Other Structures).
+1.  `Line Item Total`
+2.  `Material Sales Tax`
+3.  `Subtotal` (if taxes/O&P are separated)
+4.  `Overhead` / `Profit` (if applicable)
+5.  **`Replacement Cost Value`** (Bold)
+6.  `Less Depreciation` (Always in parentheses to subtract)
+7.  **`Actual Cash Value`** (Bold)
+8.  `Less Deductible`
+9.  **`Net Claim`** (The final check amount)
+10. `Total Recoverable Depreciation` (Listed at the bottom).
+
+### 5. Recap Sections (The Appendices)
+Xactimate closes with several summary tables that slice the data differently for the adjuster.
+*   **Recap of Taxes (and O&P):** A horizontal table listing the total amounts for Material Sales Tax, Cleaning Tax, Overhead, and Profit.
+*   **Recap by Room:** A hierarchical list showing the name of each room, its dollar value, and its percentage of the total estimate (e.g., `Dwelling Roof ... $8,063.09 ... 76.20%`). Subtotals are generated for parent folders like "Exterior" or "Level 1".
+*   **Recap by Category with Depreciation:** A trade-breakdown table. 
+    *   Columns: `Items`, `RCV`, `Deprec.`, `ACV`.
+    *   Rows: Standard trades like `GENERAL DEMOLITION`, `ROOFING`, `PAINTING`.
+    *   *Note:* If O&P is applied selectively, this section splits into two distinct tables: **"O&P Items"** and **"Non-O&P Items"**.
+
+### Developer Instruction Summary:
+Tell your developer: *"The export must be a PDF generator that loops through our hierarchy. Render the Cover Page, loop through every Room to build the Dimension/Sketch block and Line Item table, print the global dimension totals, execute the vertical RCV-to-ACV math block per coverage type, and finally print the three Recap tables (Taxes, Rooms, Categories)."*
