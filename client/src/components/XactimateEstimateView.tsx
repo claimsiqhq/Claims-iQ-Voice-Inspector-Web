@@ -30,6 +30,15 @@ interface LineItem {
   lifeExpectancy: number | null;
 }
 
+interface RoomOpening {
+  openingType: string;
+  widthFt: number;
+  heightFt: number;
+  opensInto: string;
+  quantity: number;
+  label: string;
+}
+
 interface RoomSection {
   id: number;
   name: string;
@@ -37,6 +46,7 @@ interface RoomSection {
   structure: string;
   dimensions: { length: number; width: number; height: number };
   measurements: RoomMeasurements | null;
+  openings?: RoomOpening[];
   items: LineItem[];
   subtotal: number;
   totalDepreciation: number;
@@ -170,6 +180,31 @@ function RoomSketchSVG({ dimensions, name }: { dimensions: { length: number; wid
   );
 }
 
+function fmtFeetInches(ft: number): string {
+  const wholeFeet = Math.floor(ft);
+  const inches = Math.round((ft - wholeFeet) * 12);
+  if (inches === 0) return `${wholeFeet}' 0"`;
+  if (inches === 12) return `${wholeFeet + 1}' 0"`;
+  return `${wholeFeet}' ${inches}"`;
+}
+
+function OpeningsBlock({ openings }: { openings: RoomOpening[] }) {
+  if (openings.length === 0) return null;
+  return (
+    <div className="mt-1.5" data-testid="openings-block">
+      <p className="text-[11px] font-semibold text-slate-700 mb-0.5">Openings:</p>
+      {openings.map((op, i) => {
+        const label = op.label || op.openingType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        return (
+          <p key={i} className="text-[10px] font-mono text-slate-600 ml-2" data-testid={`text-opening-${i}`}>
+            {label} {fmtFeetInches(op.widthFt)} X {fmtFeetInches(op.heightFt)}{op.opensInto ? ` Opens into ${op.opensInto}` : ""}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function MeasurementsBlock({ m }: { m: RoomMeasurements }) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] font-mono text-slate-700" data-testid="measurements-block">
@@ -236,7 +271,8 @@ function LineItemsTable({ items, roomName, subtotal, totalDepreciation, totalRec
             const depAmt = item.depreciationAmount || 0;
             const depPct = item.depreciationPercentage || 0;
             const depType = item.depreciationType || "Recoverable";
-            const acv = item.acv != null ? item.acv : (item.totalPrice - depAmt);
+            const itemRCV = item.totalPrice + tax;
+            const acv = item.acv != null ? item.acv : (itemRCV - depAmt);
             const isNonRecoverable = depType === "Non-Recoverable";
             const isPWI = depType === "Paid When Incurred";
 
@@ -357,6 +393,9 @@ function RoomSectionView({ room }: { room: RoomSection }) {
 
             {room.measurements && (
               <MeasurementsBlock m={room.measurements} />
+            )}
+            {room.openings && room.openings.length > 0 && (
+              <OpeningsBlock openings={room.openings} />
             )}
           </div>
         </div>

@@ -2895,6 +2895,7 @@ IMPORTANT RULES:
       const sessionId = parseInt(param(req.params.sessionId));
       const items = await storage.getLineItems(sessionId);
       const rooms = await storage.getRooms(sessionId);
+      const allOpenings = await storage.getOpeningsForSession(sessionId);
 
       const session = await storage.getInspectionSession(sessionId);
       const claimId = session?.claimId;
@@ -3030,6 +3031,15 @@ IMPORTANT RULES:
           .filter(i => i.depreciationType === "Non-Recoverable")
           .reduce((s, i) => s + i.depreciationAmount, 0);
 
+        const roomOpenings = room ? allOpenings.filter(o => o.roomId === room.id).map(o => ({
+          openingType: o.openingType || "door",
+          widthFt: Number(o.widthFt || o.width) || 3,
+          heightFt: Number(o.heightFt || o.height) || 6.67,
+          opensInto: o.opensInto || "Exterior",
+          quantity: Number(o.quantity) || 1,
+          label: o.label || "",
+        })) : [];
+
         return {
           id: room?.id || -1,
           name: room?.name || "Unassigned",
@@ -3037,6 +3047,7 @@ IMPORTANT RULES:
           structure: room?.structure || "Main Dwelling",
           dimensions: { length, width, height },
           measurements,
+          openings: roomOpenings,
           items: enrichedItems,
           subtotal: parseFloat(roomTotal.toFixed(2)),
           totalTax: parseFloat(enrichedItems.reduce((s, i) => s + i.taxAmount, 0).toFixed(2)),
@@ -3440,6 +3451,26 @@ IMPORTANT RULES:
           netClaim: Number(estimateExt?.["netClaim"]) || 0,
           itemCount: items.length,
           categories,
+          coverageBreakdown: (() => {
+            const stored = (estimateExt?.["coverageBreakdown"] as any[]) || [];
+            if (stored.length > 0) return stored.map((c: any) => ({
+              coverageType: c.coverageType || "Dwelling",
+              totalRCV: Number(c.totalRCV) || 0,
+              totalACV: Number(c.totalACV) || 0,
+              deductible: Number(c.deductible) || 0,
+              netClaim: Number(c.netClaim) || 0,
+            }));
+            const ded = Number(estimateExt?.["deductible"]) || 0;
+            const totalRCVVal = grandTotalPdf + grandTaxPdf;
+            const totalACVVal = totalRCVVal - grandDepPdf;
+            return [{
+              coverageType: "Coverage A - Dwelling",
+              totalRCV: parseFloat(totalRCVVal.toFixed(2)),
+              totalACV: parseFloat(totalACVVal.toFixed(2)),
+              deductible: ded,
+              netClaim: parseFloat(Math.max(0, totalACVVal - ded).toFixed(2)),
+            }];
+          })(),
         },
         roomEstimate: {
           rooms: roomSectionsPdf,
