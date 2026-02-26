@@ -71,10 +71,14 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
     enabled: !!claimId,
   });
 
-  const { data: allClaimsData } = useQuery<any[]>({
+  const { data: allClaimsData, isLoading: claimsLoading } = useQuery<any[]>({
     queryKey: ["/api/claims"],
+    staleTime: 30000,
   });
   const allClaims = (allClaimsData || []) as any[];
+  const cachedClaim = allClaims.find((c: any) => c.id === claimId);
+  const displayClaimNumber = claim?.claimNumber || cachedClaim?.claimNumber || (claimsLoading ? "Loading…" : `Claim #${claimId}`);
+  const displayInsuredName = claim?.insuredName || cachedClaim?.insuredName || "";
 
   const { data: roomsData } = useQuery({
     queryKey: [`/api/inspection/${sessionId}/rooms`],
@@ -120,7 +124,7 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             >
               <div className="text-left min-w-0">
                 <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review</h1>
-                <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}{claim?.insuredName ? ` — ${claim.insuredName}` : ""}</p>
+                <p className="text-xs text-muted-foreground truncate">{displayClaimNumber}{displayInsuredName ? ` — ${displayInsuredName}` : ""}</p>
               </div>
               <ChevronDown size={14} className={cn("text-muted-foreground shrink-0 transition-transform", claimSelectorOpen && "rotate-180")} />
             </button>
