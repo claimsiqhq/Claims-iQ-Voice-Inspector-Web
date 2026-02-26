@@ -191,12 +191,12 @@ let currentDate = "";
 function addFooter(doc: Doc) {
   pageNumber++;
   doc.font(FONTS.normal, 8).fill(COLORS.lightGray);
-  doc.text(currentDate, MARGIN, PAGE_HEIGHT - 30, { width: CONTENT_WIDTH / 2, align: "left" });
-  doc.text(`Page: ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, PAGE_HEIGHT - 30, { width: CONTENT_WIDTH / 2, align: "right" });
+  doc.text(currentDate, MARGIN, PAGE_HEIGHT - 30, { width: CONTENT_WIDTH / 2, align: "left", lineBreak: false });
+  doc.text(`Page: ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, PAGE_HEIGHT - 30, { width: CONTENT_WIDTH / 2, align: "right", lineBreak: false });
 }
 
 function newPage(doc: Doc) {
-  doc.addPage();
+  doc.addPage({ margins: { top: MARGIN, bottom: 0, left: MARGIN, right: MARGIN } });
   addFooter(doc);
 }
 
@@ -218,7 +218,10 @@ function drawThickLine(doc: Doc, y: number) {
 
 export async function generateInspectionPDF(data: PDFReportData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "letter", margin: MARGIN });
+    const doc = new PDFDocument({
+      size: "letter",
+      margins: { top: MARGIN, bottom: 0, left: MARGIN, right: MARGIN },
+    });
     const chunks: Buffer[] = [];
 
     doc.on("data", (chunk) => chunks.push(chunk));
@@ -706,7 +709,7 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
     }
 
     doc.font(FONTS.bold, 10).fill(COLORS.black);
-    doc.text(room.name, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+    doc.text(room.name, MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
     y += 14;
 
     y = renderRoomDimensionsBlock(doc, y, room);
@@ -717,7 +720,7 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
       y = checkPageBreak(doc, 22, y);
       if (y === MARGIN) {
         doc.font(FONTS.bold, 9).fill(COLORS.black);
-        doc.text(`CONTINUED - ${room.name}`, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+        doc.text(`CONTINUED - ${room.name}`, MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
         y += 12;
         y = drawLineItemHeader(doc, y);
       }
@@ -731,11 +734,11 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
     const roomRCV = room.subtotal + room.totalTax;
     const roomACVCorrected = roomRCV - room.totalDepreciation;
     doc.font(FONTS.bold, 7).fill(COLORS.black);
-    doc.text(`Totals: ${room.name}`, MARGIN + 5, y, { width: 150 });
-    doc.text(fmt(room.totalTax), COL.taxX, y, { width: COL.taxW, align: "right" });
-    doc.text(fmt(roomRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
-    doc.text(fmt(room.totalDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
-    doc.text(fmt(roomACVCorrected), COL.acvX, y, { width: COL.acvW, align: "right" });
+    doc.text(`Totals: ${room.name}`, MARGIN + 5, y, { width: 150, lineBreak: false });
+    doc.text(fmt(room.totalTax), COL.taxX, y, { width: COL.taxW, align: "right", lineBreak: false });
+    doc.text(fmt(roomRCV), COL.rcvX, y, { width: COL.rcvW, align: "right", lineBreak: false });
+    doc.text(fmt(room.totalDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right", lineBreak: false });
+    doc.text(fmt(roomACVCorrected), COL.acvX, y, { width: COL.acvW, align: "right", lineBreak: false });
     y += 12;
   }
 
@@ -748,15 +751,15 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
   const totalRCV = re.grandTotal + re.grandTax;
   const totalACV = totalRCV - re.grandDepreciation;
   doc.font(FONTS.bold, 8).fill(COLORS.black);
-  doc.text("Line Item Totals:", MARGIN + 5, y, { width: 180 });
-  doc.text(fmt(re.grandTax), COL.taxX, y, { width: COL.taxW, align: "right" });
-  doc.text(fmt(totalRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
-  doc.text(fmt(re.grandDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
-  doc.text(fmt(totalACV), COL.acvX, y, { width: COL.acvW, align: "right" });
+  doc.text("Line Item Totals:", MARGIN + 5, y, { width: 180, lineBreak: false });
+  doc.text(fmt(re.grandTax), COL.taxX, y, { width: COL.taxW, align: "right", lineBreak: false });
+  doc.text(fmt(totalRCV), COL.rcvX, y, { width: COL.rcvW, align: "right", lineBreak: false });
+  doc.text(fmt(re.grandDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right", lineBreak: false });
+  doc.text(fmt(totalACV), COL.acvX, y, { width: COL.acvW, align: "right", lineBreak: false });
   y += 12;
 
   doc.font(FONTS.normal, 6.5).fill(COLORS.medGray);
-  doc.text("[%] - Indicates that depreciate by percent was used for this item", MARGIN, y);
+  doc.text("[%] - Indicates that depreciate by percent was used for this item", MARGIN, y, { lineBreak: false });
 }
 
 const COL = {
@@ -781,14 +784,14 @@ const COL = {
 function drawLineItemHeader(doc: Doc, y: number): number {
   doc.rect(MARGIN, y, CONTENT_WIDTH, 11).fill(COLORS.headerBg);
   doc.font(FONTS.bold, 5.5).fill(COLORS.black);
-  doc.text("QUANTITY / UNIT PRICE", COL.qtyX + 5, y + 3, { width: COL.qtyW });
-  doc.text("TAX", COL.taxX, y + 3, { width: COL.taxW, align: "right" });
-  doc.text("RCV", COL.rcvX, y + 3, { width: COL.rcvW, align: "right" });
-  doc.text("AGE/LIFE", COL.ageX, y + 3, { width: COL.ageW, align: "right" });
-  doc.text("COND.", COL.condX, y + 3, { width: COL.condW, align: "right" });
-  doc.text("DEP %", COL.depPctX, y + 3, { width: COL.depPctW, align: "right" });
-  doc.text("DEPREC.", COL.deprecX, y + 3, { width: COL.deprecW, align: "right" });
-  doc.text("ACV", COL.acvX, y + 3, { width: COL.acvW, align: "right" });
+  doc.text("QUANTITY / UNIT PRICE", COL.qtyX + 5, y + 3, { width: COL.qtyW, lineBreak: false });
+  doc.text("TAX", COL.taxX, y + 3, { width: COL.taxW, align: "right", lineBreak: false });
+  doc.text("RCV", COL.rcvX, y + 3, { width: COL.rcvW, align: "right", lineBreak: false });
+  doc.text("AGE/LIFE", COL.ageX, y + 3, { width: COL.ageW, align: "right", lineBreak: false });
+  doc.text("COND.", COL.condX, y + 3, { width: COL.condW, align: "right", lineBreak: false });
+  doc.text("DEP %", COL.depPctX, y + 3, { width: COL.depPctW, align: "right", lineBreak: false });
+  doc.text("DEPREC.", COL.deprecX, y + 3, { width: COL.deprecW, align: "right", lineBreak: false });
+  doc.text("ACV", COL.acvX, y + 3, { width: COL.acvW, align: "right", lineBreak: false });
   return y + 13;
 }
 
@@ -807,20 +810,20 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
   doc.font(FONTS.normal, 7).fill(COLORS.black);
   const descText = `${item.lineNumber}. ${item.description}`;
   const descW = CONTENT_WIDTH - 10;
-  doc.text(descText, MARGIN + 5, y, { width: descW });
   const descHeight = doc.heightOfString(descText, { width: descW });
+  doc.text(descText, MARGIN + 5, y, { width: descW, height: descHeight + 2, ellipsis: false });
   y += Math.max(9, Math.ceil(descHeight) + 1);
 
   doc.font(FONTS.normal, 6.5).fill(COLORS.darkGray);
   const qtyLine = `${qty.toFixed(2)} ${unitLabel} @ ${fmt(unitPrice)}`;
-  doc.text(qtyLine, COL.qtyX + 15, y, { width: COL.qtyW - 10 });
-  doc.text(fmt(tax), COL.taxX, y, { width: COL.taxW, align: "right" });
-  doc.text(fmt(itemRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
-  doc.text(fmtAgeLife(item.age, item.lifeExpectancy), COL.ageX, y, { width: COL.ageW, align: "right" });
-  doc.text("Avg.", COL.condX, y, { width: COL.condW, align: "right" });
-  doc.text(fmtDepPercent(depPct, depType), COL.depPctX, y, { width: COL.depPctW, align: "right" });
-  doc.text(fmtDeprecAmount(depAmt, depType), COL.deprecX, y, { width: COL.deprecW, align: "right" });
-  doc.text(fmt(itemACV), COL.acvX, y, { width: COL.acvW, align: "right" });
+  doc.text(qtyLine, COL.qtyX + 15, y, { width: COL.qtyW - 10, lineBreak: false });
+  doc.text(fmt(tax), COL.taxX, y, { width: COL.taxW, align: "right", lineBreak: false });
+  doc.text(fmt(itemRCV), COL.rcvX, y, { width: COL.rcvW, align: "right", lineBreak: false });
+  doc.text(fmtAgeLife(item.age, item.lifeExpectancy), COL.ageX, y, { width: COL.ageW, align: "right", lineBreak: false });
+  doc.text("Avg.", COL.condX, y, { width: COL.condW, align: "right", lineBreak: false });
+  doc.text(fmtDepPercent(depPct, depType), COL.depPctX, y, { width: COL.depPctW, align: "right", lineBreak: false });
+  doc.text(fmtDeprecAmount(depAmt, depType), COL.deprecX, y, { width: COL.deprecW, align: "right", lineBreak: false });
+  doc.text(fmt(itemACV), COL.acvX, y, { width: COL.acvW, align: "right", lineBreak: false });
   y += 10;
   return y;
 }
@@ -1317,7 +1320,7 @@ function renderMoistureReport(doc: Doc, readings: MoistureReading[]) {
 
 function renderTranscript(doc: Doc, transcript: any[]) {
   let y = MARGIN;
-  doc.font(FONTS.bold, 14).fill(COLORS.black).text("VOICE TRANSCRIPT", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  doc.font(FONTS.bold, 14).fill(COLORS.black).text("VOICE TRANSCRIPT", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
   y += 20;
   drawHLine(doc, y);
   y += 8;
@@ -1335,37 +1338,37 @@ function renderTranscript(doc: Doc, transcript: any[]) {
     const rowHeight = Math.max(12, textHeight + 4);
     y = checkPageBreak(doc, rowHeight, y);
     if (y === MARGIN) {
-      doc.font(FONTS.bold, 14).fill(COLORS.black).text("VOICE TRANSCRIPT (Continued)", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+      doc.font(FONTS.bold, 14).fill(COLORS.black).text("VOICE TRANSCRIPT (Continued)", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
       y += 20;
       drawHLine(doc, y);
       y += 8;
     }
 
     doc.font(FONTS.bold, 7.5).fill(COLORS.darkGray);
-    doc.text(speaker, MARGIN, y, { width: labelWidth });
+    doc.text(speaker, MARGIN, y, { width: labelWidth, lineBreak: false });
     doc.font(FONTS.normal, 7.5).fill(COLORS.black);
-    doc.text(content, contentX, y, { width: contentWidth });
+    doc.text(content, contentX, y, { width: contentWidth, height: textHeight + 2 });
     y += rowHeight;
   }
 }
 
 function renderPhotoAppendix(doc: Doc, photos: InspectionPhoto[]) {
   let y = MARGIN;
-  doc.font(FONTS.bold, 14).fill(COLORS.black).text("PHOTO APPENDIX", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  doc.font(FONTS.bold, 14).fill(COLORS.black).text("PHOTO APPENDIX", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
   y += 20;
   drawHLine(doc, y);
   y += 10;
 
   doc.font(FONTS.normal, 8).fill(COLORS.medGray);
-  doc.text("Note: Photos are referenced by caption and storage path in this report.", MARGIN, y, { width: CONTENT_WIDTH });
+  doc.text("Note: Photos are referenced by caption and storage path in this report.", MARGIN, y, { width: CONTENT_WIDTH, lineBreak: false });
   y += 16;
 
   doc.rect(MARGIN, y, CONTENT_WIDTH, 16).fill(COLORS.headerBg);
   doc.font(FONTS.bold, 8).fill(COLORS.black);
-  doc.text("#", MARGIN + 5, y + 4, { width: 20 });
-  doc.text("Caption", MARGIN + 30, y + 4, { width: 220 });
-  doc.text("Type", MARGIN + 255, y + 4, { width: 90 });
-  doc.text("Storage Path", MARGIN + 350, y + 4, { width: CONTENT_WIDTH - 350 });
+  doc.text("#", MARGIN + 5, y + 4, { width: 20, lineBreak: false });
+  doc.text("Caption", MARGIN + 30, y + 4, { width: 220, lineBreak: false });
+  doc.text("Type", MARGIN + 255, y + 4, { width: 90, lineBreak: false });
+  doc.text("Storage Path", MARGIN + 350, y + 4, { width: CONTENT_WIDTH - 350, lineBreak: false });
   y += 18;
 
   for (let i = 0; i < photos.length; i++) {
@@ -1376,12 +1379,11 @@ function renderPhotoAppendix(doc: Doc, photos: InspectionPhoto[]) {
 
     y = checkPageBreak(doc, 34, y);
     doc.font(FONTS.normal, 8).fill(COLORS.black);
-    doc.text(String(i + 1), MARGIN + 5, y, { width: 20 });
-    doc.text(caption, MARGIN + 30, y, { width: 220 });
-    doc.text(String(type), MARGIN + 255, y, { width: 90 });
-    doc.text(String(storagePath), MARGIN + 350, y, { width: CONTENT_WIDTH - 350 });
+    doc.text(String(i + 1), MARGIN + 5, y, { width: 20, lineBreak: false });
+    doc.text(caption, MARGIN + 30, y, { width: 220, lineBreak: false });
+    doc.text(String(type), MARGIN + 255, y, { width: 90, lineBreak: false });
+    doc.text(String(storagePath), MARGIN + 350, y, { width: CONTENT_WIDTH - 350, lineBreak: false });
 
-    // Optional: include brief AI analysis description if present.
     const analysisDesc = (p as any)?.analysis?.description;
     if (analysisDesc && typeof analysisDesc === "string") {
       const text = `AI: ${analysisDesc}`;
@@ -1389,7 +1391,7 @@ function renderPhotoAppendix(doc: Doc, photos: InspectionPhoto[]) {
       y += 12;
       y = checkPageBreak(doc, h + 6, y);
       doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
-      doc.text(text, MARGIN + 30, y, { width: CONTENT_WIDTH - 40 });
+      doc.text(text, MARGIN + 30, y, { width: CONTENT_WIDTH - 40, height: h + 2 });
       y += Math.max(10, h);
     } else {
       y += 14;
