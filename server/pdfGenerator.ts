@@ -276,9 +276,9 @@ function renderCoverageSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstima
   const claim = data.claim;
   let y = MARGIN;
 
-  doc.font(FONTS.normal, 11).fill(COLORS.black);
+  doc.font(FONTS.normal, 9).fill(COLORS.black);
   doc.text(currentDate, MARGIN, y, { width: CONTENT_WIDTH, align: "left" });
-  y += 30;
+  y += 16;
 
   const insuredName = claim?.insuredName || "Insured";
   const address = claim?.propertyAddress || "";
@@ -286,45 +286,45 @@ function renderCoverageSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstima
   const claimNumber = claim?.claimNumber || br?.coverageSnapshot?.policyNumber || "N/A";
   const dateOfLoss = claim?.dateOfLoss || "N/A";
 
-  doc.font(FONTS.bold, 11).fill(COLORS.black).text(insuredName, MARGIN, y);
-  y += 14;
+  doc.font(FONTS.bold, 10).fill(COLORS.black).text(insuredName, MARGIN, y);
+  y += 12;
   if (address) {
-    doc.font(FONTS.normal, 10).text(address, MARGIN, y);
-    y += 13;
+    doc.font(FONTS.normal, 9).text(address, MARGIN, y);
+    y += 11;
   }
   if (cityStateZip) {
-    doc.font(FONTS.normal, 10).text(cityStateZip, MARGIN, y);
-    y += 13;
+    doc.font(FONTS.normal, 9).text(cityStateZip, MARGIN, y);
+    y += 11;
   }
 
   const rightCol = 380;
-  doc.font(FONTS.normal, 10).fill(COLORS.black);
-  doc.text("Claim Number:", rightCol, y - 40);
-  doc.font(FONTS.bold, 10).text(claimNumber, rightCol + 90, y - 40);
-  doc.font(FONTS.normal, 10).text("Date of Loss:", rightCol, y - 26);
-  doc.text(dateOfLoss, rightCol + 90, y - 26);
+  doc.font(FONTS.normal, 9).fill(COLORS.black);
+  doc.text("Claim Number:", rightCol, y - 34);
+  doc.font(FONTS.bold, 9).text(claimNumber, rightCol + 85, y - 34);
+  doc.font(FONTS.normal, 9).text("Date of Loss:", rightCol, y - 22);
+  doc.text(dateOfLoss, rightCol + 85, y - 22);
 
-  y += 30;
+  y += 14;
   drawThickLine(doc, y);
-  y += 15;
+  y += 10;
 
-  doc.font(FONTS.bold, 14).fill(COLORS.black);
+  doc.font(FONTS.bold, 12).fill(COLORS.black);
   doc.text("Summary For Coverage A - Dwelling", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 30;
+  y += 20;
 
   const col1 = MARGIN;
   const col2 = MARGIN + 140;
   const col3 = MARGIN + 280;
   const col4 = MARGIN + 400;
 
-  doc.font(FONTS.bold, 8).fill(COLORS.medGray);
+  doc.font(FONTS.bold, 7).fill(COLORS.medGray);
   doc.text("Replacement Cost Value", col1, y, { width: 130, align: "center" });
   doc.text("Less Recoverable\nDepreciation", col2, y, { width: 130, align: "center" });
   doc.text("Less Non Recoverable\nDepreciation", col3, y, { width: 110, align: "center" });
   doc.text("Actual Cash Value (ACV)", col4, y, { width: 130, align: "center" });
-  y += 28;
+  y += 22;
   drawHLine(doc, y);
-  y += 8;
+  y += 5;
 
   const rcv = re.grandTotal + re.grandTax;
   const recDep = re.grandRecoverableDepreciation;
@@ -332,50 +332,50 @@ function renderCoverageSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstima
   const acv = rcv - re.grandDepreciation;
   const deductible = br?.coverageSnapshot?.deductible ?? data.estimate.deductible ?? 0;
 
-  doc.font(FONTS.bold, 11).fill(COLORS.black);
+  doc.font(FONTS.bold, 10).fill(COLORS.black);
   doc.text(`$${fmt(rcv)}`, col1, y, { width: 130, align: "center" });
   doc.text(fmtParen(recDep), col2, y, { width: 130, align: "center" });
   doc.text(fmtAngle(nonRecDep), col3, y, { width: 110, align: "center" });
   doc.text(`$${fmt(acv)}`, col4, y, { width: 130, align: "center" });
-  y += 20;
-
-  doc.font(FONTS.normal, 10).fill(COLORS.black);
-  doc.text("Less Deductible", col1, y);
-  doc.text(fmtParen(deductible), col4, y, { width: 130, align: "center" });
   y += 16;
 
-  doc.font(FONTS.bold, 11).fill(COLORS.black);
+  doc.font(FONTS.normal, 9).fill(COLORS.black);
+  doc.text("Less Deductible", col1, y);
+  doc.text(fmtParen(deductible), col4, y, { width: 130, align: "center" });
+  y += 13;
+
+  doc.font(FONTS.bold, 10).fill(COLORS.black);
   doc.text("Total ACV Settlement", col1, y);
   const settlement = Math.max(0, acv - deductible);
   doc.text(`$${fmt(settlement)}`, col4, y, { width: 130, align: "center" });
-  y += 30;
+  y += 18;
   drawThickLine(doc, y);
-  y += 20;
+  y += 12;
 
-  doc.font(FONTS.bold, 12).fill(COLORS.black);
+  doc.font(FONTS.bold, 10).fill(COLORS.black);
   doc.text("Understanding Your Property Estimate", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 20;
+  y += 14;
 
-  doc.font(FONTS.bold, 8).fill(COLORS.medGray);
+  doc.font(FONTS.bold, 7).fill(COLORS.medGray);
   const uomY = y;
   const uomCol = 100;
   const units = [
     ["HR", "Hour"], ["LF", "Linear Foot"], ["EA", "Each"], ["SQ", "Square"], ["SF", "Square Foot"],
     ["SY", "Square Yard"], ["DA", "Day"], ["CY", "Cubic Yard"], ["CF", "Cubic Foot"], ["RM", "Room"],
   ];
-  doc.font(FONTS.normal, 8).fill(COLORS.medGray);
+  doc.font(FONTS.normal, 7).fill(COLORS.medGray);
   doc.text("Unit of Measure", MARGIN, uomY, { width: CONTENT_WIDTH, align: "center" });
-  y += 14;
+  y += 11;
   let ux = MARGIN + 20;
   for (let i = 0; i < units.length; i++) {
-    if (i === 5) { y += 12; ux = MARGIN + 20; }
-    doc.font(FONTS.bold, 7).text(`${units[i][0]}`, ux, y, { continued: true });
-    doc.font(FONTS.normal, 7).text(` – ${units[i][1]}`, { continued: false });
+    if (i === 5) { y += 10; ux = MARGIN + 20; }
+    doc.font(FONTS.bold, 6.5).text(`${units[i][0]}`, ux, y, { continued: true });
+    doc.font(FONTS.normal, 6.5).text(` – ${units[i][1]}`, { continued: false });
     ux += uomCol;
   }
 
-  y += 25;
-  doc.font(FONTS.bold, 11).fill(COLORS.black);
+  y += 16;
+  doc.font(FONTS.bold, 10).fill(COLORS.black);
   doc.text("Estimate: Property Damage Repair", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
 }
 
@@ -391,63 +391,63 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
   const email = (claim as any)?.email || "";
   const businessPhone = (claim as any)?.businessPhone || "";
 
-  doc.font(FONTS.bold, 10).fill(COLORS.black).text("Insured:", MARGIN, y);
-  doc.font(FONTS.normal, 10).text(insuredName, MARGIN + 80, y);
+  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Insured:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text(insuredName, MARGIN + 75, y);
 
   const rightContactX = 380;
-  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Cell:", rightContactX, y);
-  doc.font(FONTS.normal, 9).text(cellPhone || "N/A", rightContactX + 90, y);
-  y += 14;
+  doc.font(FONTS.bold, 8).fill(COLORS.black).text("Cell:", rightContactX, y);
+  doc.font(FONTS.normal, 8).text(cellPhone || "N/A", rightContactX + 85, y);
+  y += 11;
 
   if (address) {
-    doc.font(FONTS.normal, 10).fill(COLORS.black).text(address, MARGIN + 80, y);
-    doc.font(FONTS.bold, 9).text("E-mail:", rightContactX, y);
-    doc.font(FONTS.normal, 9).text(email || "N/A", rightContactX + 90, y);
-    y += 13;
+    doc.font(FONTS.normal, 9).fill(COLORS.black).text(address, MARGIN + 75, y);
+    doc.font(FONTS.bold, 8).text("E-mail:", rightContactX, y);
+    doc.font(FONTS.normal, 8).text(email || "N/A", rightContactX + 85, y);
+    y += 11;
   }
   if (cityStateZip) {
-    doc.font(FONTS.normal, 10).fill(COLORS.black).text(cityStateZip, MARGIN + 80, y);
-    doc.font(FONTS.bold, 9).text("Business Phone:", rightContactX, y);
-    doc.font(FONTS.normal, 9).text(businessPhone || "N/A", rightContactX + 90, y);
-    y += 13;
+    doc.font(FONTS.normal, 9).fill(COLORS.black).text(cityStateZip, MARGIN + 75, y);
+    doc.font(FONTS.bold, 8).text("Business Phone:", rightContactX, y);
+    doc.font(FONTS.normal, 8).text(businessPhone || "N/A", rightContactX + 85, y);
+    y += 11;
   }
 
-  y += 10;
-  doc.font(FONTS.bold, 10).fill(COLORS.black).text("Claim Rep.:", MARGIN, y);
-  doc.font(FONTS.normal, 10).text(data.inspectorName || "Inspector", MARGIN + 80, y);
-  y += 14;
-  doc.font(FONTS.bold, 10).text("Estimator:", MARGIN, y);
-  doc.font(FONTS.normal, 10).text(data.inspectorName || "Inspector", MARGIN + 80, y);
-  y += 14;
-  doc.font(FONTS.bold, 10).text("Estimator Company:", MARGIN, y);
-  doc.font(FONTS.normal, 10).text(data.companyName || "N/A", MARGIN + 120, y);
-  y += 14;
-  doc.font(FONTS.bold, 10).text("Reference Company:", MARGIN, y);
-  doc.font(FONTS.normal, 10).text(data.companyName || "N/A", MARGIN + 120, y);
-  y += 14;
+  y += 6;
+  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Claim Rep.:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text(data.inspectorName || "Inspector", MARGIN + 75, y);
+  y += 11;
+  doc.font(FONTS.bold, 9).text("Estimator:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text(data.inspectorName || "Inspector", MARGIN + 75, y);
+  y += 11;
+  doc.font(FONTS.bold, 9).text("Estimator Company:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text(data.companyName || "N/A", MARGIN + 115, y);
+  y += 11;
+  doc.font(FONTS.bold, 9).text("Reference Company:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text(data.companyName || "N/A", MARGIN + 115, y);
+  y += 11;
 
   if (data.adjusterLicense) {
-    doc.font(FONTS.bold, 10).text("Adjuster License #:", MARGIN, y);
-    doc.font(FONTS.normal, 10).text(data.adjusterLicense, MARGIN + 120, y);
-    y += 14;
+    doc.font(FONTS.bold, 9).text("Adjuster License #:", MARGIN, y);
+    doc.font(FONTS.normal, 9).text(data.adjusterLicense, MARGIN + 115, y);
+    y += 11;
   }
 
-  y += 10;
+  y += 6;
   drawHLine(doc, y);
-  y += 10;
+  y += 6;
 
   const claimNum = claim?.claimNumber || "N/A";
   const policyNum = br?.coverageSnapshot?.policyNumber || "N/A";
   const lossType = claim?.perilType || "N/A";
 
-  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
   doc.text("Claim Number:", MARGIN, y);
-  doc.font(FONTS.bold, 9).text(claimNum, MARGIN + 90, y);
-  doc.font(FONTS.bold, 9).text("Policy Number:", 230, y);
-  doc.font(FONTS.bold, 9).text(policyNum, 320, y);
-  doc.font(FONTS.bold, 9).text("Type of Loss:", 430, y);
-  doc.font(FONTS.bold, 9).text(lossType, 510, y);
-  y += 20;
+  doc.font(FONTS.bold, 8).text(claimNum, MARGIN + 85, y);
+  doc.font(FONTS.bold, 8).text("Policy Number:", 230, y);
+  doc.font(FONTS.bold, 8).text(policyNum, 320, y);
+  doc.font(FONTS.bold, 8).text("Type of Loss:", 430, y);
+  doc.font(FONTS.bold, 8).text(lossType, 510, y);
+  y += 14;
 
   function extractLimit(val: unknown): number {
     if (val == null) return 0;
@@ -461,12 +461,12 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
   const covD = extractLimit(br?.coverageSnapshot?.coverageD);
   const ded = Number(br?.coverageSnapshot?.deductible) || data.estimate.deductible || 0;
 
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 16).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 8).fill(COLORS.black);
-  doc.text("Coverage", MARGIN + 5, y + 4, { width: 250 });
-  doc.text("Deductible", 350, y + 4, { width: 90, align: "right" });
-  doc.text("Policy Limit", 450, y + 4, { width: 90, align: "right" });
-  y += 18;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 12).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 7).fill(COLORS.black);
+  doc.text("Coverage", MARGIN + 5, y + 3, { width: 250 });
+  doc.text("Deductible", 350, y + 3, { width: 90, align: "right" });
+  doc.text("Policy Limit", 450, y + 3, { width: 90, align: "right" });
+  y += 14;
 
   const coverageRows = [
     ["Coverage A - Dwelling", ded, covA],
@@ -476,16 +476,16 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
   ];
 
   for (const [name, d, limit] of coverageRows) {
-    doc.font(FONTS.normal, 8).fill(COLORS.black);
+    doc.font(FONTS.normal, 7.5).fill(COLORS.black);
     doc.text(name as string, MARGIN + 5, y, { width: 300 });
     doc.text(`$${fmt(d as number)}`, 350, y, { width: 90, align: "right" });
     doc.text(`$${fmt(limit as number)}`, 450, y, { width: 90, align: "right" });
-    y += 14;
+    y += 11;
   }
 
-  y += 15;
+  y += 6;
   drawHLine(doc, y);
-  y += 10;
+  y += 6;
 
   const dateOfLoss = claim?.dateOfLoss || "N/A";
   const dateCompleted = currentDate;
@@ -496,46 +496,46 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
 
   const datesLeftX = MARGIN;
   const datesRightX = PAGE_WIDTH / 2 + 20;
-  const datesLabelW = 130;
+  const datesLabelW = 120;
 
-  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Date Contacted:", datesLeftX, y);
-  doc.font(FONTS.normal, 9).text(dateContacted, datesLeftX + datesLabelW, y);
-  doc.font(FONTS.bold, 9).text("Date Received:", datesRightX, y);
-  doc.font(FONTS.normal, 9).text(dateReceived, datesRightX + datesLabelW, y);
+  doc.font(FONTS.bold, 8).fill(COLORS.black).text("Date Contacted:", datesLeftX, y);
+  doc.font(FONTS.normal, 8).text(dateContacted, datesLeftX + datesLabelW, y);
+  doc.font(FONTS.bold, 8).text("Date Received:", datesRightX, y);
+  doc.font(FONTS.normal, 8).text(dateReceived, datesRightX + datesLabelW, y);
+  y += 11;
+
+  doc.font(FONTS.bold, 8).text("Date of Loss:", datesLeftX, y);
+  doc.font(FONTS.normal, 8).text(dateOfLoss, datesLeftX + datesLabelW, y);
+  doc.font(FONTS.bold, 8).text("Date Entered:", datesRightX, y);
+  doc.font(FONTS.normal, 8).text(dateEntered, datesRightX + datesLabelW, y);
+  y += 11;
+
+  doc.font(FONTS.bold, 8).text("Date Inspected:", datesLeftX, y);
+  doc.font(FONTS.normal, 8).text(dateInspected, datesLeftX + datesLabelW, y);
+  y += 11;
+
+  doc.font(FONTS.bold, 8).text("Date Est. Completed:", datesLeftX, y);
+  doc.font(FONTS.normal, 8).text(dateCompleted, datesLeftX + datesLabelW, y);
   y += 14;
-
-  doc.font(FONTS.bold, 9).text("Date of Loss:", datesLeftX, y);
-  doc.font(FONTS.normal, 9).text(dateOfLoss, datesLeftX + datesLabelW, y);
-  doc.font(FONTS.bold, 9).text("Date Entered:", datesRightX, y);
-  doc.font(FONTS.normal, 9).text(dateEntered, datesRightX + datesLabelW, y);
-  y += 14;
-
-  doc.font(FONTS.bold, 9).text("Date Inspected:", datesLeftX, y);
-  doc.font(FONTS.normal, 9).text(dateInspected, datesLeftX + datesLabelW, y);
-  y += 14;
-
-  doc.font(FONTS.bold, 9).text("Date Est. Completed:", datesLeftX, y);
-  doc.font(FONTS.normal, 9).text(dateCompleted, datesLeftX + datesLabelW, y);
-  y += 25;
 
   drawHLine(doc, y);
+  y += 6;
+
+  doc.font(FONTS.bold, 8).fill(COLORS.black).text("Price List:", MARGIN, y);
+  doc.font(FONTS.normal, 8).text("CLAIMS_IQ_CURRENT", MARGIN + 110, y);
+  y += 12;
+
+  doc.font(FONTS.bold, 8).text("Sales Taxes:", MARGIN, y);
+  doc.font(FONTS.normal, 8).text("Material Sales Tax", MARGIN + 110, y);
   y += 10;
-
-  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Price List:", MARGIN, y);
-  doc.font(FONTS.normal, 9).text("CLAIMS_IQ_CURRENT", MARGIN + 120, y);
-  y += 20;
-
-  doc.font(FONTS.bold, 9).text("Sales Taxes:", MARGIN, y);
-  doc.font(FONTS.normal, 9).text("Material Sales Tax", MARGIN + 120, y);
-  y += 14;
 }
 
 function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   let y = MARGIN;
 
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Estimate Recap For Coverage A - Dwelling", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 25;
+  y += 18;
 
   const descX = MARGIN;
   const rcvX = 290;
@@ -543,16 +543,16 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
   const nonRecDepX = 430;
   const acvX = PAGE_WIDTH - MARGIN - 60;
 
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 16).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 7).fill(COLORS.black);
-  doc.text("Description", descX + 5, y + 4, { width: 240 });
-  doc.text("RCV", rcvX, y + 4, { width: 65, align: "right" });
-  doc.text("Recoverable\nDepreciation", recDepX, y + 2, { width: 60, align: "right" });
-  doc.text("Non-recoverable\nDepreciation", nonRecDepX, y + 2, { width: 70, align: "right" });
-  doc.text("ACV", acvX, y + 4, { width: 60, align: "right" });
-  y += 20;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 12).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 6.5).fill(COLORS.black);
+  doc.text("Description", descX + 5, y + 3, { width: 240 });
+  doc.text("RCV", rcvX, y + 3, { width: 65, align: "right" });
+  doc.text("Recoverable\nDepreciation", recDepX, y + 1, { width: 60, align: "right" });
+  doc.text("Non-recoverable\nDepreciation", nonRecDepX, y + 1, { width: 70, align: "right" });
+  doc.text("ACV", acvX, y + 3, { width: 60, align: "right" });
+  y += 14;
   drawHLine(doc, y);
-  y += 6;
+  y += 4;
 
   const structureGroups: Record<string, RoomEstimate[]> = {};
   for (const room of re.rooms) {
@@ -564,16 +564,16 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
   for (const [structure, rooms] of Object.entries(structureGroups)) {
     for (const room of rooms) {
       if (room.items.length === 0) continue;
-      y = checkPageBreak(doc, 20, y);
+      y = checkPageBreak(doc, 14, y);
       const rcvVal = room.subtotal + room.totalTax;
-      doc.font(FONTS.normal, 8).fill(COLORS.black);
+      doc.font(FONTS.normal, 7.5).fill(COLORS.black);
       doc.text(`${structure} - ${room.name}`, descX + 5, y, { width: 240 });
       doc.text(fmt(rcvVal), rcvX, y, { width: 65, align: "right" });
       doc.text(fmt(room.totalRecoverableDepreciation), recDepX, y, { width: 60, align: "right" });
       doc.text(fmt(room.totalNonRecoverableDepreciation), nonRecDepX, y, { width: 70, align: "right" });
       const roomAcvCorrected = rcvVal - room.totalDepreciation;
       doc.text(fmt(roomAcvCorrected), acvX, y, { width: 60, align: "right" });
-      y += 14;
+      y += 11;
     }
   }
 
@@ -596,7 +596,7 @@ function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): num
   if (!dims || (dims.length === 0 && dims.width === 0)) return y;
 
   const openingCount = room.openings?.length || 0;
-  const estimatedHeight = 100 + openingCount * 12;
+  const estimatedHeight = 72 + openingCount * 9;
   y = checkPageBreak(doc, estimatedHeight, y);
 
   const L = dims.length;
@@ -604,20 +604,20 @@ function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): num
   const H = dims.height || 8;
   const isRoof = (room.viewType || "").includes("roof");
 
-  const sketchW = 120;
-  const sketchH = 80;
+  const sketchW = 80;
+  const sketchH = 55;
   const sketchX = MARGIN;
   const sketchY = y;
 
   doc.save();
-  doc.rect(sketchX, sketchY, sketchW, sketchH).lineWidth(1).stroke(COLORS.black);
-  doc.font(FONTS.normal, 7).fill(COLORS.medGray);
-  doc.text(`${L.toFixed(1)}'`, sketchX + sketchW / 2 - 10, sketchY + sketchH + 2);
-  doc.text(`${W.toFixed(1)}'`, sketchX + sketchW + 4, sketchY + sketchH / 2 - 5);
+  doc.rect(sketchX, sketchY, sketchW, sketchH).lineWidth(0.75).stroke(COLORS.black);
+  doc.font(FONTS.normal, 6.5).fill(COLORS.medGray);
+  doc.text(`${L.toFixed(1)}'`, sketchX + sketchW / 2 - 10, sketchY + sketchH + 1);
+  doc.text(`${W.toFixed(1)}'`, sketchX + sketchW + 3, sketchY + sketchH / 2 - 4);
   doc.restore();
 
-  const dimX = sketchX + sketchW + 30;
-  const dimLabelW = 130;
+  const dimX = sketchX + sketchW + 20;
+  const dimLabelW = 120;
   const dimValW = 80;
   let dy = sketchY;
 
@@ -633,10 +633,10 @@ function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): num
       ["Total Perimeter Length", `${fmt(perim)} LF`],
     ];
     for (const [label, val] of dimRows) {
-      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
       doc.text(label, dimX, dy, { width: dimLabelW });
       doc.text(val, dimX + dimLabelW, dy, { width: dimValW, align: "right" });
-      dy += 12;
+      dy += 9;
     }
   } else {
     const sfWalls = 2 * (L + W) * H;
@@ -655,19 +655,19 @@ function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): num
       ["LF Ceil. Perimeter", `${fmt(lfCeilPerim)} LF`],
     ];
     for (const [label, val] of dimRows) {
-      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
       doc.text(label, dimX, dy, { width: dimLabelW });
       doc.text(val, dimX + dimLabelW, dy, { width: dimValW, align: "right" });
-      dy += 11;
+      dy += 8;
     }
   }
 
-  y = Math.max(sketchY + sketchH + 14, dy + 4);
+  y = Math.max(sketchY + sketchH + 8, dy + 2);
 
   if (room.openings && room.openings.length > 0) {
-    doc.font(FONTS.bold, 7.5).fill(COLORS.black);
+    doc.font(FONTS.bold, 7).fill(COLORS.black);
     doc.text("Openings:", MARGIN, y);
-    y += 10;
+    y += 8;
     for (const op of room.openings) {
       const wFeet = Math.floor(op.widthFt);
       const wInches = Math.round((op.widthFt - wFeet) * 12);
@@ -676,78 +676,86 @@ function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): num
       const label = op.label || op.openingType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const sizeStr = `${wFeet}' ${wInches}" X ${hFeet}' ${hInches}"`;
       const openStr = op.opensInto ? `Opens into ${op.opensInto}` : "";
-      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 6.5).fill(COLORS.darkGray);
       doc.text(`${label} ${sizeStr} ${openStr}`, MARGIN + 10, y, { width: CONTENT_WIDTH - 20 });
-      y += 10;
+      y += 8;
     }
   }
 
-  y += 6;
+  y += 3;
   drawHLine(doc, y);
-  y += 6;
+  y += 3;
   return y;
 }
 
 function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
-  let lastY = MARGIN + 200;
+  newPage(doc);
+  let y = MARGIN;
 
-  for (const room of re.rooms) {
+  for (let ri = 0; ri < re.rooms.length; ri++) {
+    const room = re.rooms[ri];
     if (room.items.length === 0) continue;
-    newPage(doc);
-    let y = MARGIN;
 
-    doc.font(FONTS.bold, 12).fill(COLORS.black);
+    const roomHeaderHeight = 14 + (room.dimensions && (room.dimensions.length > 0 || room.dimensions.width > 0) ? 70 : 0) + 14 + 22;
+    y = checkPageBreak(doc, roomHeaderHeight, y);
+    if (y === MARGIN && ri > 0) {
+    } else if (ri > 0) {
+      y += 4;
+      drawHLine(doc, y);
+      y += 6;
+    }
+
+    doc.font(FONTS.bold, 10).fill(COLORS.black);
     doc.text(room.name, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-    y += 20;
+    y += 14;
 
     y = renderRoomDimensionsBlock(doc, y, room);
 
     y = drawLineItemHeader(doc, y);
 
     for (const item of room.items) {
-      y = checkPageBreak(doc, 30, y);
+      y = checkPageBreak(doc, 22, y);
       if (y === MARGIN) {
-        doc.font(FONTS.bold, 10).fill(COLORS.black);
+        doc.font(FONTS.bold, 9).fill(COLORS.black);
         doc.text(`CONTINUED - ${room.name}`, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-        y += 18;
+        y += 12;
         y = drawLineItemHeader(doc, y);
       }
       y = drawLineItem(doc, y, item);
     }
 
-    y += 6;
+    y += 3;
     drawHLine(doc, y);
-    y += 4;
+    y += 3;
 
     const roomRCV = room.subtotal + room.totalTax;
     const roomACVCorrected = roomRCV - room.totalDepreciation;
-    doc.font(FONTS.bold, 8).fill(COLORS.black);
+    doc.font(FONTS.bold, 7).fill(COLORS.black);
     doc.text(`Totals: ${room.name}`, MARGIN + 5, y, { width: 150 });
     doc.text(fmt(room.totalTax), COL.taxX, y, { width: COL.taxW, align: "right" });
     doc.text(fmt(roomRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
     doc.text(fmt(room.totalDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
     doc.text(fmt(roomACVCorrected), COL.acvX, y, { width: COL.acvW, align: "right" });
-    y += 18;
-    lastY = y;
+    y += 12;
   }
 
-  let y = lastY;
-  y = checkPageBreak(doc, 40, y);
+  y = checkPageBreak(doc, 30, y);
+  y += 2;
 
   drawThickLine(doc, y);
-  y += 6;
+  y += 4;
 
   const totalRCV = re.grandTotal + re.grandTax;
   const totalACV = totalRCV - re.grandDepreciation;
-  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
   doc.text("Line Item Totals:", MARGIN + 5, y, { width: 180 });
   doc.text(fmt(re.grandTax), COL.taxX, y, { width: COL.taxW, align: "right" });
   doc.text(fmt(totalRCV), COL.rcvX, y, { width: COL.rcvW, align: "right" });
   doc.text(fmt(re.grandDepreciation), COL.deprecX, y, { width: COL.deprecW, align: "right" });
   doc.text(fmt(totalACV), COL.acvX, y, { width: COL.acvW, align: "right" });
-  y += 20;
+  y += 12;
 
-  doc.font(FONTS.normal, 7).fill(COLORS.medGray);
+  doc.font(FONTS.normal, 6.5).fill(COLORS.medGray);
   doc.text("[%] - Indicates that depreciate by percent was used for this item", MARGIN, y);
 }
 
@@ -771,17 +779,17 @@ const COL = {
 };
 
 function drawLineItemHeader(doc: Doc, y: number): number {
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 6).fill(COLORS.black);
-  doc.text("QUANTITY / UNIT PRICE", COL.qtyX + 5, y + 4, { width: COL.qtyW });
-  doc.text("TAX", COL.taxX, y + 4, { width: COL.taxW, align: "right" });
-  doc.text("RCV", COL.rcvX, y + 4, { width: COL.rcvW, align: "right" });
-  doc.text("AGE/LIFE", COL.ageX, y + 4, { width: COL.ageW, align: "right" });
-  doc.text("COND.", COL.condX, y + 4, { width: COL.condW, align: "right" });
-  doc.text("DEP %", COL.depPctX, y + 4, { width: COL.depPctW, align: "right" });
-  doc.text("DEPREC.", COL.deprecX, y + 4, { width: COL.deprecW, align: "right" });
-  doc.text("ACV", COL.acvX, y + 4, { width: COL.acvW, align: "right" });
-  return y + 16;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 11).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 5.5).fill(COLORS.black);
+  doc.text("QUANTITY / UNIT PRICE", COL.qtyX + 5, y + 3, { width: COL.qtyW });
+  doc.text("TAX", COL.taxX, y + 3, { width: COL.taxW, align: "right" });
+  doc.text("RCV", COL.rcvX, y + 3, { width: COL.rcvW, align: "right" });
+  doc.text("AGE/LIFE", COL.ageX, y + 3, { width: COL.ageW, align: "right" });
+  doc.text("COND.", COL.condX, y + 3, { width: COL.condW, align: "right" });
+  doc.text("DEP %", COL.depPctX, y + 3, { width: COL.depPctW, align: "right" });
+  doc.text("DEPREC.", COL.deprecX, y + 3, { width: COL.deprecW, align: "right" });
+  doc.text("ACV", COL.acvX, y + 3, { width: COL.acvW, align: "right" });
+  return y + 13;
 }
 
 function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
@@ -796,14 +804,14 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
   const itemRCV = rcv + tax;
   const itemACV = itemRCV - depAmt;
 
-  doc.font(FONTS.normal, 7.5).fill(COLORS.black);
+  doc.font(FONTS.normal, 7).fill(COLORS.black);
   const descText = `${item.lineNumber}. ${item.description}`;
   const descW = CONTENT_WIDTH - 10;
   doc.text(descText, MARGIN + 5, y, { width: descW });
   const descHeight = doc.heightOfString(descText, { width: descW });
-  y += Math.max(11, Math.ceil(descHeight) + 2);
+  y += Math.max(9, Math.ceil(descHeight) + 1);
 
-  doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
+  doc.font(FONTS.normal, 6.5).fill(COLORS.darkGray);
   const qtyLine = `${qty.toFixed(2)} ${unitLabel} @ ${fmt(unitPrice)}`;
   doc.text(qtyLine, COL.qtyX + 15, y, { width: COL.qtyW - 10 });
   doc.text(fmt(tax), COL.taxX, y, { width: COL.taxW, align: "right" });
@@ -813,16 +821,16 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
   doc.text(fmtDepPercent(depPct, depType), COL.depPctX, y, { width: COL.depPctW, align: "right" });
   doc.text(fmtDeprecAmount(depAmt, depType), COL.deprecX, y, { width: COL.deprecW, align: "right" });
   doc.text(fmt(itemACV), COL.acvX, y, { width: COL.acvW, align: "right" });
-  y += 14;
+  y += 10;
   return y;
 }
 
 function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
   newPage(doc);
   let y = MARGIN;
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Grand Total Areas", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 25;
+  y += 18;
 
   let totalSFWalls = 0, totalSFCeiling = 0, totalSFFloor = 0;
   let totalSYFlooring = 0, totalLFFloorPerim = 0, totalLFCeilPerim = 0;
@@ -856,9 +864,9 @@ function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
   const valW = 120;
 
   if (hasInterior) {
-    doc.font(FONTS.bold, 10).fill(COLORS.black);
+    doc.font(FONTS.bold, 9).fill(COLORS.black);
     doc.text("Interior Areas", labelX, y);
-    y += 18;
+    y += 12;
 
     const rows = [
       ["Total SF Walls", `${fmt(totalSFWalls)} SF`],
@@ -870,18 +878,18 @@ function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
       ["Total LF Ceiling Perimeter", `${fmt(totalLFCeilPerim)} LF`],
     ];
     for (const [label, val] of rows) {
-      doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
       doc.text(label, labelX + 10, y, { width: 200 });
       doc.text(val, valX, y, { width: valW, align: "right" });
-      y += 14;
+      y += 11;
     }
-    y += 10;
+    y += 6;
   }
 
   if (hasRoof) {
-    doc.font(FONTS.bold, 10).fill(COLORS.black);
+    doc.font(FONTS.bold, 9).fill(COLORS.black);
     doc.text("Roof Areas", labelX, y);
-    y += 18;
+    y += 12;
 
     const rows = [
       ["Total Surface Area", `${fmt(totalRoofSurface)} SF`],
@@ -889,10 +897,10 @@ function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
       ["Total Perimeter Length", `${fmt(totalRoofPerim)} LF`],
     ];
     for (const [label, val] of rows) {
-      doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
       doc.text(label, labelX + 10, y, { width: 200 });
       doc.text(val, valX, y, { width: valW, align: "right" });
-      y += 14;
+      y += 11;
     }
   }
 
@@ -909,41 +917,41 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
   let y = MARGIN;
   const br = data.briefing;
 
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Summary for Coverage A - Dwelling", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 30;
+  y += 18;
 
   const covBreakdown = data.estimate.coverageBreakdown;
   if (covBreakdown && Array.isArray(covBreakdown) && covBreakdown.length > 0) {
     const totalCovRCV = covBreakdown.reduce((s, c) => s + (c.totalRCV || 0), 0);
     const totalCovACV = covBreakdown.reduce((s, c) => s + (c.totalACV || 0), 0);
 
-    doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
-    doc.font(FONTS.bold, 7).fill(COLORS.black);
-    doc.text("COVERAGE", MARGIN + 5, y + 4, { width: 130 });
-    doc.text("ITEM TOTAL", 180, y + 4, { width: 70, align: "right" });
-    doc.text("%", 255, y + 4, { width: 35, align: "right" });
-    doc.text("ACV TOTAL", 295, y + 4, { width: 70, align: "right" });
-    doc.text("%", 370, y + 4, { width: 35, align: "right" });
-    y += 16;
+    doc.rect(MARGIN, y, CONTENT_WIDTH, 11).fill(COLORS.headerBg);
+    doc.font(FONTS.bold, 6.5).fill(COLORS.black);
+    doc.text("COVERAGE", MARGIN + 5, y + 3, { width: 130 });
+    doc.text("ITEM TOTAL", 180, y + 3, { width: 70, align: "right" });
+    doc.text("%", 255, y + 3, { width: 35, align: "right" });
+    doc.text("ACV TOTAL", 295, y + 3, { width: 70, align: "right" });
+    doc.text("%", 370, y + 3, { width: 35, align: "right" });
+    y += 13;
 
     for (const cov of covBreakdown) {
       const covRcvPct = totalCovRCV > 0 ? ((cov.totalRCV || 0) / totalCovRCV) * 100 : 0;
       const covAcvPct = totalCovACV > 0 ? ((cov.totalACV || 0) / totalCovACV) * 100 : 0;
-      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
       doc.text(cov.coverageType || "Dwelling", MARGIN + 5, y, { width: 130 });
       doc.text(fmt(cov.totalRCV || 0), 180, y, { width: 70, align: "right" });
       doc.text(`${covRcvPct.toFixed(1)}%`, 255, y, { width: 35, align: "right" });
       doc.text(fmt(cov.totalACV || 0), 295, y, { width: 70, align: "right" });
       doc.text(`${covAcvPct.toFixed(1)}%`, 370, y, { width: 35, align: "right" });
-      y += 12;
+      y += 10;
     }
-    y += 10;
+    y += 6;
   }
 
-  const labelX = MARGIN + 40;
-  const valX = PAGE_WIDTH - MARGIN - 100;
-  const valW = 100;
+  const labelX = MARGIN + 30;
+  const valX = PAGE_WIDTH - MARGIN - 90;
+  const valW = 90;
 
   const lineItemTotal = re.grandTotal;
   const materialTax = re.grandTax;
@@ -958,98 +966,98 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
   const nonRecDep = re.grandNonRecoverableDepreciation;
   const recDep = re.grandRecoverableDepreciation;
 
-  doc.font(FONTS.normal, 10).fill(COLORS.black);
+  doc.font(FONTS.normal, 9).fill(COLORS.black);
   doc.text("Line Item Total", labelX, y);
   doc.text(fmt(lineItemTotal), valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
 
   doc.text("Material Sales Tax", labelX, y);
   doc.text(fmt(materialTax), valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
 
   drawHLine(doc, y, labelX, valX + valW);
-  y += 8;
+  y += 5;
 
   doc.text("Subtotal", labelX, y);
   doc.text(fmt(subtotal), valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
 
   if (overheadAmt > 0) {
     doc.text("Overhead", labelX, y);
     doc.text(fmt(overheadAmt), valX, y, { width: valW, align: "right" });
-    y += 16;
+    y += 12;
   }
 
   if (profitAmt > 0) {
     doc.text("Profit", labelX, y);
     doc.text(fmt(profitAmt), valX, y, { width: valW, align: "right" });
-    y += 16;
+    y += 12;
   }
 
   if (overheadAmt > 0 || profitAmt > 0) {
     drawHLine(doc, y, labelX, valX + valW);
-    y += 8;
+    y += 5;
   }
 
-  doc.font(FONTS.bold, 10);
+  doc.font(FONTS.bold, 9);
   doc.text("Replacement Cost Value", labelX, y);
   doc.text(`$${fmt(rcv)}`, valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
 
-  doc.font(FONTS.normal, 10);
+  doc.font(FONTS.normal, 9);
   doc.text("Less Depreciation", labelX, y);
   doc.text(fmtParen(totalDep), valX, y, { width: valW, align: "right" });
-  y += 20;
+  y += 14;
   drawHLine(doc, y, labelX, valX + valW);
-  y += 8;
+  y += 5;
 
-  doc.font(FONTS.bold, 10);
+  doc.font(FONTS.bold, 9);
   doc.text("Actual Cash Value", labelX, y);
   doc.text(`$${fmt(acv)}`, valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
 
-  doc.font(FONTS.normal, 10);
+  doc.font(FONTS.normal, 9);
   doc.text("Less Deductible", labelX, y);
   doc.text(fmtParen(deductible), valX, y, { width: valW, align: "right" });
-  y += 20;
+  y += 14;
   drawHLine(doc, y, labelX, valX + valW);
-  y += 8;
+  y += 5;
 
-  doc.font(FONTS.bold, 11);
+  doc.font(FONTS.bold, 10);
   doc.text("Net Claim", labelX, y);
   doc.text(`$${fmt(netClaim)}`, valX, y, { width: valW, align: "right" });
-  y += 35;
+  y += 20;
 
   drawThickLine(doc, y);
-  y += 15;
+  y += 10;
 
-  doc.font(FONTS.normal, 10);
+  doc.font(FONTS.normal, 9);
   doc.text("Total Depreciation", labelX, y);
   doc.text(fmt(totalDep), valX, y, { width: valW, align: "right" });
-  y += 16;
+  y += 12;
   doc.text("Less Non-Recoverable Depreciation", labelX, y);
   doc.text(fmtAngle(nonRecDep), valX, y, { width: valW, align: "right" });
-  y += 20;
+  y += 14;
   drawHLine(doc, y, labelX, valX + valW);
-  y += 8;
+  y += 5;
 
-  doc.font(FONTS.bold, 10);
+  doc.font(FONTS.bold, 9);
   doc.text("Total Recoverable Depreciation", labelX, y);
-  doc.text(fmt(recDep), valX + 20, y, { width: valW - 20, align: "right" });
-  y += 20;
+  doc.text(fmt(recDep), valX + 10, y, { width: valW - 10, align: "right" });
+  y += 14;
 
-  doc.font(FONTS.normal, 10);
+  doc.font(FONTS.normal, 9);
   const netIfRecovered = netClaim + recDep;
   doc.text("Net Claim if Depreciation is Recovered", labelX, y);
-  doc.font(FONTS.bold, 10);
+  doc.font(FONTS.bold, 9);
   doc.text(`$${fmt(netIfRecovered)}`, valX, y, { width: valW, align: "right" });
-  y += 50;
+  y += 30;
 
   if (data.inspectorName) {
-    doc.font(FONTS.bold, 11).fill(COLORS.black);
+    doc.font(FONTS.bold, 10).fill(COLORS.black);
     doc.text(data.inspectorName, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-    y += 16;
-    doc.font(FONTS.normal, 9).fill(COLORS.medGray);
+    y += 12;
+    doc.font(FONTS.normal, 8).fill(COLORS.medGray);
     doc.text("Catastrophe Adjuster", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
   }
 }
@@ -1057,18 +1065,18 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
 function renderRecapOfTaxesAndOP(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   newPage(doc);
   let y = MARGIN;
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Recap of Taxes, Overhead and Profit", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 25;
+  y += 18;
 
   const overheadAmt = Number((data.estimate as any).overheadAmount) || 0;
   const profitAmt = Number((data.estimate as any).profitAmount) || 0;
 
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 7).fill(COLORS.black);
-  doc.text("ITEM", MARGIN + 5, y + 4, { width: 200 });
-  doc.text("AMOUNT", PAGE_WIDTH - MARGIN - 100, y + 4, { width: 95, align: "right" });
-  y += 16;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 12).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 6.5).fill(COLORS.black);
+  doc.text("ITEM", MARGIN + 5, y + 3, { width: 200 });
+  doc.text("AMOUNT", PAGE_WIDTH - MARGIN - 100, y + 3, { width: 95, align: "right" });
+  y += 14;
 
   const rows = [
     ["Material Sales Tax", re.grandTax],
@@ -1076,15 +1084,15 @@ function renderRecapOfTaxesAndOP(doc: Doc, data: PDFReportData, re: RoomEstimate
     ["Profit", profitAmt],
   ];
   for (const [label, val] of rows) {
-    doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+    doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
     doc.text(label as string, MARGIN + 5, y, { width: 200 });
     doc.text(fmt(val as number), PAGE_WIDTH - MARGIN - 100, y, { width: 95, align: "right" });
-    y += 14;
+    y += 11;
     drawHLine(doc, y - 2);
   }
 
-  y += 6;
-  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  y += 4;
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
   doc.text("Total", MARGIN + 5, y, { width: 200 });
   doc.text(fmt(re.grandTax + overheadAmt + profitAmt), PAGE_WIDTH - MARGIN - 100, y, { width: 95, align: "right" });
 
@@ -1094,18 +1102,18 @@ function renderRecapOfTaxesAndOP(doc: Doc, data: PDFReportData, re: RoomEstimate
 function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   newPage(doc);
   let y = MARGIN;
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Recap by Room", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 25;
+  y += 18;
 
   const totalRCV = re.grandTotal + re.grandTax;
 
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 7).fill(COLORS.black);
-  doc.text("ROOM", MARGIN + 5, y + 4, { width: 200 });
-  doc.text("RCV", 340, y + 4, { width: 70, align: "right" });
-  doc.text("% OF TOTAL", 415, y + 4, { width: 70, align: "right" });
-  y += 16;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 12).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 6.5).fill(COLORS.black);
+  doc.text("ROOM", MARGIN + 5, y + 3, { width: 200 });
+  doc.text("RCV", 340, y + 3, { width: 70, align: "right" });
+  doc.text("% OF TOTAL", 415, y + 3, { width: 70, align: "right" });
+  y += 14;
 
   const structureGroups = new Map<string, typeof re.rooms>();
   for (const room of re.rooms) {
@@ -1115,36 +1123,36 @@ function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) 
   }
 
   for (const [structure, rooms] of structureGroups) {
-    y = checkPageBreak(doc, 30, y);
-    doc.font(FONTS.bold, 9).fill(COLORS.black);
+    y = checkPageBreak(doc, 24, y);
+    doc.font(FONTS.bold, 8).fill(COLORS.black);
     doc.text(structure, MARGIN + 5, y);
-    y += 14;
+    y += 11;
 
     let structSubtotal = 0;
     for (const room of rooms) {
-      y = checkPageBreak(doc, 14, y);
+      y = checkPageBreak(doc, 11, y);
       const roomRCV = room.subtotal + room.totalTax;
       structSubtotal += roomRCV;
       const pct = totalRCV > 0 ? (roomRCV / totalRCV) * 100 : 0;
 
-      doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
+      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
       doc.text(room.name, MARGIN + 20, y, { width: 200 });
       doc.text(fmt(roomRCV), 340, y, { width: 70, align: "right" });
       doc.text(`${pct.toFixed(1)}%`, 415, y, { width: 70, align: "right" });
-      y += 12;
+      y += 10;
     }
 
     const structPct = totalRCV > 0 ? (structSubtotal / totalRCV) * 100 : 0;
-    doc.font(FONTS.bold, 8).fill(COLORS.black);
+    doc.font(FONTS.bold, 7.5).fill(COLORS.black);
     doc.text(`Subtotal: ${structure}`, MARGIN + 10, y, { width: 200 });
     doc.text(fmt(structSubtotal), 340, y, { width: 70, align: "right" });
     doc.text(`${structPct.toFixed(1)}%`, 415, y, { width: 70, align: "right" });
-    y += 16;
-    drawHLine(doc, y - 4);
+    y += 12;
+    drawHLine(doc, y - 3);
   }
 
-  y += 6;
-  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  y += 4;
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
   doc.text("Grand Total", MARGIN + 5, y, { width: 200 });
   doc.text(fmt(totalRCV), 340, y, { width: 70, align: "right" });
   doc.text("100.0%", 415, y, { width: 70, align: "right" });
@@ -1155,9 +1163,9 @@ function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) 
 function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   newPage(doc);
   let y = MARGIN;
-  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
   doc.text("Recap by Category", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 25;
+  y += 18;
 
   const recap = re.categoryRecap || [];
   if (recap.length === 0) {
@@ -1167,26 +1175,26 @@ function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateDa
     return;
   }
 
-  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
-  doc.font(FONTS.bold, 7).fill(COLORS.black);
-  doc.text("CATEGORY", MARGIN + 5, y + 4, { width: 160 });
-  doc.text("ITEMS", 210, y + 4, { width: 40, align: "right" });
-  doc.text("RCV", 260, y + 4, { width: 70, align: "right" });
-  doc.text("DEPREC.", 340, y + 4, { width: 70, align: "right" });
-  doc.text("ACV", 420, y + 4, { width: 70, align: "right" });
-  y += 16;
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 12).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 6.5).fill(COLORS.black);
+  doc.text("CATEGORY", MARGIN + 5, y + 3, { width: 160 });
+  doc.text("ITEMS", 210, y + 3, { width: 40, align: "right" });
+  doc.text("RCV", 260, y + 3, { width: 70, align: "right" });
+  doc.text("DEPREC.", 340, y + 3, { width: 70, align: "right" });
+  doc.text("ACV", 420, y + 3, { width: 70, align: "right" });
+  y += 14;
 
   let totalItems = 0, totalRCV = 0, totalDep = 0, totalACV = 0;
 
   for (const cat of recap) {
-    y = checkPageBreak(doc, 14, y);
-    doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
+    y = checkPageBreak(doc, 11, y);
+    doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
     doc.text(cat.category.toUpperCase(), MARGIN + 5, y, { width: 160 });
     doc.text(String(cat.itemCount), 210, y, { width: 40, align: "right" });
     doc.text(fmt(cat.rcv), 260, y, { width: 70, align: "right" });
     doc.text(fmt(cat.depreciation), 340, y, { width: 70, align: "right" });
     doc.text(fmt(cat.acv), 420, y, { width: 70, align: "right" });
-    y += 12;
+    y += 10;
     drawHLine(doc, y - 2);
 
     totalItems += cat.itemCount;
@@ -1195,10 +1203,10 @@ function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateDa
     totalACV += cat.acv;
   }
 
-  y += 6;
+  y += 4;
   drawThickLine(doc, y);
-  y += 6;
-  doc.font(FONTS.bold, 8).fill(COLORS.black);
+  y += 4;
+  doc.font(FONTS.bold, 7.5).fill(COLORS.black);
   doc.text("TOTAL", MARGIN + 5, y, { width: 160 });
   doc.text(String(totalItems), 210, y, { width: 40, align: "right" });
   doc.text(fmt(totalRCV), 260, y, { width: 70, align: "right" });
