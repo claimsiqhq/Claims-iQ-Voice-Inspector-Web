@@ -239,14 +239,10 @@ export async function generateInspectionPDF(data: PDFReportData): Promise<Buffer
       newPage(doc);
       renderEstimateRecapPage(doc, data, re);
       renderLineItemPages(doc, data, re);
-      newPage(doc);
       renderGrandTotalAreasPage(doc, re);
-      newPage(doc);
       renderSettlementSummaryPage(doc, data, re);
-      newPage(doc);
       renderRecapOfTaxesAndOP(doc, data, re);
       renderRecapByRoom(doc, data, re);
-      newPage(doc);
       renderRecapByCategory(doc, data, re);
     } else {
       renderLegacyCoverPage(doc, data);
@@ -822,6 +818,7 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
 }
 
 function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
+  newPage(doc);
   let y = MARGIN;
   doc.font(FONTS.bold, 13).fill(COLORS.black);
   doc.text("Grand Total Areas", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
@@ -908,6 +905,7 @@ function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
 }
 
 function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  newPage(doc);
   let y = MARGIN;
   const br = data.briefing;
 
@@ -1057,6 +1055,7 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
 }
 
 function renderRecapOfTaxesAndOP(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  newPage(doc);
   let y = MARGIN;
   doc.font(FONTS.bold, 13).fill(COLORS.black);
   doc.text("Recap of Taxes, Overhead and Profit", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
@@ -1154,6 +1153,7 @@ function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) 
 }
 
 function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  newPage(doc);
   let y = MARGIN;
   doc.font(FONTS.bold, 13).fill(COLORS.black);
   doc.text("Recap by Category", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
