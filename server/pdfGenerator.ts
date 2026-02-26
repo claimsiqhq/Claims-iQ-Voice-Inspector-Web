@@ -272,6 +272,7 @@ export async function generateInspectionPDF(data: PDFReportData): Promise<Buffer
       renderCoverageRecapPage(doc, data, re);
       renderSettlementSummaryPage(doc, data, re);
       renderRecapOfTaxes(doc, data, re);
+      renderRecapByRoom(doc, data, re);
       renderRecapByCategory(doc, data, re);
     } else {
       renderLegacyCoverPage(doc, data);
@@ -304,6 +305,8 @@ function renderCoverageSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstima
 
   const claim = data.claim;
   let y = MARGIN;
+
+  y = addCompanyHeader(doc, y);
 
   doc.font(FONTS.normal, 9).fill(COLORS.black);
   doc.text(currentDate, MARGIN, y, { width: CONTENT_WIDTH, align: "left" });
@@ -1058,6 +1061,27 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
   y += 8;
 
   doc.font(FONTS.bold, 10);
+  doc.text("Subtotal", labelX, y, { lineBreak: false });
+  doc.text(fmt(subtotal), valX, y, { width: valW, align: "right", lineBreak: false });
+  y += 16;
+
+  if (overheadAmt > 0) {
+    doc.font(FONTS.normal, 10);
+    doc.text("Overhead", labelX, y, { lineBreak: false });
+    doc.text(fmt(overheadAmt), valX, y, { width: valW, align: "right", lineBreak: false });
+    y += 16;
+  }
+
+  if (profitAmt > 0) {
+    doc.font(FONTS.normal, 10);
+    doc.text("Profit", labelX, y, { lineBreak: false });
+    doc.text(fmt(profitAmt), valX, y, { width: valW, align: "right", lineBreak: false });
+    y += 18;
+    drawHLine(doc, y, labelX, valX + valW);
+    y += 8;
+  }
+
+  doc.font(FONTS.bold, 10);
   doc.text("Replacement Cost Value", labelX, y, { lineBreak: false });
   doc.text(`$${fmt(rcv)}`, valX, y, { width: valW, align: "right", lineBreak: false });
   y += 16;
@@ -1160,6 +1184,137 @@ function renderRecapOfTaxes(doc: Doc, data: PDFReportData, re: RoomEstimateData)
   for (let i = 0; i < taxValues.length; i++) {
     doc.text(fmt(taxValues[i]), startX + i * colW + 2, y, { width: colW - 4, align: "center", lineBreak: false });
   }
+  y += 30;
+
+  const overheadAmt = Number((data.estimate as any).overheadAmount) || 0;
+  const profitAmt = Number((data.estimate as any).profitAmount) || 0;
+  if (overheadAmt > 0 || profitAmt > 0) {
+    y = checkPageBreak(doc, 120, y);
+    if (y === MARGIN) {
+      y = addCompanyHeader(doc, y);
+    }
+    doc.font(FONTS.bold, 13).fill(COLORS.black);
+    doc.text("Overhead and Profit", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
+    y += 25;
+
+    const opLabelX = MARGIN;
+    const opValX = MARGIN + 200;
+    const opValW = 100;
+
+    doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+    doc.font(FONTS.bold, 8).fill(COLORS.black);
+    doc.text("Type", opLabelX + 5, y + 3, { width: 190, lineBreak: false });
+    doc.text("Amount", opValX, y + 3, { width: opValW, align: "right", lineBreak: false });
+    y += 18;
+
+    doc.font(FONTS.normal, 9).fill(COLORS.black);
+    doc.text("Overhead", opLabelX + 5, y, { lineBreak: false });
+    doc.text(fmt(overheadAmt), opValX, y, { width: opValW, align: "right", lineBreak: false });
+    y += 14;
+
+    doc.text("Profit", opLabelX + 5, y, { lineBreak: false });
+    doc.text(fmt(profitAmt), opValX, y, { width: opValW, align: "right", lineBreak: false });
+    y += 14;
+
+    drawHLine(doc, y);
+    y += 6;
+    doc.font(FONTS.bold, 9).fill(COLORS.black);
+    doc.text("Total O&P", opLabelX + 5, y, { lineBreak: false });
+    doc.text(fmt(overheadAmt + profitAmt), opValX, y, { width: opValW, align: "right", lineBreak: false });
+  }
+}
+
+function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  newPage(doc);
+  let y = MARGIN;
+  y = addCompanyHeader(doc, y);
+
+  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.text("Recap by Room", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
+  y += 25;
+
+  const nameLabelX = MARGIN;
+  const nameW = 280;
+  const rcvX = 310;
+  const rcvW = 80;
+  const pctX = 400;
+  const pctW = 60;
+  const acvX = 465;
+  const acvW = 75;
+
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
+  doc.text("Room", nameLabelX + 5, y + 3, { width: nameW, lineBreak: false });
+  doc.text("RCV", rcvX, y + 3, { width: rcvW, align: "right", lineBreak: false });
+  doc.text("% of Total", pctX, y + 3, { width: pctW, align: "right", lineBreak: false });
+  doc.text("ACV", acvX, y + 3, { width: acvW, align: "right", lineBreak: false });
+  y += 18;
+
+  const totalRCV = re.grandTotal + re.grandTax;
+
+  const structureGroups: Record<string, RoomEstimate[]> = {};
+  for (const room of re.rooms) {
+    const key = room.structure || "Dwelling";
+    if (!structureGroups[key]) structureGroups[key] = [];
+    structureGroups[key].push(room);
+  }
+
+  for (const [structure, rooms] of Object.entries(structureGroups)) {
+    y = checkPageBreak(doc, 20, y);
+    if (y === MARGIN) {
+      y = addCompanyHeader(doc, y);
+      doc.font(FONTS.bold, 10).fill(COLORS.black);
+      doc.text("Recap by Room (continued)", MARGIN, y, { width: CONTENT_WIDTH, align: "center", lineBreak: false });
+      y += 18;
+    }
+    doc.font(FONTS.bold, 9).fill(COLORS.black);
+    doc.text(structure, nameLabelX + 5, y, { width: nameW, lineBreak: false });
+    y += 14;
+
+    let structRCV = 0;
+    let structACV = 0;
+
+    for (const room of rooms) {
+      if (room.items.length === 0) continue;
+      y = checkPageBreak(doc, 14, y);
+      if (y === MARGIN) {
+        y = addCompanyHeader(doc, y);
+      }
+      const roomRCV = room.subtotal + room.totalTax;
+      const roomACV = roomRCV - room.totalDepreciation;
+      const pct = totalRCV > 0 ? (roomRCV / totalRCV) * 100 : 0;
+
+      doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
+      doc.text(`  ${room.name}`, nameLabelX + 15, y, { width: nameW - 15, lineBreak: false });
+      doc.text(fmt(roomRCV), rcvX, y, { width: rcvW, align: "right", lineBreak: false });
+      doc.text(`${pct.toFixed(2)}%`, pctX, y, { width: pctW, align: "right", lineBreak: false });
+      doc.text(fmt(roomACV), acvX, y, { width: acvW, align: "right", lineBreak: false });
+      y += 13;
+
+      structRCV += roomRCV;
+      structACV += roomACV;
+    }
+
+    y = checkPageBreak(doc, 14, y);
+    drawHLine(doc, y, nameLabelX + 5, acvX + acvW);
+    y += 4;
+    const structPct = totalRCV > 0 ? (structRCV / totalRCV) * 100 : 0;
+    doc.font(FONTS.bold, 8).fill(COLORS.black);
+    doc.text(`${structure} Subtotal`, nameLabelX + 5, y, { width: nameW, lineBreak: false });
+    doc.text(fmt(structRCV), rcvX, y, { width: rcvW, align: "right", lineBreak: false });
+    doc.text(`${structPct.toFixed(2)}%`, pctX, y, { width: pctW, align: "right", lineBreak: false });
+    doc.text(fmt(structACV), acvX, y, { width: acvW, align: "right", lineBreak: false });
+    y += 18;
+  }
+
+  drawThickLine(doc, y);
+  y += 8;
+  const totalACV = totalRCV - re.grandDepreciation;
+  doc.font(FONTS.bold, 10).fill(COLORS.black);
+  doc.text("Total", nameLabelX + 5, y, { width: nameW, lineBreak: false });
+  doc.text(fmt(totalRCV), rcvX, y, { width: rcvW, align: "right", lineBreak: false });
+  doc.text("100.00%", pctX, y, { width: pctW, align: "right", lineBreak: false });
+  doc.text(fmt(totalACV), acvX, y, { width: acvW, align: "right", lineBreak: false });
 }
 
 function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateData) {

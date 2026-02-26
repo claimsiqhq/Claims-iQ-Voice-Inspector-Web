@@ -399,7 +399,7 @@ export async function seedCatalog() {
     laborCost: String(prices.labor),
     equipmentCost: String(prices.equipment),
     effectiveDate: today,
-    priceListVersion: "2.0",
+    priceListId: null,
   }));
 
   for (let i = 0; i < priceValues.length; i += BATCH_SIZE) {

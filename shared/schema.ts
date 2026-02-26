@@ -469,6 +469,260 @@ export const supplementalClaims = pgTable("supplemental_claims", {
   approvedAt: timestamp("approved_at"),
 });
 
+// ══════════════════════════════════════════════════════════════
+// Xactimate Price List Schema — PL_DOC v6 (XACTDOC.XML)
+// 21 tables matching the Verisk Xactimate database spec
+// ══════════════════════════════════════════════════════════════
+
+export const xactPlInfo = pgTable("xact_pl_info", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  originalCurrency: integer("original_currency"),
+  sketchTagsVersion: integer("sketch_tags_version"),
+  lcm: integer("lcm"),
+  inspectionTagsVersion: integer("inspection_tags_version"),
+  name: varchar("name", { length: 64 }).notNull(),
+  culture: varchar("culture", { length: 16 }).notNull(),
+  description: text("description"),
+  readOnly: boolean("read_only").notNull().default(true),
+  stamp: varchar("stamp", { length: 32 }),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  currency: integer("currency").notNull().default(1),
+  version: integer("version").notNull(),
+});
+
+export const xactCategory = pgTable("xact_category", {
+  catId: integer("cat_id").primaryKey(),
+  id: integer("id").unique().notNull(),
+  code: varchar("code", { length: 16 }).unique().notNull(),
+  cv: integer("cv"),
+  description: text("description"),
+  labDist: integer("lab_dist"),
+  matDist: integer("mat_dist"),
+  op: integer("op"),
+  tax: integer("tax"),
+  noPrefix: boolean("no_prefix").notNull().default(false),
+});
+
+export const xactMinimum = pgTable("xact_minimum", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  op: integer("op"),
+  cat: varchar("cat", { length: 16 }).references(() => xactCategory.code),
+  sel: varchar("sel", { length: 64 }),
+  description: text("description"),
+  tax: integer("tax"),
+  ph: integer("ph"),
+  amount: numeric("amount", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactItem = pgTable("xact_item", {
+  itemId: integer("item_id").primaryKey(),
+  id: integer("id").unique().notNull(),
+  cat: varchar("cat", { length: 16 }).references(() => xactCategory.code),
+  sel: varchar("sel", { length: 64 }),
+  description: text("description"),
+  unit: varchar("unit", { length: 16 }),
+  op: integer("op"),
+  tax: integer("tax"),
+  le: integer("le"),
+  mdp: integer("mdp"),
+  dG: varchar("d_g", { length: 64 }),
+  sc: integer("sc"),
+  sg: integer("sg"),
+  noBsc: integer("no_bsc").notNull().default(0),
+  minId: varchar("min_id", { length: 32 }).references(() => xactMinimum.id),
+  actCode: varchar("act_code", { length: 16 }),
+  tagCol: text("tag_col"),
+  srchFct: integer("srch_fct"),
+  xvAcv: integer("xv_acv").notNull().default(1),
+}, (table) => ({
+  catIdx: index("xact_item_cat_idx").on(table.cat),
+  selIdx: index("xact_item_sel_idx").on(table.sel),
+}));
+
+export const xactAct = pgTable("xact_act", {
+  actId: serial("act_id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => xactItem.itemId),
+  dInc: text("d_inc"),
+  ph: integer("ph"),
+  actType: varchar("act_type", { length: 8 }),
+  aL: text("a_l"),
+  aM: text("a_m"),
+  lcmpId: varchar("lcmp_id", { length: 16 }).references(() => xactLcmp.id),
+  lcmpQty: numeric("lcmp_qty", { precision: 12, scale: 4 }),
+  lcmpFlags: varchar("lcmp_flags", { length: 32 }),
+  cmpId: varchar("cmp_id", { length: 16 }).references(() => xactCmp.id),
+  cmpQty: numeric("cmp_qty", { precision: 12, scale: 4 }),
+}, (table) => ({
+  itemIdIdx: index("xact_act_item_id_idx").on(table.itemId),
+}));
+
+export const xactCmp = pgTable("xact_cmp", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  amt: numeric("amt", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactLcmp = pgTable("xact_lcmp", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  base: numeric("base", { precision: 12, scale: 4 }).notNull(),
+  wcAmt: numeric("wc_amt", { precision: 12, scale: 4 }),
+  wcType: varchar("wc_type", { length: 8 }),
+  markup: numeric("markup", { precision: 12, scale: 4 }),
+  fbAmt: numeric("fb_amt", { precision: 12, scale: 4 }),
+  fbPer: numeric("fb_per", { precision: 12, scale: 4 }),
+});
+
+export const xactEcmp = pgTable("xact_ecmp", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  amt: numeric("amt", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactSpt = pgTable("xact_spt", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactLspt = pgTable("xact_lspt", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+  totalDesc: text("total_desc"),
+  totalRate: numeric("total_rate", { precision: 12, scale: 4 }),
+  restDesc: text("rest_desc"),
+  restRate: numeric("rest_rate", { precision: 12, scale: 4 }),
+});
+
+export const xactEspt = pgTable("xact_espt", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  code: varchar("code", { length: 64 }).unique().notNull(),
+  description: text("description"),
+  rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactJurisdiction = pgTable("xact_jurisdiction", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 64 }).notNull(),
+});
+
+export const xactSalesTax = pgTable("xact_sales_tax", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  type: varchar("type", { length: 64 }).notNull(),
+  base: varchar("base", { length: 64 }),
+  rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+  taxOp: varchar("tax_op", { length: 32 }),
+  exceptionsName: varchar("exceptions_name", { length: 128 }),
+});
+
+export const xactBurdenTax = pgTable("xact_burden_tax", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  type: varchar("type", { length: 64 }).notNull(),
+  rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+});
+
+export const xactPlFee = pgTable("xact_pl_fee", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  calcType: integer("calc_type"),
+  qtyRound: integer("qty_round").notNull().default(0),
+  amount: numeric("amount", { precision: 12, scale: 4 }).notNull(),
+  tagName: varchar("tag_name", { length: 128 }),
+  dontApplyAddons: integer("dont_apply_addons").notNull().default(0),
+  description: text("description"),
+  amountDesc: text("amount_desc"),
+  consumptionDesc: text("consumption_desc"),
+});
+
+export const xactBaseVariable = pgTable("xact_base_variable", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  keyName: varchar("key_name", { length: 64 }).notNull(),
+});
+
+export const xactException = pgTable("xact_exception", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  taxableOp: varchar("taxable_op", { length: 32 }),
+  portionTaxable: varchar("portion_taxable", { length: 32 }),
+  exceptionType: varchar("exception_type", { length: 64 }).notNull(),
+});
+
+export const xactItemTag = pgTable("xact_item_tag", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  value: varchar("value", { length: 64 }).notNull(),
+});
+
+export const xactNote = pgTable("xact_note", {
+  noteId: serial("note_id").primaryKey(),
+  parentType: varchar("parent_type", { length: 32 }).notNull(),
+  parentId: varchar("parent_id", { length: 64 }).notNull(),
+  content: text("content").notNull(),
+}, (table) => ({
+  parentIdx: index("xact_note_parent_idx").on(table.parentType, table.parentId),
+}));
+
+export const xactDescriptionText = pgTable("xact_description_text", {
+  descId: serial("desc_id").primaryKey(),
+  parentType: varchar("parent_type", { length: 32 }).notNull(),
+  parentId: varchar("parent_id", { length: 64 }).notNull(),
+  content: text("content").notNull(),
+}, (table) => ({
+  parentIdx: index("xact_desc_text_parent_idx").on(table.parentType, table.parentId),
+}));
+
+export const xactTranslation = pgTable("xact_translation", {
+  translationId: serial("translation_id").primaryKey(),
+  parentType: varchar("parent_type", { length: 32 }).notNull(),
+  parentId: varchar("parent_id", { length: 64 }).notNull(),
+  langCode: varchar("lang_code", { length: 16 }).notNull(),
+  value: text("value").notNull(),
+}, (table) => ({
+  parentIdx: index("xact_translation_parent_idx").on(table.parentType, table.parentId),
+  langIdx: index("xact_translation_lang_idx").on(table.langCode),
+}));
+
+export const xactItemItemTag = pgTable("xact_item_item_tag", {
+  itemId: integer("item_id").notNull().references(() => xactItem.itemId),
+  itemTagId: varchar("item_tag_id", { length: 128 }).notNull().references(() => xactItemTag.id),
+}, (table) => ({
+  itemIdx: index("xact_item_item_tag_item_idx").on(table.itemId),
+  tagIdx: index("xact_item_item_tag_tag_idx").on(table.itemTagId),
+}));
+
+// ══════════════════════════════════════════════════════════════
+// Xactimate type exports
+// ══════════════════════════════════════════════════════════════
+export type XactPlInfo = typeof xactPlInfo.$inferSelect;
+export type XactCategory = typeof xactCategory.$inferSelect;
+export type XactMinimum = typeof xactMinimum.$inferSelect;
+export type XactItem = typeof xactItem.$inferSelect;
+export type XactAct = typeof xactAct.$inferSelect;
+export type XactCmp = typeof xactCmp.$inferSelect;
+export type XactLcmp = typeof xactLcmp.$inferSelect;
+export type XactEcmp = typeof xactEcmp.$inferSelect;
+export type XactSpt = typeof xactSpt.$inferSelect;
+export type XactLspt = typeof xactLspt.$inferSelect;
+export type XactEspt = typeof xactEspt.$inferSelect;
+export type XactJurisdiction = typeof xactJurisdiction.$inferSelect;
+export type XactSalesTax = typeof xactSalesTax.$inferSelect;
+export type XactBurdenTax = typeof xactBurdenTax.$inferSelect;
+export type XactPlFee = typeof xactPlFee.$inferSelect;
+export type XactBaseVariable = typeof xactBaseVariable.$inferSelect;
+export type XactException = typeof xactException.$inferSelect;
+export type XactItemTag = typeof xactItemTag.$inferSelect;
+export type XactNote = typeof xactNote.$inferSelect;
+export type XactDescriptionText = typeof xactDescriptionText.$inferSelect;
+export type XactTranslation = typeof xactTranslation.$inferSelect;
+
+// ══════════════════════════════════════════════════════════════
+// Application-Level Catalog & Pricing
+// ══════════════════════════════════════════════════════════════
+
 export const scopeLineItems = pgTable("scope_line_items", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 30 }).notNull().unique(),
@@ -481,34 +735,23 @@ export const scopeLineItems = pgTable("scope_line_items", {
   coverageType: varchar("coverage_type", { length: 1 }).default("A"),
   scopeConditions: jsonb("scope_conditions"),
   companionRules: jsonb("companion_rules"),
-  xactCategoryCode: varchar("xact_category_code", { length: 10 }),
-  xactSelector: varchar("xact_selector", { length: 20 }),
-  xactItemId: varchar("xact_item_id", { length: 20 }),
+  xactCategoryCode: varchar("xact_category_code", { length: 16 }),
+  xactSelector: varchar("xact_selector", { length: 64 }),
+  xactItemId: integer("xact_item_id").references(() => xactItem.itemId),
   xactDescription: text("xact_description"),
   xactIncludes: text("xact_includes"),
   xactExcludes: text("xact_excludes"),
   xactQualitySpec: text("xact_quality_spec"),
   xactNotes: text("xact_notes"),
   isTaxable: boolean("is_taxable").default(true),
-  /** Per-item tax rate override (e.g., 7.25). null = use settlement rules default */
   taxRate: real("tax_rate"),
   xactPhase: varchar("xact_phase", { length: 10 }),
-  xactMinimumId: varchar("xact_minimum_id", { length: 10 }),
+  xactMinimumId: varchar("xact_minimum_id", { length: 32 }).references(() => xactMinimum.id),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
   opEligibleDefault: boolean("op_eligible_default").default(true),
   isCodeUpgrade: boolean("is_code_upgrade").default(false),
   isActive: boolean("is_active").default(true),
-});
-
-export const xactPriceLists = pgTable("xact_price_lists", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  xactName: varchar("xact_name", { length: 50 }).notNull().unique(),
-  regionDescription: text("region_description"),
-  effectiveDate: varchar("effective_date", { length: 30 }),
-  xactVersion: integer("xact_version"),
-  itemCount: integer("item_count"),
-  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const regionalPriceSets = pgTable(
@@ -518,12 +761,13 @@ export const regionalPriceSets = pgTable(
     regionId: varchar("region_id", { length: 50 }).notNull(),
     regionName: text("region_name").notNull(),
     lineItemCode: varchar("line_item_code", { length: 30 }).notNull(),
-    materialCost: numeric("material_cost", { precision: 12, scale: 2 }).default("0"),
-    laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).default("0"),
-    equipmentCost: numeric("equipment_cost", { precision: 12, scale: 2 }).default("0"),
+    materialCost: numeric("material_cost", { precision: 12, scale: 4 }).default("0"),
+    laborCost: numeric("labor_cost", { precision: 12, scale: 4 }).default("0"),
+    equipmentCost: numeric("equipment_cost", { precision: 12, scale: 4 }).default("0"),
     effectiveDate: varchar("effective_date", { length: 20 }),
-    priceListVersion: varchar("price_list_version", { length: 20 }),
+    priceListId: varchar("price_list_id", { length: 64 }).references(() => xactPlInfo.id),
     activityType: varchar("activity_type", { length: 20 }),
+    xactItemId: integer("xact_item_id").references(() => xactItem.itemId),
     laborFormula: text("labor_formula"),
     materialFormula: text("material_formula"),
     equipmentFormula: text("equipment_formula"),
@@ -540,7 +784,8 @@ export const scopeTrades = pgTable("scope_trades", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 10 }).notNull().unique(),
   name: varchar("name", { length: 100 }).notNull(),
-  xactCategoryPrefix: varchar("xact_category_prefix", { length: 10 }),
+  xactCatId: integer("xact_cat_id").references(() => xactCategory.catId),
+  xactCategoryPrefix: varchar("xact_category_prefix", { length: 16 }),
   opEligible: boolean("op_eligible").default(true),
   sortOrder: integer("sort_order").default(0),
   isActive: boolean("is_active").default(true),

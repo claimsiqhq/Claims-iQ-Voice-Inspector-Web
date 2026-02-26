@@ -53,6 +53,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Inspection Engine**: `inspection_sessions`, `inspection_flows`.
 - **Structural Hierarchy**: `structures` (e.g., Main Dwelling), `inspection_rooms` (rooms, roof facets, elevations), `room_openings`, `sketch_annotations`.
 - **Observations & Estimating**: `damage_observations`, `line_items`, `scope_line_items`, `scope_items`, `policy_rules`.
+- **Xactimate Price List (PL_DOC v6)**: 22 tables matching the Verisk XACTDOC.XML schema — `xact_pl_info` (price list metadata), `xact_category` (item groupings), `xact_minimum` (minimum charges), `xact_item` (estimating codes), `xact_act` (cost actions), `xact_cmp` (material components), `xact_lcmp` (labor components), `xact_ecmp` (equipment components), `xact_spt`/`xact_lspt`/`xact_espt` (supply parts), `xact_jurisdiction` (tax jurisdictions), `xact_sales_tax` (sales tax rules), `xact_burden_tax` (payroll burden), `xact_pl_fee` (fees), `xact_base_variable` (formula anchors), `xact_exception` (tax exceptions), `xact_item_tag` (classification tags), `xact_note`/`xact_description_text`/`xact_translation` (polymorphic text), `xact_item_item_tag` (junction). `scope_line_items` and `scope_trades` reference these via FK. `regional_price_sets` is a denormalized cache derived from component pricing.
 - **Media & Support**: `inspection_photos`, `standalone_photos`, `voice_transcripts`, `inspection_session_events`, `moisture_readings`, `room_adjacencies`.
 
 ### Voice Inspection System
