@@ -3250,6 +3250,7 @@ IMPORTANT RULES:
       const moisture = await storage.getMoistureReadingsForSession(sessionId);
       const estimate = await storage.getEstimateSummary(sessionId);
       const transcript = exportPrefs.includeTranscriptInExport ? await storage.getTranscript(sessionId) : [];
+      const allOpenings = await storage.getOpeningsForSession(sessionId);
 
       // Import the PDF generator
       const { generateInspectionPDF } = await import("../pdfGenerator");
@@ -3364,6 +3365,17 @@ IMPORTANT RULES:
         const roomTotalRecDep = enrichedItems.filter(i => i.depreciationType === "Recoverable").reduce((s, i) => s + i.depreciationAmount, 0);
         const roomTotalNonRecDep = enrichedItems.filter(i => i.depreciationType === "Non-Recoverable").reduce((s, i) => s + i.depreciationAmount, 0);
 
+        const dims = room?.dimensions as any;
+        const roomOpenings = room ? allOpenings.filter(o => o.roomId === room.id).map(o => ({
+          openingType: o.openingType || "door",
+          widthFt: Number(o.widthFt || o.width) || 3,
+          heightFt: Number(o.heightFt || o.height) || 6.67,
+          opensInto: o.opensInto || "Exterior",
+          goesToFloor: Boolean(o.goesToFloor),
+          quantity: Number(o.quantity) || 1,
+          label: o.label || "",
+        })) : [];
+
         return {
           id: room?.id || -1,
           name: room?.name || "Unassigned",
@@ -3375,6 +3387,9 @@ IMPORTANT RULES:
           totalRecoverableDepreciation: parseFloat(roomTotalRecDep.toFixed(2)),
           totalNonRecoverableDepreciation: parseFloat(roomTotalNonRecDep.toFixed(2)),
           totalACV: parseFloat((roomTotal - roomTotalDep).toFixed(2)),
+          dimensions: dims ? { length: Number(dims.length) || 0, width: Number(dims.width) || 0, height: Number(dims.height) || 0 } : undefined,
+          viewType: room?.viewType || "interior",
+          openings: roomOpenings,
         };
       });
 
@@ -3385,6 +3400,23 @@ IMPORTANT RULES:
       const grandNonRecDepPdf = roomSectionsPdf.reduce((s, r) => s + (r.totalNonRecoverableDepreciation || 0), 0);
       const grandACVPdf = grandTotalPdf - grandDepPdf;
       const estimateExt = estimate as Record<string, unknown> | null;
+
+      const catRecapMap = new Map<string, { itemCount: number; rcv: number; depreciation: number; acv: number }>();
+      for (const roomSec of roomSectionsPdf) {
+        for (const it of roomSec.items) {
+          const cat = it.category || "General";
+          const entry = catRecapMap.get(cat) || { itemCount: 0, rcv: 0, depreciation: 0, acv: 0 };
+          entry.itemCount++;
+          entry.rcv += (it.totalPrice + it.taxAmount);
+          entry.depreciation += it.depreciationAmount;
+          entry.acv += it.acv;
+          catRecapMap.set(cat, entry);
+        }
+      }
+      const categoryRecap = Array.from(catRecapMap.entries()).map(([category, v]) => ({
+        category,
+        ...v,
+      }));
 
       // Build the data object for PDF generation
       const pdfData = {
@@ -3418,6 +3450,7 @@ IMPORTANT RULES:
           grandNonRecoverableDepreciation: parseFloat(grandNonRecDepPdf.toFixed(2)),
           grandACV: parseFloat(grandACVPdf.toFixed(2)),
           totalLineItems: items.length,
+          categoryRecap,
         },
         briefing: briefingData ? {
           coverageSnapshot: (briefingData.coverageSnapshot as any) || {},

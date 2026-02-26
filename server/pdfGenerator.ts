@@ -21,6 +21,16 @@ interface RoomEstimateItem {
   provenance: string | null;
 }
 
+interface RoomOpeningData {
+  openingType: string;
+  widthFt: number;
+  heightFt: number;
+  opensInto: string;
+  goesToFloor: boolean;
+  quantity: number;
+  label: string;
+}
+
 interface RoomEstimate {
   id: number;
   name: string;
@@ -32,6 +42,18 @@ interface RoomEstimate {
   totalRecoverableDepreciation: number;
   totalNonRecoverableDepreciation: number;
   totalACV: number;
+  dimensions?: { length: number; width: number; height: number };
+  viewType?: string;
+  openings?: RoomOpeningData[];
+}
+
+interface CategoryRecapEntry {
+  category: string;
+  itemCount: number;
+  rcv: number;
+  depreciation: number;
+  acv: number;
+  isOP?: boolean;
 }
 
 interface RoomEstimateData {
@@ -43,6 +65,7 @@ interface RoomEstimateData {
   grandNonRecoverableDepreciation: number;
   grandACV: number;
   totalLineItems: number;
+  categoryRecap?: CategoryRecapEntry[];
 }
 
 interface BriefingData {
@@ -217,7 +240,14 @@ export async function generateInspectionPDF(data: PDFReportData): Promise<Buffer
       renderEstimateRecapPage(doc, data, re);
       renderLineItemPages(doc, data, re);
       newPage(doc);
+      renderGrandTotalAreasPage(doc, re);
+      newPage(doc);
       renderSettlementSummaryPage(doc, data, re);
+      newPage(doc);
+      renderRecapOfTaxesAndOP(doc, data, re);
+      renderRecapByRoom(doc, data, re);
+      newPage(doc);
+      renderRecapByCategory(doc, data, re);
     } else {
       renderLegacyCoverPage(doc, data);
       addFooter(doc);
@@ -347,6 +377,10 @@ function renderCoverageSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstima
     doc.font(FONTS.normal, 7).text(` – ${units[i][1]}`, { continued: false });
     ux += uomCol;
   }
+
+  y += 25;
+  doc.font(FONTS.bold, 11).fill(COLORS.black);
+  doc.text("Estimate: Property Damage Repair", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
 }
 
 function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
@@ -357,26 +391,52 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
   const address = claim?.propertyAddress || "";
   const cityStateZip = [claim?.city, claim?.state, claim?.zip].filter(Boolean).join(", ");
   const phone = (claim as any)?.phone || "";
+  const cellPhone = (claim as any)?.cellPhone || phone || "";
+  const email = (claim as any)?.email || "";
+  const businessPhone = (claim as any)?.businessPhone || "";
 
   doc.font(FONTS.bold, 10).fill(COLORS.black).text("Insured:", MARGIN, y);
   doc.font(FONTS.normal, 10).text(insuredName, MARGIN + 80, y);
-  y += 14;
-  if (address) { doc.text(address, MARGIN + 80, y); y += 13; }
-  if (cityStateZip) { doc.text(cityStateZip, MARGIN + 80, y); y += 13; }
 
-  if (phone) {
-    doc.font(FONTS.bold, 10).text("Phone:", 380, MARGIN);
-    doc.font(FONTS.normal, 10).text(phone, 430, MARGIN);
+  const rightContactX = 380;
+  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Cell:", rightContactX, y);
+  doc.font(FONTS.normal, 9).text(cellPhone || "N/A", rightContactX + 90, y);
+  y += 14;
+
+  if (address) {
+    doc.font(FONTS.normal, 10).fill(COLORS.black).text(address, MARGIN + 80, y);
+    doc.font(FONTS.bold, 9).text("E-mail:", rightContactX, y);
+    doc.font(FONTS.normal, 9).text(email || "N/A", rightContactX + 90, y);
+    y += 13;
+  }
+  if (cityStateZip) {
+    doc.font(FONTS.normal, 10).fill(COLORS.black).text(cityStateZip, MARGIN + 80, y);
+    doc.font(FONTS.bold, 9).text("Business Phone:", rightContactX, y);
+    doc.font(FONTS.normal, 9).text(businessPhone || "N/A", rightContactX + 90, y);
+    y += 13;
   }
 
   y += 10;
-  doc.font(FONTS.bold, 10).text("Claim Rep.:", MARGIN, y);
+  doc.font(FONTS.bold, 10).fill(COLORS.black).text("Claim Rep.:", MARGIN, y);
   doc.font(FONTS.normal, 10).text(data.inspectorName || "Inspector", MARGIN + 80, y);
   y += 14;
   doc.font(FONTS.bold, 10).text("Estimator:", MARGIN, y);
   doc.font(FONTS.normal, 10).text(data.inspectorName || "Inspector", MARGIN + 80, y);
-  y += 25;
+  y += 14;
+  doc.font(FONTS.bold, 10).text("Estimator Company:", MARGIN, y);
+  doc.font(FONTS.normal, 10).text(data.companyName || "N/A", MARGIN + 120, y);
+  y += 14;
+  doc.font(FONTS.bold, 10).text("Reference Company:", MARGIN, y);
+  doc.font(FONTS.normal, 10).text(data.companyName || "N/A", MARGIN + 120, y);
+  y += 14;
 
+  if (data.adjusterLicense) {
+    doc.font(FONTS.bold, 10).text("Adjuster License #:", MARGIN, y);
+    doc.font(FONTS.normal, 10).text(data.adjusterLicense, MARGIN + 120, y);
+    y += 14;
+  }
+
+  y += 10;
   drawHLine(doc, y);
   y += 10;
 
@@ -386,11 +446,11 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
 
   doc.font(FONTS.bold, 9).fill(COLORS.black);
   doc.text("Claim Number:", MARGIN, y);
-  doc.font(FONTS.normal, 9).text(claimNum, MARGIN + 90, y);
+  doc.font(FONTS.bold, 9).text(claimNum, MARGIN + 90, y);
   doc.font(FONTS.bold, 9).text("Policy Number:", 230, y);
-  doc.font(FONTS.normal, 9).text(policyNum, 320, y);
+  doc.font(FONTS.bold, 9).text(policyNum, 320, y);
   doc.font(FONTS.bold, 9).text("Type of Loss:", 430, y);
-  doc.font(FONTS.normal, 9).text(lossType, 510, y);
+  doc.font(FONTS.bold, 9).text(lossType, 510, y);
   y += 20;
 
   function extractLimit(val: unknown): number {
@@ -433,16 +493,41 @@ function renderClaimInfoPage(doc: Doc, data: PDFReportData, br?: BriefingData) {
 
   const dateOfLoss = claim?.dateOfLoss || "N/A";
   const dateCompleted = currentDate;
+  const dateContacted = (claim as any)?.dateContacted || "N/A";
+  const dateInspected = (claim as any)?.dateInspected || currentDate;
+  const dateReceived = (claim as any)?.dateReceived || "N/A";
+  const dateEntered = (claim as any)?.dateEntered || "N/A";
 
-  doc.font(FONTS.bold, 9).text("Date of Loss:", MARGIN, y);
-  doc.font(FONTS.normal, 9).text(dateOfLoss, MARGIN + 120, y);
+  const datesLeftX = MARGIN;
+  const datesRightX = PAGE_WIDTH / 2 + 20;
+  const datesLabelW = 130;
+
+  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Date Contacted:", datesLeftX, y);
+  doc.font(FONTS.normal, 9).text(dateContacted, datesLeftX + datesLabelW, y);
+  doc.font(FONTS.bold, 9).text("Date Received:", datesRightX, y);
+  doc.font(FONTS.normal, 9).text(dateReceived, datesRightX + datesLabelW, y);
   y += 14;
-  doc.font(FONTS.bold, 9).text("Date Est. Completed:", MARGIN, y);
-  doc.font(FONTS.normal, 9).text(dateCompleted, MARGIN + 120, y);
+
+  doc.font(FONTS.bold, 9).text("Date of Loss:", datesLeftX, y);
+  doc.font(FONTS.normal, 9).text(dateOfLoss, datesLeftX + datesLabelW, y);
+  doc.font(FONTS.bold, 9).text("Date Entered:", datesRightX, y);
+  doc.font(FONTS.normal, 9).text(dateEntered, datesRightX + datesLabelW, y);
+  y += 14;
+
+  doc.font(FONTS.bold, 9).text("Date Inspected:", datesLeftX, y);
+  doc.font(FONTS.normal, 9).text(dateInspected, datesLeftX + datesLabelW, y);
+  y += 14;
+
+  doc.font(FONTS.bold, 9).text("Date Est. Completed:", datesLeftX, y);
+  doc.font(FONTS.normal, 9).text(dateCompleted, datesLeftX + datesLabelW, y);
   y += 25;
 
   drawHLine(doc, y);
   y += 10;
+
+  doc.font(FONTS.bold, 9).fill(COLORS.black).text("Price List:", MARGIN, y);
+  doc.font(FONTS.normal, 9).text("CLAIMS_IQ_CURRENT", MARGIN + 120, y);
+  y += 20;
 
   doc.font(FONTS.bold, 9).text("Sales Taxes:", MARGIN, y);
   doc.font(FONTS.normal, 9).text("Material Sales Tax", MARGIN + 120, y);
@@ -510,6 +595,103 @@ function renderEstimateRecapPage(doc: Doc, data: PDFReportData, re: RoomEstimate
   doc.text(fmt(totalACV), acvX, y, { width: 60, align: "right" });
 }
 
+function renderRoomDimensionsBlock(doc: Doc, y: number, room: RoomEstimate): number {
+  const dims = room.dimensions;
+  if (!dims || (dims.length === 0 && dims.width === 0)) return y;
+
+  const openingCount = room.openings?.length || 0;
+  const estimatedHeight = 100 + openingCount * 12;
+  y = checkPageBreak(doc, estimatedHeight, y);
+
+  const L = dims.length;
+  const W = dims.width;
+  const H = dims.height || 8;
+  const isRoof = (room.viewType || "").includes("roof");
+
+  const sketchW = 120;
+  const sketchH = 80;
+  const sketchX = MARGIN;
+  const sketchY = y;
+
+  doc.save();
+  doc.rect(sketchX, sketchY, sketchW, sketchH).lineWidth(1).stroke(COLORS.black);
+  doc.font(FONTS.normal, 7).fill(COLORS.medGray);
+  doc.text(`${L.toFixed(1)}'`, sketchX + sketchW / 2 - 10, sketchY + sketchH + 2);
+  doc.text(`${W.toFixed(1)}'`, sketchX + sketchW + 4, sketchY + sketchH / 2 - 5);
+  doc.restore();
+
+  const dimX = sketchX + sketchW + 30;
+  const dimLabelW = 130;
+  const dimValW = 80;
+  let dy = sketchY;
+
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
+
+  if (isRoof) {
+    const surfaceArea = L * W;
+    const squares = surfaceArea / 100;
+    const perim = 2 * (L + W);
+    const dimRows = [
+      ["Surface Area", `${fmt(surfaceArea)} SF`],
+      ["Number of Squares", `${squares.toFixed(2)} SQ`],
+      ["Total Perimeter Length", `${fmt(perim)} LF`],
+    ];
+    for (const [label, val] of dimRows) {
+      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.text(label, dimX, dy, { width: dimLabelW });
+      doc.text(val, dimX + dimLabelW, dy, { width: dimValW, align: "right" });
+      dy += 12;
+    }
+  } else {
+    const sfWalls = 2 * (L + W) * H;
+    const sfCeiling = L * W;
+    const sfFloor = L * W;
+    const syFlooring = sfFloor / 9;
+    const lfFloorPerim = 2 * (L + W);
+    const lfCeilPerim = 2 * (L + W);
+    const dimRows = [
+      ["SF Walls", `${fmt(sfWalls)} SF`],
+      ["SF Ceiling", `${fmt(sfCeiling)} SF`],
+      ["SF Walls & Ceiling", `${fmt(sfWalls + sfCeiling)} SF`],
+      ["SF Floor", `${fmt(sfFloor)} SF`],
+      ["SY Flooring", `${syFlooring.toFixed(2)} SY`],
+      ["LF Floor Perimeter", `${fmt(lfFloorPerim)} LF`],
+      ["LF Ceil. Perimeter", `${fmt(lfCeilPerim)} LF`],
+    ];
+    for (const [label, val] of dimRows) {
+      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.text(label, dimX, dy, { width: dimLabelW });
+      doc.text(val, dimX + dimLabelW, dy, { width: dimValW, align: "right" });
+      dy += 11;
+    }
+  }
+
+  y = Math.max(sketchY + sketchH + 14, dy + 4);
+
+  if (room.openings && room.openings.length > 0) {
+    doc.font(FONTS.bold, 7.5).fill(COLORS.black);
+    doc.text("Openings:", MARGIN, y);
+    y += 10;
+    for (const op of room.openings) {
+      const wFeet = Math.floor(op.widthFt);
+      const wInches = Math.round((op.widthFt - wFeet) * 12);
+      const hFeet = Math.floor(op.heightFt);
+      const hInches = Math.round((op.heightFt - hFeet) * 12);
+      const label = op.label || op.openingType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const sizeStr = `${wFeet}' ${wInches}" X ${hFeet}' ${hInches}"`;
+      const openStr = op.opensInto ? `Opens into ${op.opensInto}` : "";
+      doc.font(FONTS.normal, 7).fill(COLORS.darkGray);
+      doc.text(`${label} ${sizeStr} ${openStr}`, MARGIN + 10, y, { width: CONTENT_WIDTH - 20 });
+      y += 10;
+    }
+  }
+
+  y += 6;
+  drawHLine(doc, y);
+  y += 6;
+  return y;
+}
+
 function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   let lastY = MARGIN + 200;
 
@@ -521,6 +703,8 @@ function renderLineItemPages(doc: Doc, data: PDFReportData, re: RoomEstimateData
     doc.font(FONTS.bold, 12).fill(COLORS.black);
     doc.text(room.name, MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
     y += 20;
+
+    y = renderRoomDimensionsBlock(doc, y, room);
 
     y = drawLineItemHeader(doc, y);
 
@@ -637,13 +821,127 @@ function drawLineItem(doc: Doc, y: number, item: RoomEstimateItem): number {
   return y;
 }
 
+function renderGrandTotalAreasPage(doc: Doc, re: RoomEstimateData) {
+  let y = MARGIN;
+  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.text("Grand Total Areas", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  y += 25;
+
+  let totalSFWalls = 0, totalSFCeiling = 0, totalSFFloor = 0;
+  let totalSYFlooring = 0, totalLFFloorPerim = 0, totalLFCeilPerim = 0;
+  let totalRoofSurface = 0, totalSquares = 0, totalRoofPerim = 0;
+  let hasInterior = false, hasRoof = false;
+
+  for (const room of re.rooms) {
+    const dims = room.dimensions;
+    if (!dims || (dims.length === 0 && dims.width === 0)) continue;
+    const L = dims.length, W = dims.width, H = dims.height || 8;
+    const isRoof = (room.viewType || "").includes("roof");
+
+    if (isRoof) {
+      hasRoof = true;
+      totalRoofSurface += L * W;
+      totalSquares += (L * W) / 100;
+      totalRoofPerim += 2 * (L + W);
+    } else {
+      hasInterior = true;
+      totalSFWalls += 2 * (L + W) * H;
+      totalSFCeiling += L * W;
+      totalSFFloor += L * W;
+      totalSYFlooring += (L * W) / 9;
+      totalLFFloorPerim += 2 * (L + W);
+      totalLFCeilPerim += 2 * (L + W);
+    }
+  }
+
+  const labelX = MARGIN + 20;
+  const valX = PAGE_WIDTH / 2;
+  const valW = 120;
+
+  if (hasInterior) {
+    doc.font(FONTS.bold, 10).fill(COLORS.black);
+    doc.text("Interior Areas", labelX, y);
+    y += 18;
+
+    const rows = [
+      ["Total SF Walls", `${fmt(totalSFWalls)} SF`],
+      ["Total SF Ceiling", `${fmt(totalSFCeiling)} SF`],
+      ["Total SF Walls & Ceiling", `${fmt(totalSFWalls + totalSFCeiling)} SF`],
+      ["Total SF Floor", `${fmt(totalSFFloor)} SF`],
+      ["Total SY Flooring", `${totalSYFlooring.toFixed(2)} SY`],
+      ["Total LF Floor Perimeter", `${fmt(totalLFFloorPerim)} LF`],
+      ["Total LF Ceiling Perimeter", `${fmt(totalLFCeilPerim)} LF`],
+    ];
+    for (const [label, val] of rows) {
+      doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+      doc.text(label, labelX + 10, y, { width: 200 });
+      doc.text(val, valX, y, { width: valW, align: "right" });
+      y += 14;
+    }
+    y += 10;
+  }
+
+  if (hasRoof) {
+    doc.font(FONTS.bold, 10).fill(COLORS.black);
+    doc.text("Roof Areas", labelX, y);
+    y += 18;
+
+    const rows = [
+      ["Total Surface Area", `${fmt(totalRoofSurface)} SF`],
+      ["Total Number of Squares", `${totalSquares.toFixed(2)} SQ`],
+      ["Total Perimeter Length", `${fmt(totalRoofPerim)} LF`],
+    ];
+    for (const [label, val] of rows) {
+      doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+      doc.text(label, labelX + 10, y, { width: 200 });
+      doc.text(val, valX, y, { width: valW, align: "right" });
+      y += 14;
+    }
+  }
+
+  if (!hasInterior && !hasRoof) {
+    doc.font(FONTS.normal, 9).fill(COLORS.medGray);
+    doc.text("No room dimensions recorded for this inspection.", labelX, y);
+  }
+
+  addFooter(doc);
+}
+
 function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
   let y = MARGIN;
   const br = data.briefing;
 
   doc.font(FONTS.bold, 13).fill(COLORS.black);
   doc.text("Summary for Coverage A - Dwelling", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
-  y += 35;
+  y += 30;
+
+  const covBreakdown = data.estimate.coverageBreakdown;
+  if (covBreakdown && Array.isArray(covBreakdown) && covBreakdown.length > 0) {
+    const totalCovRCV = covBreakdown.reduce((s, c) => s + (c.totalRCV || 0), 0);
+    const totalCovACV = covBreakdown.reduce((s, c) => s + (c.totalACV || 0), 0);
+
+    doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+    doc.font(FONTS.bold, 7).fill(COLORS.black);
+    doc.text("COVERAGE", MARGIN + 5, y + 4, { width: 130 });
+    doc.text("ITEM TOTAL", 180, y + 4, { width: 70, align: "right" });
+    doc.text("%", 255, y + 4, { width: 35, align: "right" });
+    doc.text("ACV TOTAL", 295, y + 4, { width: 70, align: "right" });
+    doc.text("%", 370, y + 4, { width: 35, align: "right" });
+    y += 16;
+
+    for (const cov of covBreakdown) {
+      const covRcvPct = totalCovRCV > 0 ? ((cov.totalRCV || 0) / totalCovRCV) * 100 : 0;
+      const covAcvPct = totalCovACV > 0 ? ((cov.totalACV || 0) / totalCovACV) * 100 : 0;
+      doc.font(FONTS.normal, 7.5).fill(COLORS.darkGray);
+      doc.text(cov.coverageType || "Dwelling", MARGIN + 5, y, { width: 130 });
+      doc.text(fmt(cov.totalRCV || 0), 180, y, { width: 70, align: "right" });
+      doc.text(`${covRcvPct.toFixed(1)}%`, 255, y, { width: 35, align: "right" });
+      doc.text(fmt(cov.totalACV || 0), 295, y, { width: 70, align: "right" });
+      doc.text(`${covAcvPct.toFixed(1)}%`, 370, y, { width: 35, align: "right" });
+      y += 12;
+    }
+    y += 10;
+  }
 
   const labelX = MARGIN + 40;
   const valX = PAGE_WIDTH - MARGIN - 100;
@@ -651,7 +949,10 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
 
   const lineItemTotal = re.grandTotal;
   const materialTax = re.grandTax;
-  const rcv = lineItemTotal + materialTax;
+  const overheadAmt = Number((data.estimate as any).overheadAmount) || 0;
+  const profitAmt = Number((data.estimate as any).profitAmount) || 0;
+  const subtotal = lineItemTotal + materialTax;
+  const rcv = subtotal + overheadAmt + profitAmt;
   const totalDep = re.grandDepreciation;
   const acv = rcv - totalDep;
   const deductible = br?.coverageSnapshot?.deductible ?? data.estimate.deductible ?? 0;
@@ -666,9 +967,31 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
 
   doc.text("Material Sales Tax", labelX, y);
   doc.text(fmt(materialTax), valX, y, { width: valW, align: "right" });
-  y += 20;
+  y += 16;
+
   drawHLine(doc, y, labelX, valX + valW);
   y += 8;
+
+  doc.text("Subtotal", labelX, y);
+  doc.text(fmt(subtotal), valX, y, { width: valW, align: "right" });
+  y += 16;
+
+  if (overheadAmt > 0) {
+    doc.text("Overhead", labelX, y);
+    doc.text(fmt(overheadAmt), valX, y, { width: valW, align: "right" });
+    y += 16;
+  }
+
+  if (profitAmt > 0) {
+    doc.text("Profit", labelX, y);
+    doc.text(fmt(profitAmt), valX, y, { width: valW, align: "right" });
+    y += 16;
+  }
+
+  if (overheadAmt > 0 || profitAmt > 0) {
+    drawHLine(doc, y, labelX, valX + valW);
+    y += 8;
+  }
 
   doc.font(FONTS.bold, 10);
   doc.text("Replacement Cost Value", labelX, y);
@@ -731,6 +1054,158 @@ function renderSettlementSummaryPage(doc: Doc, data: PDFReportData, re: RoomEsti
     doc.font(FONTS.normal, 9).fill(COLORS.medGray);
     doc.text("Catastrophe Adjuster", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
   }
+}
+
+function renderRecapOfTaxesAndOP(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  let y = MARGIN;
+  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.text("Recap of Taxes, Overhead and Profit", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  y += 25;
+
+  const overheadAmt = Number((data.estimate as any).overheadAmount) || 0;
+  const profitAmt = Number((data.estimate as any).profitAmount) || 0;
+
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 7).fill(COLORS.black);
+  doc.text("ITEM", MARGIN + 5, y + 4, { width: 200 });
+  doc.text("AMOUNT", PAGE_WIDTH - MARGIN - 100, y + 4, { width: 95, align: "right" });
+  y += 16;
+
+  const rows = [
+    ["Material Sales Tax", re.grandTax],
+    ["Overhead", overheadAmt],
+    ["Profit", profitAmt],
+  ];
+  for (const [label, val] of rows) {
+    doc.font(FONTS.normal, 9).fill(COLORS.darkGray);
+    doc.text(label as string, MARGIN + 5, y, { width: 200 });
+    doc.text(fmt(val as number), PAGE_WIDTH - MARGIN - 100, y, { width: 95, align: "right" });
+    y += 14;
+    drawHLine(doc, y - 2);
+  }
+
+  y += 6;
+  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  doc.text("Total", MARGIN + 5, y, { width: 200 });
+  doc.text(fmt(re.grandTax + overheadAmt + profitAmt), PAGE_WIDTH - MARGIN - 100, y, { width: 95, align: "right" });
+
+  addFooter(doc);
+}
+
+function renderRecapByRoom(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  newPage(doc);
+  let y = MARGIN;
+  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.text("Recap by Room", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  y += 25;
+
+  const totalRCV = re.grandTotal + re.grandTax;
+
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 7).fill(COLORS.black);
+  doc.text("ROOM", MARGIN + 5, y + 4, { width: 200 });
+  doc.text("RCV", 340, y + 4, { width: 70, align: "right" });
+  doc.text("% OF TOTAL", 415, y + 4, { width: 70, align: "right" });
+  y += 16;
+
+  const structureGroups = new Map<string, typeof re.rooms>();
+  for (const room of re.rooms) {
+    const struct = room.structure || "Main Dwelling";
+    if (!structureGroups.has(struct)) structureGroups.set(struct, []);
+    structureGroups.get(struct)!.push(room);
+  }
+
+  for (const [structure, rooms] of structureGroups) {
+    y = checkPageBreak(doc, 30, y);
+    doc.font(FONTS.bold, 9).fill(COLORS.black);
+    doc.text(structure, MARGIN + 5, y);
+    y += 14;
+
+    let structSubtotal = 0;
+    for (const room of rooms) {
+      y = checkPageBreak(doc, 14, y);
+      const roomRCV = room.subtotal + room.totalTax;
+      structSubtotal += roomRCV;
+      const pct = totalRCV > 0 ? (roomRCV / totalRCV) * 100 : 0;
+
+      doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
+      doc.text(room.name, MARGIN + 20, y, { width: 200 });
+      doc.text(fmt(roomRCV), 340, y, { width: 70, align: "right" });
+      doc.text(`${pct.toFixed(1)}%`, 415, y, { width: 70, align: "right" });
+      y += 12;
+    }
+
+    const structPct = totalRCV > 0 ? (structSubtotal / totalRCV) * 100 : 0;
+    doc.font(FONTS.bold, 8).fill(COLORS.black);
+    doc.text(`Subtotal: ${structure}`, MARGIN + 10, y, { width: 200 });
+    doc.text(fmt(structSubtotal), 340, y, { width: 70, align: "right" });
+    doc.text(`${structPct.toFixed(1)}%`, 415, y, { width: 70, align: "right" });
+    y += 16;
+    drawHLine(doc, y - 4);
+  }
+
+  y += 6;
+  doc.font(FONTS.bold, 9).fill(COLORS.black);
+  doc.text("Grand Total", MARGIN + 5, y, { width: 200 });
+  doc.text(fmt(totalRCV), 340, y, { width: 70, align: "right" });
+  doc.text("100.0%", 415, y, { width: 70, align: "right" });
+
+  addFooter(doc);
+}
+
+function renderRecapByCategory(doc: Doc, data: PDFReportData, re: RoomEstimateData) {
+  let y = MARGIN;
+  doc.font(FONTS.bold, 13).fill(COLORS.black);
+  doc.text("Recap by Category", MARGIN, y, { width: CONTENT_WIDTH, align: "center" });
+  y += 25;
+
+  const recap = re.categoryRecap || [];
+  if (recap.length === 0) {
+    doc.font(FONTS.normal, 9).fill(COLORS.medGray);
+    doc.text("No category data available.", MARGIN, y);
+    addFooter(doc);
+    return;
+  }
+
+  doc.rect(MARGIN, y, CONTENT_WIDTH, 14).fill(COLORS.headerBg);
+  doc.font(FONTS.bold, 7).fill(COLORS.black);
+  doc.text("CATEGORY", MARGIN + 5, y + 4, { width: 160 });
+  doc.text("ITEMS", 210, y + 4, { width: 40, align: "right" });
+  doc.text("RCV", 260, y + 4, { width: 70, align: "right" });
+  doc.text("DEPREC.", 340, y + 4, { width: 70, align: "right" });
+  doc.text("ACV", 420, y + 4, { width: 70, align: "right" });
+  y += 16;
+
+  let totalItems = 0, totalRCV = 0, totalDep = 0, totalACV = 0;
+
+  for (const cat of recap) {
+    y = checkPageBreak(doc, 14, y);
+    doc.font(FONTS.normal, 8).fill(COLORS.darkGray);
+    doc.text(cat.category.toUpperCase(), MARGIN + 5, y, { width: 160 });
+    doc.text(String(cat.itemCount), 210, y, { width: 40, align: "right" });
+    doc.text(fmt(cat.rcv), 260, y, { width: 70, align: "right" });
+    doc.text(fmt(cat.depreciation), 340, y, { width: 70, align: "right" });
+    doc.text(fmt(cat.acv), 420, y, { width: 70, align: "right" });
+    y += 12;
+    drawHLine(doc, y - 2);
+
+    totalItems += cat.itemCount;
+    totalRCV += cat.rcv;
+    totalDep += cat.depreciation;
+    totalACV += cat.acv;
+  }
+
+  y += 6;
+  drawThickLine(doc, y);
+  y += 6;
+  doc.font(FONTS.bold, 8).fill(COLORS.black);
+  doc.text("TOTAL", MARGIN + 5, y, { width: 160 });
+  doc.text(String(totalItems), 210, y, { width: 40, align: "right" });
+  doc.text(fmt(totalRCV), 260, y, { width: 70, align: "right" });
+  doc.text(fmt(totalDep), 340, y, { width: 70, align: "right" });
+  doc.text(fmt(totalACV), 420, y, { width: 70, align: "right" });
+
+  addFooter(doc);
 }
 
 function renderLegacyCoverPage(doc: Doc, data: PDFReportData) {
