@@ -1095,11 +1095,19 @@ export default function SketchEditor({
 
   const fitToContent = useCallback(() => {
     if (layouts.length === 0) return;
-    const minX = Math.min(...layouts.map((l) => l.x)) - 40;
-    const minY = Math.min(...layouts.map((l) => l.y)) - 40;
-    const maxX = Math.max(...layouts.map((l) => l.x + l.w)) + 40;
-    const maxY = Math.max(...layouts.map((l) => l.y + l.h)) + 40;
-    setViewBox({ x: minX, y: minY, w: maxX - minX, h: maxY - minY });
+    const PAD = 30;
+    const minX = Math.min(...layouts.map((l) => l.x)) - PAD;
+    const minY = Math.min(...layouts.map((l) => l.y)) - PAD;
+    const maxX = Math.max(...layouts.map((l) => l.x + l.w)) + PAD;
+    const maxY = Math.max(...layouts.map((l) => l.y + l.h)) + PAD;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const scale = 1 / 0.7;
+    const viewW = contentW * scale;
+    const viewH = contentH * scale;
+    const cx = minX + contentW / 2;
+    const cy = minY + contentH / 2;
+    setViewBox({ x: cx - viewW / 2, y: cy - viewH / 2, w: viewW, h: viewH });
   }, [layouts]);
 
   const allOpeningsList = useMemo(() => {
@@ -1324,6 +1332,20 @@ export default function SketchEditor({
       h: (groundY - wallTop + roofH) + 60,
     });
   }, [elevLayout]);
+
+  const hasFittedRef = useRef(false);
+  useEffect(() => {
+    if (viewMode === "interior" && layouts.length > 0 && !hasFittedRef.current) {
+      hasFittedRef.current = true;
+      fitToContent();
+    }
+  }, [layouts, viewMode, fitToContent]);
+
+  useEffect(() => {
+    if (viewMode === "interior" && layouts.length > 0) {
+      fitToContent();
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (viewMode === "elevations" && elevLayout) {
