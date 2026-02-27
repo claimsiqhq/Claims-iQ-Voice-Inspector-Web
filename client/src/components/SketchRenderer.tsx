@@ -451,7 +451,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
               <>
                 {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
                   let hx: number, hy: number;
-                  const hitSz = 12;
+                  const hitSz = 16;
                   if (handle === "n") { hx = x + w / 2; hy = y; }
                   else if (handle === "s") { hx = x + w / 2; hy = y + h; }
                   else if (handle === "e") { hx = x + w; hy = y + h / 2; }
@@ -460,22 +460,25 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                   else if (handle === "ne") { hx = x + w; hy = y; }
                   else if (handle === "sw") { hx = x; hy = y + h; }
                   else { hx = x + w; hy = y + h; }
-                  const half = WALL_THICK / 2;
+                  const isCorner = handle.length === 2;
+                  const visR = isCorner ? 5 : 4;
+                  const cursor = handle === "n" || handle === "s" ? "ns-resize"
+                    : handle === "e" || handle === "w" ? "ew-resize"
+                    : handle === "nw" || handle === "se" ? "nwse-resize" : "nesw-resize";
                   return (
                     <g
                       key={handle}
                       onPointerDown={(e) => { e.stopPropagation(); onHandlePointerDown(roomId, handle, e); }}
-                      style={{ cursor: "pointer", touchAction: "none" }}
+                      style={{ cursor, touchAction: "none" }}
                     >
                       <rect x={hx - hitSz} y={hy - hitSz} width={hitSz * 2} height={hitSz * 2} fill="transparent" />
-                      <rect
-                        x={hx - half}
-                        y={hy - half}
-                        width={WALL_THICK}
-                        height={WALL_THICK}
+                      <circle
+                        cx={hx}
+                        cy={hy}
+                        r={visR}
                         fill={HANDLE_COLOR}
                         stroke="white"
-                        strokeWidth={0.5}
+                        strokeWidth={1}
                         style={{ pointerEvents: "none" }}
                       />
                     </g>

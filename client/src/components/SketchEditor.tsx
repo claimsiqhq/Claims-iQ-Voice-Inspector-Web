@@ -75,7 +75,7 @@ const SCALE = 4;
 const MIN_W = 44;
 const MIN_H = 32;
 const HIT_PADDING = 12;
-const HANDLE_SIZE = 12;
+const HANDLE_SIZE = 16;
 
 function categorizeByStructure(rooms: RoomData[], structureName?: string): RoomData[] {
   if (!structureName) return rooms.filter(r => !r.parentRoomId);
@@ -1421,11 +1421,11 @@ export default function SketchEditor({
           >
             <MousePointer2 className="w-3.5 h-3.5" />
           </button>
-          {!isElevView && (
+          {!isElevView && onAddRoom && (
             <button
-              onClick={() => { setTool("add_room"); setAddRoomPopover(null); setGhostPreview(null); }}
-              className={cn("p-1.5 rounded transition-colors", tool === "add_room" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-              title="Add Room — click canvas to place"
+              onClick={() => onAddRoom()}
+              className={cn("p-1.5 rounded transition-colors text-slate-400 hover:bg-slate-100")}
+              title="Add Room"
               data-testid="tool-add-room"
             >
               <Plus className="w-3.5 h-3.5" />
