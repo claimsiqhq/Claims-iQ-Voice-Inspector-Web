@@ -260,6 +260,7 @@ export default function SketchEditor({
   }, [hierarchyData, structureName, rooms]);
 
   const interiorRooms = useMemo(() => categorizeInterior(structureRooms), [structureRooms]);
+  useEffect(() => { if (dragMode === "none") setDragDimensions({}); }, [structureRooms, dragMode]);
   const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(structureRooms), [structureRooms]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
@@ -1090,7 +1091,6 @@ export default function SketchEditor({
       setDragMode("none");
       setDragRoomId(null);
       setDragOpeningId(null);
-      setDragDimensions({});
     }
   }, [dragMode, dragRoomId, dragDimensions, dragRoomStart, persistRoomDimensions, pushHistory]);
 
