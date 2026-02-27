@@ -451,7 +451,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
               <>
                 {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
                   let hx: number, hy: number;
-                  const hitSz = 16;
+                  const hitSz = 12;
                   if (handle === "n") { hx = x + w / 2; hy = y; }
                   else if (handle === "s") { hx = x + w / 2; hy = y + h; }
                   else if (handle === "e") { hx = x + w; hy = y + h / 2; }
@@ -460,8 +460,6 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                   else if (handle === "ne") { hx = x + w; hy = y; }
                   else if (handle === "sw") { hx = x; hy = y + h; }
                   else { hx = x + w; hy = y + h; }
-                  const isCorner = handle.length === 2;
-                  const visR = isCorner ? 5 : 4;
                   const cursor = handle === "n" || handle === "s" ? "ns-resize"
                     : handle === "e" || handle === "w" ? "ew-resize"
                     : handle === "nw" || handle === "se" ? "nwse-resize" : "nesw-resize";
@@ -475,7 +473,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                       <circle
                         cx={hx}
                         cy={hy}
-                        r={visR}
+                        r={3}
                         fill={HANDLE_COLOR}
                         stroke="white"
                         strokeWidth={1}

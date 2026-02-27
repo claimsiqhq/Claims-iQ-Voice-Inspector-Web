@@ -75,7 +75,7 @@ const SCALE = 4;
 const MIN_W = 44;
 const MIN_H = 32;
 const HIT_PADDING = 12;
-const HANDLE_SIZE = 16;
+const HANDLE_SIZE = 12;
 
 function categorizeByStructure(rooms: RoomData[], structureName?: string): RoomData[] {
   if (!structureName) return rooms.filter(r => !r.parentRoomId);
@@ -148,6 +148,8 @@ export default function SketchEditor({
   const [dragOpeningStart, setDragOpeningStart] = useState(0);
 
   const [dragDimensions, setDragDimensions] = useState<Record<number, { length: number; width: number }>>({});
+  const dragFinishedRef = useRef(false);
+  useEffect(() => { if (dragMode !== "none") dragFinishedRef.current = false; }, [dragMode]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
 
@@ -1073,24 +1075,38 @@ export default function SketchEditor({
     pushHistory,
   ]);
 
+  const finishDrag = useCallback(() => {
+    if (dragFinishedRef.current) return;
+    if (dragMode === "resize" && dragRoomId !== null && dragDimensions[dragRoomId]) {
+      dragFinishedRef.current = true;
+      const d = dragDimensions[dragRoomId];
+      const newL = Math.round(d.length * 10) / 10;
+      const newW = Math.round(d.width * 10) / 10;
+      pushHistory({ type: "resize", roomId: dragRoomId, length: dragRoomStart.length, width: dragRoomStart.width, newLength: newL, newWidth: newW });
+      persistRoomDimensions(dragRoomId, newL, newW);
+    }
+    if (dragMode !== "none") {
+      dragFinishedRef.current = true;
+      setDragMode("none");
+      setDragRoomId(null);
+      setDragOpeningId(null);
+      setDragDimensions({});
+    }
+  }, [dragMode, dragRoomId, dragDimensions, dragRoomStart, persistRoomDimensions, pushHistory]);
+
+  useEffect(() => {
+    if (dragMode === "none") return;
+    const handler = () => finishDrag();
+    window.addEventListener("pointerup", handler);
+    return () => window.removeEventListener("pointerup", handler);
+  }, [dragMode, finishDrag]);
+
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
-      if (dragMode === "resize" && dragRoomId !== null && dragDimensions[dragRoomId]) {
-        const d = dragDimensions[dragRoomId];
-        const newL = Math.round(d.length * 10) / 10;
-        const newW = Math.round(d.width * 10) / 10;
-        pushHistory({ type: "resize", roomId: dragRoomId, length: dragRoomStart.length, width: dragRoomStart.width, newLength: newL, newWidth: newW });
-        persistRoomDimensions(dragRoomId, newL, newW);
-      }
-      if (dragMode !== "none") {
-        setDragMode("none");
-        setDragRoomId(null);
-        setDragOpeningId(null);
-        setDragDimensions({});
-      }
+      finishDrag();
       (e.target as Element)?.releasePointerCapture?.(e.pointerId);
     },
-    [dragMode, dragRoomId, dragDimensions, dragRoomStart, persistRoomDimensions, pushHistory]
+    [finishDrag]
   );
 
   const fitToContent = useCallback(() => {
