@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, ZoomIn, ZoomOut, Maximize2, Move } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut } from "lucide-react";
 
 /* ─── Types ─── */
 
@@ -1326,10 +1326,6 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     });
   }, [svgW, layout.totalHeight]);
 
-  const handleFitView = useCallback(() => {
-    setZoomViewBox(null);
-  }, []);
-
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
     setIsPanning(true);
@@ -1380,14 +1376,11 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
           <div className="flex items-center gap-2">
             {!compact && (
               <div className="flex items-center gap-0.5">
-                <button onClick={handleZoomIn} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom In">
+                <button onClick={handleZoomIn} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom In" data-testid="sketch-zoom-in">
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={handleZoomOut} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom Out">
+                <button onClick={handleZoomOut} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Zoom Out" data-testid="sketch-zoom-out">
                   <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={handleFitView} className="p-1 rounded text-slate-400 hover:bg-slate-100 transition-colors" title="Fit to Content">
-                  <Maximize2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
