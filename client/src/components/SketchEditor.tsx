@@ -251,7 +251,7 @@ export default function SketchEditor({
 
   const structureRooms = useMemo(() => {
     if (hierarchyData?.structures) {
-      const struct = hierarchyData.structures.find(s => s.name === structureName) || hierarchyData.structures[0];
+      const struct = hierarchyData.structures.find(s => s.name === structureName);
       if (struct && struct.rooms.length > 0) return struct.rooms as RoomData[];
     }
     return categorizeByStructure(rooms, structureName);

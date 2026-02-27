@@ -1247,7 +1247,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
   }, [hierarchyData, rooms]);
 
   const currentStructureName = structureNameProp ?? activeStructure ?? structures[0]?.name ?? "Main Dwelling";
-  const currentStructureData = structures.find(s => s.name === currentStructureName) || structures[0];
+  const currentStructureData = structures.find(s => s.name === currentStructureName) || (structureNameProp ? undefined : structures[0]);
   const structureRooms = currentStructureData?.rooms || [];
 
   const categories = useMemo(() => categorizeRooms(structureRooms), [structureRooms]);

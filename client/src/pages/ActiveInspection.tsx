@@ -145,6 +145,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const [currentPhase, setCurrentPhase] = useState(1);
   const [currentStructure, setCurrentStructure] = useState("Main Dwelling");
+  const sessionStructureLoadedRef = useRef(false);
   const [currentArea, setCurrentArea] = useState("");
   const [currentRoomId, setCurrentRoomId] = useState<number | null>(null);
   const [rooms, setRooms] = useState<RoomData[]>([]);
@@ -612,7 +613,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         if (res.ok) {
           const data = await res.json();
           if (data.session?.currentPhase) setCurrentPhase(data.session.currentPhase);
-          if (data.session?.currentStructure) setCurrentStructure(data.session.currentStructure);
+          if (data.session?.currentStructure && !sessionStructureLoadedRef.current) {
+            setCurrentStructure(data.session.currentStructure);
+            sessionStructureLoadedRef.current = true;
+          }
         }
       } catch (e) { logger.error("Voice", "Session load error", e); }
     })();
