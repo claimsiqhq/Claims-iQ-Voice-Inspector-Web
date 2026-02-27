@@ -193,6 +193,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [sketchCollapsed, setSketchCollapsed] = useState(false);
   const [sketchExpanded, setSketchExpanded] = useState(false);
   const [sketchEditMode, setSketchEditMode] = useState(false);
+  const [sketchInitialView, setSketchInitialView] = useState<"interior" | "elevations">("interior");
+  useEffect(() => {
+    if (!sketchEditMode || !currentRoomId) return;
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room) return;
+    const vt = (room.viewType || "").toLowerCase();
+    const rt = (room.roomType || "").toLowerCase();
+    const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
+    setSketchInitialView(isElev ? "elevations" : "interior");
+  }, [currentRoomId, sketchEditMode, rooms]);
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
   const [mobileTranscriptExpanded, setMobileTranscriptExpanded] = useState(false);
@@ -3596,8 +3606,13 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                         setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                       }}
                       onEditRoom={(roomId) => {
+                        const room = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
-                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setCurrentArea(room?.name || "");
+                        const vt = (room?.viewType || "").toLowerCase();
+                        const rt = (room?.roomType || "").toLowerCase();
+                        const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
+                        setSketchInitialView(isElev ? "elevations" : "interior");
                         setSketchExpanded(true);
                         setSketchEditMode(true);
                       }}
@@ -3712,8 +3727,13 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                     }}
                     onEditRoom={(roomId) => {
+                      const room = rooms.find(r => r.id === roomId);
                       setCurrentRoomId(roomId);
-                      setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                      setCurrentArea(room?.name || "");
+                      const vt = (room?.viewType || "").toLowerCase();
+                      const rt = (room?.roomType || "").toLowerCase();
+                      const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
+                      setSketchInitialView(isElev ? "elevations" : "interior");
                       setSketchExpanded(true);
                       setSketchEditMode(true);
                     }}
@@ -3920,7 +3940,14 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       View
                     </button>
                     <button
-                      onClick={() => setSketchEditMode(true)}
+                      onClick={() => {
+                        const room = currentRoomId ? rooms.find(r => r.id === currentRoomId) : null;
+                        const vt = (room?.viewType || "").toLowerCase();
+                        const rt = (room?.roomType || "").toLowerCase();
+                        const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
+                        setSketchInitialView(isElev ? "elevations" : "interior");
+                        setSketchEditMode(true);
+                      }}
                       className={cn("px-3 py-1 rounded-md text-xs font-medium transition-colors",
                         sketchEditMode ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700")}
                       data-testid="button-sketch-edit-mode"
@@ -3957,6 +3984,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   sessionId={sessionId}
                   currentRoomId={currentRoomId}
                   structureName={currentStructure}
+                  initialViewMode={sketchInitialView}
                   onRoomSelect={(roomId) => {
                     setCurrentRoomId(roomId);
                     setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
@@ -3978,8 +4006,13 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                         setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                       }}
                       onEditRoom={(roomId) => {
+                        const room = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
-                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setCurrentArea(room?.name || "");
+                        const vt = (room?.viewType || "").toLowerCase();
+                        const rt = (room?.roomType || "").toLowerCase();
+                        const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
+                        setSketchInitialView(isElev ? "elevations" : "interior");
                         setSketchEditMode(true);
                       }}
                       onAddRoom={() => setShowAddRoom(true)}

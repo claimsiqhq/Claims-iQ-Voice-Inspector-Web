@@ -31,6 +31,7 @@ interface SketchEditorProps {
   sessionId: number;
   currentRoomId: number | null;
   structureName?: string;
+  initialViewMode?: ViewMode;
   onRoomSelect?: (roomId: number) => void;
   onRoomUpdate?: () => void;
   onAddRoom?: () => void;
@@ -39,9 +40,9 @@ interface SketchEditorProps {
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
+type ViewMode = "interior" | "elevations";
 type ToolMode = "select" | "add_room" | "add_door" | "add_window" | "add_damage" | "pan";
 type DragMode = "none" | "pan" | "resize" | "opening_drag";
-type ViewMode = "interior" | "elevations";
 type ElevationSide = "front" | "left" | "right" | "rear";
 const ELEVATION_SIDES: ElevationSide[] = ["front", "left", "right", "rear"];
 const ELEVATION_ROOM_TYPES: Record<ElevationSide, string> = {
@@ -113,6 +114,7 @@ export default function SketchEditor({
   sessionId,
   currentRoomId,
   structureName = "Main Dwelling",
+  initialViewMode,
   onRoomSelect,
   onRoomUpdate,
   onAddRoom,
@@ -124,7 +126,10 @@ export default function SketchEditor({
   const { toast } = useToast();
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("interior");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode || "interior");
+  useEffect(() => {
+    if (initialViewMode) setViewMode(initialViewMode);
+  }, [initialViewMode]);
   const [activeElevation, setActiveElevation] = useState<ElevationSide>("front");
   const [tool, setTool] = useState<ToolMode>("select");
   const [viewBox, setViewBox] = useState({ x: -20, y: -20, w: 520, h: 400 });
