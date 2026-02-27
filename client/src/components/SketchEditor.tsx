@@ -1416,7 +1416,7 @@ export default function SketchEditor({
           <button
             onClick={() => setTool("select")}
             className={cn("p-1.5 rounded transition-colors", tool === "select" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Select"
+            title="Select / Move rooms"
             data-testid="tool-select"
           >
             <MousePointer2 className="w-3.5 h-3.5" />
@@ -1425,7 +1425,7 @@ export default function SketchEditor({
             <button
               onClick={() => { setTool("add_room"); setAddRoomPopover(null); setGhostPreview(null); }}
               className={cn("p-1.5 rounded transition-colors", tool === "add_room" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-              title="Add Room"
+              title="Add Room — click canvas to place"
               data-testid="tool-add-room"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -1434,7 +1434,7 @@ export default function SketchEditor({
           <button
             onClick={() => setTool("add_door")}
             className={cn("p-1.5 rounded transition-colors", tool === "add_door" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Add Door"
+            title="Add Door — click a wall to place"
             data-testid="tool-door"
           >
             <DoorOpen className="w-3.5 h-3.5" />
@@ -1442,7 +1442,7 @@ export default function SketchEditor({
           <button
             onClick={() => setTool("add_window")}
             className={cn("p-1.5 rounded transition-colors", tool === "add_window" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Add Window"
+            title="Add Window — click a wall to place"
             data-testid="tool-window"
           >
             <Square className="w-3.5 h-3.5" />
@@ -1471,7 +1471,7 @@ export default function SketchEditor({
             <button
               onClick={() => setTool("add_damage")}
               className={cn("p-1.5 rounded transition-colors", tool === "add_damage" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-              title="Add Damage"
+              title="Add Damage marker — click a room"
               data-testid="tool-damage"
             >
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -1481,7 +1481,7 @@ export default function SketchEditor({
           <button
             onClick={() => setTool("pan")}
             className={cn("p-1.5 rounded transition-colors", tool === "pan" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Pan"
+            title="Pan — drag to scroll the view"
             data-testid="tool-pan"
           >
             <Move className="w-3.5 h-3.5" />
@@ -1510,7 +1510,7 @@ export default function SketchEditor({
           >
             <Redo2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={fitView} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit" data-testid="fit-content">
+          <button onClick={fitView} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit all rooms in view" data-testid="fit-content">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <div className="w-px h-4 bg-slate-200 mx-1" />
