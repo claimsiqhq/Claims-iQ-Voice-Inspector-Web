@@ -1,5 +1,6 @@
 import { storage } from "../../storage";
 import type { GateIssue, GateResult } from "../types";
+import { validateLayout } from "../../layoutValidator";
 
 const dist = (a: any, b: any) => Math.hypot((b.x ?? 0) - (a.x ?? 0), (b.y ?? 0) - (a.y ?? 0));
 
@@ -44,6 +45,19 @@ export async function runSketchGate(sessionId: number): Promise<GateResult> {
       issues.push({ severity: "WARNING", code: "ELEVATION_MISSING_HEIGHT", message: `Elevation ${room.name} has no wall height`, entity: { type: "elevation", id: String(room.id), name: room.name } });
     }
   }
+
+  try {
+    const layoutResult = await validateLayout(sessionId);
+    for (const li of layoutResult.issues) {
+      issues.push({
+        severity: li.severity,
+        code: li.code,
+        message: li.message,
+        entity: li.roomIds?.[0] ? { type: "room", id: String(li.roomIds[0]), name: li.message.split(" ")[0] } : undefined,
+        details: li.details,
+      });
+    }
+  } catch {}
 
   return summarize("sketch", issues);
 }

@@ -45,6 +45,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
     - `estimateEngine.ts`: Manages settlement calculations (RCV, ACV, Depreciation).
     - `depreciationEngine.ts`: Handles depreciation based on life expectancy tables and water damage overrides.
     - `esxGenerator.ts`, `pdfGenerator.ts`, `photoReportGenerator.ts`: Modules for generating various report formats. PDF generator is Xactimate-compliant with cover page, claim info, estimate recap, line items with room sketches/dimensions, Grand Total Areas, Settlement Summary (with O&P and coverage breakdown), and three recap appendix pages (taxes/O&P, by room, by category).
+    - `layoutValidator.ts`: Validates room layout fit — shared wall consistency, BFS placement, area vs dwelling size comparison, gap detection, and orphaned/collided room detection. Integrated into `sketchGate` workflow validator and exposed via `GET /api/inspection/:sessionId/layout/validate`.
     - `weatherService.ts`: Integrates weather data for correlation and fraud detection.
 
 ### Data Model (High-Level)

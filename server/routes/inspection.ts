@@ -2092,6 +2092,18 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.get("/api/inspection/:sessionId/layout/validate", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { validateLayout } = await import("../layoutValidator");
+      const result = await validateLayout(sessionId);
+      res.json(result);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/inspection/:sessionId/scope/validate", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));

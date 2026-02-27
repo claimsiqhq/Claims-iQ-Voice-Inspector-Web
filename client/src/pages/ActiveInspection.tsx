@@ -36,6 +36,7 @@ import ProgressMap from "@/components/ProgressMap";
 import InspectionProgressTracker from "@/components/InspectionProgressTracker";
 import PropertySketch from "@/components/PropertySketch";
 import SketchEditor from "@/components/SketchEditor";
+import LayoutValidationBanner from "@/components/LayoutValidationBanner";
 import RoomEditorPanel, { AddRoomPanel } from "@/components/RoomEditorPanel";
 import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -3944,6 +3945,11 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                 </Button>
               </div>
             </div>
+            {sessionId && (
+              <div className="px-4 pt-2">
+                <LayoutValidationBanner sessionId={sessionId} getAuthHeaders={getAuthHeaders} compact />
+              </div>
+            )}
             <div className="flex-1 overflow-hidden flex items-stretch">
               {sketchEditMode && sessionId ? (
                 <SketchEditor
