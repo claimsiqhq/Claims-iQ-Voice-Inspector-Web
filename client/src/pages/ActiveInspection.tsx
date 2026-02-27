@@ -3107,6 +3107,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
             onClick={() => {
               setCurrentRoomId(room.id);
               setCurrentArea(room.name);
+              setCurrentStructure(room.structure || "Main Dwelling");
               if (isMobile) setMobileLeftOpen(false);
             }}
             className={cn(
@@ -3602,13 +3603,16 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       rooms={rooms}
                       currentRoomId={currentRoomId}
                       onRoomClick={(roomId) => {
+                        const r = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
-                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setCurrentArea(r?.name || "");
+                        setCurrentStructure(r?.structure || "Main Dwelling");
                       }}
                       onEditRoom={(roomId) => {
                         const room = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
                         setCurrentArea(room?.name || "");
+                        setCurrentStructure(room?.structure || "Main Dwelling");
                         const vt = (room?.viewType || "").toLowerCase();
                         const rt = (room?.roomType || "").toLowerCase();
                         const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
@@ -3723,13 +3727,16 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                     rooms={rooms}
                     currentRoomId={currentRoomId}
                     onRoomClick={(roomId) => {
+                      const r = rooms.find(r => r.id === roomId);
                       setCurrentRoomId(roomId);
-                      setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                      setCurrentArea(r?.name || "");
+                      setCurrentStructure(r?.structure || "Main Dwelling");
                     }}
                     onEditRoom={(roomId) => {
                       const room = rooms.find(r => r.id === roomId);
                       setCurrentRoomId(roomId);
                       setCurrentArea(room?.name || "");
+                      setCurrentStructure(room?.structure || "Main Dwelling");
                       const vt = (room?.viewType || "").toLowerCase();
                       const rt = (room?.roomType || "").toLowerCase();
                       const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
@@ -3883,7 +3890,9 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
         currentPhase={currentPhase}
         currentRoomId={currentRoomId}
         onNavigateToRoom={(roomId) => {
+          const r = rooms.find(r => r.id === roomId);
           setCurrentRoomId(roomId);
+          setCurrentStructure(r?.structure || "Main Dwelling");
           setShowProgressMap(false);
         }}
       />
