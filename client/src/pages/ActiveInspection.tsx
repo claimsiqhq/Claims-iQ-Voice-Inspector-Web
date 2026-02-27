@@ -3605,6 +3605,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       sessionId={sessionId}
                       rooms={rooms}
                       currentRoomId={currentRoomId}
+                      structureName={currentStructure}
                       onRoomClick={(roomId) => {
                         const r = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
@@ -3729,6 +3730,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                     sessionId={sessionId}
                     rooms={rooms}
                     currentRoomId={currentRoomId}
+                    structureName={currentStructure}
                     onRoomClick={(roomId) => {
                       const r = rooms.find(r => r.id === roomId);
                       setCurrentRoomId(roomId);
@@ -4015,6 +4017,7 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       sessionId={sessionId}
                       rooms={rooms}
                       currentRoomId={currentRoomId}
+                      structureName={currentStructure}
                       onRoomClick={(roomId) => {
                         const r = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
