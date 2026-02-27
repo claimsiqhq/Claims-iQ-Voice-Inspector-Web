@@ -1147,6 +1147,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
           setCurrentRoomId(openingRoom.id);
           setCurrentArea(openingRoom.name);
+          setCurrentStructure(openingRoom.structure || "Main Dwelling");
 
           const allOpeningsRes = await fetch(`/api/inspection/${sessionId}/rooms/${openingRoom.id}/openings`, { headers: openHeaders });
           const allOpenings = allOpeningsRes.ok ? await allOpeningsRes.json() : [];
@@ -1209,6 +1210,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
           setCurrentRoomId(targetRoom.id);
           setCurrentArea(targetRoom.name);
+          setCurrentStructure(targetRoom.structure || "Main Dwelling");
 
           const patchBody: Record<string, unknown> = {};
           if (args.openingType) patchBody.openingType = args.openingType;
@@ -1265,6 +1267,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           }
           setCurrentRoomId(targetRoom.id);
           setCurrentArea(targetRoom.name);
+          setCurrentStructure(targetRoom.structure || "Main Dwelling");
 
           const openingsRes = await fetch(`/api/inspection/${sessionId}/rooms/${targetRoom.id}/openings`, { headers });
           const openings = openingsRes.ok ? await openingsRes.json() : [];
@@ -3995,8 +3998,10 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                   structureName={currentStructure}
                   initialViewMode={sketchInitialView}
                   onRoomSelect={(roomId) => {
+                    const r = rooms.find(r => r.id === roomId);
                     setCurrentRoomId(roomId);
-                    setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                    setCurrentArea(r?.name || "");
+                    setCurrentStructure(r?.structure || "Main Dwelling");
                   }}
                   onRoomUpdate={() => refreshRooms()}
                   onAddRoom={() => setShowAddRoom(true)}
@@ -4011,13 +4016,16 @@ Say "One moment while I set things up" then immediately call get_inspection_stat
                       rooms={rooms}
                       currentRoomId={currentRoomId}
                       onRoomClick={(roomId) => {
+                        const r = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
-                        setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                        setCurrentArea(r?.name || "");
+                        setCurrentStructure(r?.structure || "Main Dwelling");
                       }}
                       onEditRoom={(roomId) => {
                         const room = rooms.find(r => r.id === roomId);
                         setCurrentRoomId(roomId);
                         setCurrentArea(room?.name || "");
+                        setCurrentStructure(room?.structure || "Main Dwelling");
                         const vt = (room?.viewType || "").toLowerCase();
                         const rt = (room?.roomType || "").toLowerCase();
                         const isElev = vt === "elevation" || rt.startsWith("exterior_elevation_");
