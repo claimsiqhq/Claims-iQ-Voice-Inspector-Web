@@ -4,12 +4,15 @@
 **Feature**: My Day Hub, Route Optimization, SLA Engine, MS365 Calendar Integration
 **Version**: 1.0
 **Date**: March 4, 2026
+**Target Platform**: React Native (iOS/Android)
 
 ---
 
 ## 1. Executive Summary
 
 Transform the insurance adjuster's daily experience from a static claims list into a dynamic, optimized daily workflow hub called **"My Day."** This feature suite adds intelligent route optimization, SLA tracking with urgency scoring, scheduling with calendar integration, and a map-based route view — turning the app into a full end-to-end daily operations platform.
+
+This document describes the reference implementation built in our React web application. The sister React Native app should replicate the same backend services and API contracts, adapting the frontend to native components and navigation patterns.
 
 ---
 
@@ -30,22 +33,29 @@ Transform the insurance adjuster's daily experience from a static claims list in
 
 ```
 Top Header:  [Logo]  [Search]           [🔔 Bell] [⚙ Settings] [Avatar]
-Bottom Nav:  [My Day]  [Claims]  [🎤 Inspect]  [Capture]  [Review]
+Bottom Tab Bar:  [My Day]  [Claims]  [🎤 Inspect]  [Capture]  [Review]
 ```
 
-### 3.2 Route Mapping
+### 3.2 Tab Mapping
 
-| Tab | Route | Page | Notes |
-|-----|-------|------|-------|
-| My Day | `/` | `MyDay.tsx` | New home screen, replaces old Claims list |
-| Claims | `/claims` | `ClaimsList.tsx` | Full claims list, title "All Claims" |
-| Inspect | `/briefing/:id` or `/inspection/:id` | Context-dependent | Prominent center button (mic icon) |
-| Capture | `/capture` | `PhotoLab.tsx` | Photo capture/analysis |
-| Review | `/inspection/:id/review` | Review page | Estimate review/export |
+| Tab | Screen | Notes |
+|-----|--------|-------|
+| My Day | `MyDayScreen` | New home screen, replaces old Claims list |
+| Claims | `ClaimsListScreen` | Full claims list, title "All Claims" |
+| Inspect | `BriefingScreen` or `InspectionScreen` | Prominent center button (mic icon) |
+| Capture | `PhotoLabScreen` | Photo capture/analysis |
+| Review | `ReviewScreen` | Estimate review/export |
 
-### 3.3 Settings Relocation
+### 3.3 React Native Navigation Notes
 
-Move Settings out of bottom nav and into the top header as a gear icon (⚙). Settings page remains at `/settings` but is accessed from the header, not the bottom nav.
+- Use **React Navigation** bottom tab navigator (`@react-navigation/bottom-tabs`)
+- The center "Inspect" tab should use a **custom tab button** — elevated circular button floating above the tab bar (use `tabBarButton` prop with a custom component)
+- Settings is accessed from the top header (gear icon), not from tabs — add it as a stack screen or modal, triggered by a `headerRight` button
+- My Day screen contains an internal **top tab navigator** (`@react-navigation/material-top-tabs`) or a custom segmented control for the 3 sub-tabs: Itinerary | Route Map | Schedule
+
+### 3.4 Settings Relocation
+
+Move Settings out of bottom tabs into the top header as a gear icon. Render via the navigation header's `headerRight` prop. Settings screen remains a stack/modal screen.
 
 ---
 
@@ -119,12 +129,10 @@ Stores OAuth 2.0 tokens for Microsoft 365 Outlook calendar integration.
 
 ### 5.1 Geocoding Service
 
-**File**: `server/geocodingService.ts`
-
-Converts property addresses to latitude/longitude coordinates using the free OpenStreetMap Nominatim API.
+**Purpose**: Converts property addresses to latitude/longitude coordinates using the free OpenStreetMap Nominatim API.
 
 **Key behaviors**:
-- Rate-limited to 1 request per 1.1 seconds (Nominatim policy)
+- Rate-limited to 1 request per 1.1 seconds (Nominatim usage policy)
 - User-Agent header required (e.g., `ClaimsIQ/1.0`)
 - Constructs query from `propertyAddress + city + state + zip`
 - Restricted to US addresses (`countrycodes=us`)
@@ -140,11 +148,11 @@ geocodeAddress(address, city?, state?, zip?) → { latitude, longitude, displayN
 geocodeClaimAddress(claim) → { latitude, longitude } | null
 ```
 
+**Nominatim endpoint**: `https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=1&countrycodes=us`
+
 ### 5.2 SLA Engine
 
-**File**: `server/slaEngine.ts`
-
-Computes urgency scores (0–100) and assigns priority levels and SLA deadlines to claims.
+**Purpose**: Computes urgency scores (0–100) and assigns priority levels and SLA deadlines to claims.
 
 **Urgency Score Calculation**:
 - Base score from peril type (50% weight):
@@ -182,9 +190,7 @@ Deduplication: Checks existing notifications by `claimId:type` key before creati
 
 ### 5.3 Route Optimizer
 
-**File**: `server/routeOptimizer.ts`
-
-Solves the Traveling Salesman Problem (TSP) using a priority-weighted nearest-neighbor heuristic.
+**Purpose**: Solves the Traveling Salesman Problem (TSP) using a priority-weighted nearest-neighbor heuristic.
 
 **Algorithm**:
 1. Filter claims to only those with valid lat/lng coordinates
@@ -192,6 +198,14 @@ Solves the Traveling Salesman Problem (TSP) using a priority-weighted nearest-ne
 3. Start from provided location or highest-priority claim
 4. Greedy nearest-neighbor: at each step, pick the unvisited claim that minimizes `distance / priorityWeight`
 5. Calculate total distance (Haversine formula, Earth radius = 6,371 km) and estimated drive times
+
+**Haversine formula** (for reference):
+```
+dLat = toRad(lat2 - lat1)
+dLon = toRad(lon2 - lon1)
+a = sin(dLat/2)^2 + cos(lat1) * cos(lat2) * sin(dLon/2)^2
+distance = R * 2 * atan2(sqrt(a), sqrt(1-a))    // R = 6371 km
+```
 
 **Drive time estimation**: `distance_km / 50 km/h * 60` (assumes 50 km/h average speed)
 
@@ -203,15 +217,22 @@ interface OptimizedRoute {
   totalDriveTimeMin: number;
   totalDurationMin: number;  // Drive time + sum of inspection durations
 }
+
+interface RouteStop {
+  claimId: number;
+  latitude: number;
+  longitude: number;
+  estimatedDurationMin: number;
+  priority: string;
+  order: number;             // 1-based position in route
+}
 ```
 
 **Additional utility**: `getDriveTimes(claims, startLocation?)` returns per-stop drive time and distance without reordering.
 
 ### 5.4 MS365 Service
 
-**File**: `server/ms365Service.ts`
-
-Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Graph API.
+**Purpose**: Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Graph API.
 
 **Required Environment Variables**:
 | Variable | Description |
@@ -219,14 +240,14 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 | `MS365_CLIENT_ID` | Azure AD application (client) ID |
 | `MS365_CLIENT_SECRET` | Azure AD client secret |
 | `MS365_TENANT_ID` | Azure AD tenant ID (optional, uses `/common` by default) |
-| `MS365_REDIRECT_URI` | OAuth callback URL (auto-detected from REPLIT_DOMAINS if not set) |
+| `MS365_REDIRECT_URI` | OAuth callback URL (auto-detected if not set) |
 
 **OAuth Flow**:
-1. Frontend calls `GET /api/ms365/connect` → receives `authUrl`
-2. User redirected to Microsoft login
-3. Callback at `GET /api/ms365/callback` exchanges code for tokens
+1. Client calls `GET /api/ms365/connect` → receives `authUrl`
+2. User redirected to Microsoft login (in-app browser or system browser)
+3. Callback at `GET /api/ms365/callback` exchanges authorization code for tokens
 4. Tokens stored in `ms365_tokens` table
-5. Auto-refresh: tokens refreshed if < 5 minutes from expiration
+5. Auto-refresh: tokens refreshed automatically if < 5 minutes from expiration
 
 **Required Scopes**: `Calendars.ReadWrite`, `User.Read`, `offline_access`
 
@@ -241,9 +262,11 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 | `getUserProfile` | `GET /me` | Get user display name and email |
 
 **Claim-Calendar Sync**:
-- `syncClaimToCalendar(userId, claimId, subject, start, end, location?)` → creates or updates Outlook event, stores `calendarEventId` on claim
+- `syncClaimToCalendar(userId, claimId, subject, start, end, location?)` → creates or updates Outlook event, stores `calendarEventId` on the claim record
 - `removeClaimFromCalendar(userId, claimId)` → deletes Outlook event, clears `calendarEventId`
-- Events are tagged with category `"Claims IQ"` for easy filtering
+- Events are tagged with category `"Claims IQ"` for easy filtering in Outlook
+
+**React Native OAuth Note**: On mobile, use `react-native-app-auth` or open the authorization URL in a `WebBrowser` (Expo) / `InAppBrowser` and intercept the callback redirect URI using deep linking. The redirect URI should be a custom scheme (e.g., `claimsiq://ms365/callback`) registered in the app, rather than an HTTP callback. The backend should support both HTTP and custom-scheme redirects.
 
 ---
 
@@ -285,7 +308,16 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
       }
     }
   ],
-  "itinerary": { "id": 1, "claimIds": [8, 23, 30, 25, 28], "routeData": {...} },
+  "itinerary": {
+    "id": 1,
+    "claimIds": [8, 23, 30, 25, 28],
+    "routeData": {
+      "stops": [...],
+      "totalDistanceKm": 320,
+      "totalDriveTimeMin": 185,
+      "totalDurationMin": 515
+    }
+  },
   "stats": {
     "totalScheduled": 5,
     "completed": 0,
@@ -296,6 +328,33 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
   },
   "unreadNotifications": 2,
   "ms365": { "connected": false, "email": null }
+}
+```
+
+**`GET /week/:startDate` Response Shape**:
+```json
+{
+  "startDate": "2026-03-02",
+  "days": [
+    {
+      "date": "2026-03-02",
+      "claims": [
+        {
+          "id": 23,
+          "claimNumber": "CLM-2026-56580",
+          "insuredName": "JIMMY DON JEAN",
+          "scheduledTimeSlot": "10:30",
+          "priority": "urgent",
+          "status": "inspecting",
+          "estimatedDurationMin": 90,
+          "propertyAddress": "4019 S BANNANA Dr",
+          "city": "Ozark"
+        }
+      ]
+    },
+    { "date": "2026-03-03", "claims": [] },
+    ...
+  ]
 }
 ```
 
@@ -313,8 +372,31 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 ```json
 {
   "date": "2026-03-04",
-  "startLatitude": 39.0,    // optional: adjuster's current location
-  "startLongitude": -104.0   // optional
+  "startLatitude": 39.0,
+  "startLongitude": -104.0
+}
+```
+The `startLatitude`/`startLongitude` are optional — pass the adjuster's current GPS location from the device for best results.
+
+**`POST /optimize` Response**:
+```json
+{
+  "route": {
+    "stops": [
+      {
+        "claimId": 8,
+        "latitude": 42.9603,
+        "longitude": -90.1301,
+        "estimatedDurationMin": 60,
+        "priority": "high",
+        "order": 1
+      },
+      ...
+    ],
+    "totalDistanceKm": 320.5,
+    "totalDriveTimeMin": 185,
+    "totalDurationMin": 515
+  }
 }
 ```
 
@@ -323,13 +405,14 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 {
   "claimId": 23,
   "date": "2026-03-04",
-  "timeSlot": "10:30",           // optional
-  "priority": "high",            // optional: critical|high|normal|low
-  "estimatedDurationMin": 90     // optional
+  "timeSlot": "10:30",
+  "priority": "high",
+  "estimatedDurationMin": 90
 }
 ```
+All fields except `claimId` and `date` are optional.
 
-**Authorization**: Schedule/unschedule check ownership — only the assigned adjuster, admins, or supervisors can modify scheduling.
+**Authorization**: Schedule/unschedule checks ownership — only the assigned adjuster, admins, or supervisors can modify scheduling.
 
 ### 6.3 MS365 API (`/api/ms365`)
 
@@ -337,7 +420,7 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 |--------|------|------|-------------|
 | `GET` | `/status` | Required | Connection status + configured flag |
 | `GET` | `/connect` | Required | Get OAuth authorization URL |
-| `GET` | `/callback` | None | OAuth callback (redirects to /settings) |
+| `GET` | `/callback` | None | OAuth callback (handles code exchange) |
 | `POST` | `/disconnect` | Required | Remove MS365 tokens |
 | `GET` | `/calendar/events?startDate&endDate` | Required | List calendar events |
 | `POST` | `/calendar/events` | Required | Create calendar event |
@@ -347,18 +430,29 @@ Full Microsoft 365 Outlook Calendar integration via OAuth 2.0 and Microsoft Grap
 | `POST` | `/calendar/sync-claim` | Required | Sync claim → Outlook event |
 | `POST` | `/calendar/unsync-claim` | Required | Remove claim from Outlook |
 
+**`POST /calendar/sync-claim` Request**:
+```json
+{
+  "claimId": 23,
+  "subject": "Inspection: CLM-2026-56580 - JIMMY DON JEAN",
+  "startDateTime": "2026-03-04T10:30:00",
+  "endDateTime": "2026-03-04T12:00:00",
+  "location": "4019 S BANNANA Dr, Ozark, MO"
+}
+```
+
 **OAuth Callback Flow**:
 ```
 GET /api/ms365/connect → { authUrl }
-  ↓ (redirect user)
+  ↓ (open in browser / WebBrowser.openAuthSessionAsync)
 Microsoft Login → authorization code
   ↓
 GET /api/ms365/callback?code=xxx&state=yyy
   ↓ (exchange code for tokens, store in DB)
-Redirect → /settings?ms365_connected=true
+Redirect → /settings?ms365_connected=true  (or deep link back to app)
 ```
 
-**State security**: Random 16-byte hex token with 10-minute expiration, stored server-side in a Map keyed by state value.
+**State security**: Random 16-byte hex token with 10-minute expiration, stored server-side in a Map keyed by state value. Deleted after single use.
 
 ### 6.4 Notifications API (`/api/notifications`)
 
@@ -412,118 +506,195 @@ interface IStorage {
 
 ---
 
-## 8. Frontend Components
+## 8. Frontend Screens (React Native)
 
-### 8.1 My Day Page (`client/src/pages/MyDay.tsx`)
+### 8.1 My Day Screen
 
-The primary hub replacing the old home screen. Contains:
+The primary hub replacing the old home screen. This is a single screen with an internal tab/segment control.
 
-**Context Bar** (always visible at top):
-- Greeting with time-of-day logic (morning/afternoon/evening)
+**Context Bar** (always visible at top, above the sub-tabs):
+- Greeting with time-of-day logic:
+  - Before 12pm → "Good morning"
+  - 12pm–5pm → "Good afternoon"
+  - After 5pm → "Good evening"
 - Current date formatted as "Wednesday, March 4, 2026"
-- Weather placeholder (icon + temp)
-- MS365 connection status badge (green "Connected" / gray "Disconnected")
+- Weather placeholder (icon + temp) — right-aligned
+- MS365 connection status chip (green "Connected" / gray "Disconnected")
 
-**Stats Row** (3 equal-width cards):
+**Stats Row** (3 equal-width cards in a horizontal `FlatList` or `View` with `flexDirection: 'row'`):
 - Claims Today (blue calendar icon + count)
 - Completed (green check icon + count)
-- SLA Warnings (amber alert icon + count of warnings + overdue)
+- SLA Warnings (amber alert icon + count of warnings + overdue combined)
 
-**Sub-Tab Bar**: Three tabs managed by local React state:
-- **Itinerary** (default) — `ListChecks` icon
-- **Route Map** — `Map` icon
-- **Schedule** — `CalendarDays` icon
+**Sub-Tab Selector**: Custom segmented control or `@react-navigation/material-top-tabs`:
+- **Itinerary** (default)
+- **Route Map**
+- **Schedule**
 
-**Data source**: `GET /api/myday/today` via React Query, key `["/api/myday/today"]`
+**Data source**: `GET /api/myday/today` — fetch on mount and pull-to-refresh
 
-### 8.2 Itinerary Tab (inline in MyDay.tsx)
+### 8.2 Itinerary Tab
 
-Timeline-style ordered list of today's claims:
+Timeline-style ordered list of today's claims, rendered as a `FlatList` or `ScrollView`.
 
-- Vertical timeline line on the left
-- Colored dot per claim (red=critical, orange=high, blue=normal, gray=low)
-- Each card shows:
-  - Claim number + priority badge
-  - Insured name
-  - Address with map pin icon
-  - Scheduled time slot (right side)
-  - Estimated duration
-  - SLA countdown ("23h remaining" or "OVERDUE" in red)
-- "Optimize Route" button at top triggers `POST /api/itinerary/optimize`
-- Empty state: centered illustration with "No claims scheduled" message
-- Loading state: 3 pulsing skeleton rectangles
-- Click card → navigates to `/briefing/:claimId`
+**Visual design**:
+- Vertical timeline line on the left (absolute positioned `View` with 2px width)
+- Colored circle per claim aligned to the timeline:
+  - Red = critical, Orange = high, Blue = normal, Gray = low
+- Each card (pressable) shows:
+  - **Left column**: Claim number + priority badge (colored pill)
+  - **Below**: Insured name
+  - **Below**: Address with map pin icon (truncated)
+  - **Right column**: Scheduled time slot, estimated duration, SLA countdown
+- SLA countdown display:
+  - If overdue → red text "OVERDUE"
+  - Otherwise → gray text "{N}h remaining"
 
-### 8.3 Route Map (`client/src/components/RouteMap.tsx`)
+**Actions**:
+- "Optimize Route" button at top → `POST /api/itinerary/optimize` (pass device GPS from `expo-location` or `react-native-geolocation`)
+- Press card → navigate to Briefing screen for that claim
+- Pull-to-refresh → re-fetch `/api/myday/today`
 
-Interactive map using **Leaflet + react-leaflet** with **OpenStreetMap** tiles (free, no API key needed).
+**States**:
+- Loading: 3 skeleton placeholder rectangles with shimmer animation
+- Empty: Centered calendar icon + "No claims scheduled" + "You have no inspections scheduled for today."
+- Error: "Failed to load today's schedule." with error message
+
+### 8.3 Route Map Tab
+
+Interactive native map showing the day's route.
+
+**React Native Map Libraries** (choose one):
+- `react-native-maps` (recommended) — uses native Apple Maps / Google Maps
+- `react-native-mapbox-gl` — if Mapbox is preferred
+- **Do NOT use Leaflet** — it is a web library and does not work in React Native
 
 **Map features**:
-- Numbered circle markers color-coded by priority
-- Dashed blue polyline connecting stops in route order
-- User's current location (pulsing blue dot) via browser Geolocation API
-- Auto-fit bounds to show all markers + user location
-- Click marker → popup with:
-  - Claim number, insured name, address, scheduled time
-  - "Navigate" link → opens Google Maps directions in new tab
-- "Optimize" button overlaid top-right
+- **Custom numbered markers**: Circular markers color-coded by priority with the stop number (1, 2, 3...) in the center. Use `Marker` with a custom `View` as the child or `calloutView`
+- **Route polyline**: Dashed blue line connecting stops in route order (`Polyline` component with `lineDashPattern`)
+- **User location**: Enable `showsUserLocation` prop on `MapView`
+- **Auto-fit**: Call `mapRef.fitToCoordinates(coordinates, { edgePadding, animated: true })` on data load
 
-**Leaflet icon fix**: Must override default icon URLs for Webpack/Vite compatibility:
-```javascript
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/.../marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/.../marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/.../marker-shadow.png",
-});
+**Marker press behavior**:
+- Show a `Callout` or custom bottom sheet with:
+  - Claim number, insured name, address, scheduled time
+  - "Navigate" button → opens native maps app via `Linking.openURL()`:
+    - iOS: `maps://app?daddr={lat},{lng}`
+    - Android: `google.navigation:q={lat},{lng}`
+    - Cross-platform: `https://www.google.com/maps/dir/?api=1&destination={lat},{lng}`
+  - "View Details" button → navigate to Briefing screen
+
+**"Optimize" button**: Floating action button (absolute positioned, top-right) triggering `POST /api/itinerary/optimize`
+
+**Priority marker colors**:
+```
+critical: #ef4444 (red)
+high:     #f97316 (orange)
+normal:   #3b82f6 (blue)
+low:      #9ca3af (gray)
 ```
 
-**Dependencies**: `leaflet`, `react-leaflet`, `@types/leaflet`
+### 8.4 Schedule Tab
 
-### 8.4 Schedule View (`client/src/components/ScheduleView.tsx`)
+Week-at-a-glance calendar view.
 
-Week-at-a-glance calendar grid.
+**Layout options** (React Native):
+- **Option A**: Horizontal `ScrollView` with 7 day columns (works well on tablets, tight on phones)
+- **Option B**: Single-day view with left/right swipe navigation (better for phone screens)
+- **Option C (recommended for phone)**: Horizontal `FlatList` with day columns, each ~100px wide, scrollable. Show 3-4 days visible at once.
 
-**Layout**: 7 equal columns (Mon–Sun), each column is a day
-**Navigation**: Previous/Next week buttons + "Today" button
-**Data source**: `GET /api/myday/week/:startDate` (Monday of selected week)
+**Navigation**: Previous/Next week buttons (chevron icons) + "Today" button
+**Data source**: `GET /api/myday/week/:startDate` (pass Monday of selected week as `YYYY-MM-DD`)
 
-Each day column:
+**Week range calculation** (Monday-based):
+```javascript
+function getMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+```
+
+**Each day column**:
 - Header: Day label (Mon, Tue, etc.) + short date (Mar 4)
-- Today's column highlighted with blue background
-- Claim cards stacked vertically showing:
-  - Priority color dot
-  - Time slot
+- Today's column highlighted with blue background / blue border
+- Claim cards stacked vertically:
+  - Priority color dot (small circle View)
+  - Time slot text
   - Claim number (truncated)
   - Insured name (truncated at 15 chars)
-- Empty days show "No inspections" text
-- Click card → navigates to `/briefing/:claimId`
+- Empty days show "No inspections" text in muted color
+- Press card → navigate to Briefing screen
 
-### 8.5 Bottom Navigation (`client/src/components/BottomNav.tsx`)
+### 8.5 Bottom Tab Bar
 
-5-tab bottom navigation bar:
+5-tab bottom navigation using `@react-navigation/bottom-tabs`.
 
-| Position | Icon | Label | Route Logic |
-|----------|------|-------|-------------|
-| 1 | `CalendarDays` | My Day | Always `/` |
-| 2 | `List` | Claims | Always `/claims` |
-| 3 (center, prominent) | `Mic` | Inspect | Context-aware: `/inspection/:id` if inspecting, `/briefing/:id` otherwise |
-| 4 | `Camera` | Capture | Always `/capture` |
-| 5 | `ClipboardCheck` | Review | `/inspection/:id/review` |
+| Position | Icon | Label | Screen | Notes |
+|----------|------|-------|--------|-------|
+| 1 | `calendar-check` | My Day | MyDayScreen | Default tab |
+| 2 | `list` | Claims | ClaimsListScreen | |
+| 3 (center) | `microphone` | Inspect | BriefingScreen or InspectionScreen | Custom elevated button |
+| 4 | `camera` | Capture | PhotoLabScreen | |
+| 5 | `clipboard-check` | Review | ReviewScreen | |
 
-**Inspect button**: Elevated circular button (-mt-5 offset), filled background, larger icon. Active claim detected from current URL path or falls back to first claim.
+**Center "Inspect" button implementation**:
+```jsx
+<Tab.Screen
+  name="Inspect"
+  options={{
+    tabBarButton: (props) => (
+      <CustomInspectButton {...props} />
+    ),
+  }}
+/>
+```
+The custom button should be:
+- Elevated above the tab bar (~20px offset with negative `marginTop`)
+- Circular, 56px diameter
+- Filled background (primary brand color, or dark when inactive)
+- Drop shadow for depth
+- Mic icon, white, 24px
 
-**Active state**: Primary color icon + text + small underline indicator bar.
+**Active state**: Primary color fill for icon + text. Active indicator dot or underline beneath label.
+
+**Icon library**: Use `@expo/vector-icons` (Ionicons, MaterialCommunityIcons, Feather) or `react-native-vector-icons`.
 
 ### 8.6 MS365 Settings UI
 
-In the Settings page (`/settings`):
-- MS365 connection card showing:
-  - Status (Connected/Disconnected)
-  - Connected email if available
-  - "Connect to Outlook" button → calls `GET /api/ms365/connect`, redirects to auth URL
-  - "Disconnect" button → calls `POST /api/ms365/disconnect`
-- Query param handling: `?ms365_connected=true` shows success toast, `?ms365_error=...` shows error
+In the Settings screen, add an "Outlook Calendar" card/section:
+
+**When disconnected**:
+- Status text: "Not connected"
+- "Connect to Outlook" button
+- Button action:
+  1. Call `GET /api/ms365/connect` to get the `authUrl`
+  2. Open in system browser: `WebBrowser.openAuthSessionAsync(authUrl, callbackUrl)` (Expo) or `InAppBrowser.open(authUrl)` (bare)
+  3. Handle the redirect callback — extract success/error from the deep link params
+  4. Re-fetch status
+
+**When connected**:
+- Status text: "Connected" (green)
+- Connected email displayed
+- "Disconnect" button → calls `POST /api/ms365/disconnect`, re-fetches status
+
+**React Native OAuth considerations**:
+- Register a deep link scheme (e.g., `claimsiq://`) in your app config
+- Set `MS365_REDIRECT_URI` to `claimsiq://ms365/callback` for the mobile app (or use a separate Azure AD redirect URI for mobile)
+- Alternatively, use a web redirect that your backend handles, then deep-links back to the app after token exchange
+
+### 8.7 Notification Bell (Header)
+
+The bell icon in the top header should show an unread badge count from `unreadNotifications` in the My Day response.
+
+**Implementation**:
+- `headerRight` renders a bell `TouchableOpacity` with an absolute-positioned red badge `View` showing the count
+- Press → navigates to a Notifications screen or opens a bottom sheet listing `GET /api/notifications/persistent`
+- Each notification item: title, message, timestamp, unread indicator dot
+- Swipe or tap to mark read → `PATCH /api/notifications/persistent/:id/read`
+- "Mark all read" action → `POST /api/notifications/persistent/mark-all-read`
 
 ---
 
@@ -531,34 +702,51 @@ In the Settings page (`/settings`):
 
 ### 9.1 Authentication
 
-All new API routes use the `authenticateRequest` middleware. Access the user via `req.user!.id` (never `(req as any).userId`).
+All new API routes require a valid auth token in the `Authorization: Bearer <token>` header.
 
 ### 9.2 Authorization (IDOR Prevention)
 
-- **Schedule/Unschedule**: Verify `claim.assignedTo === req.user.id` OR user role is `admin`/`supervisor`
-- **Notifications mark-read**: Verify notification belongs to `req.user.id`
-- **MS365 operations**: All scoped to `req.user.id` automatically via token lookup
+- **Schedule/Unschedule**: Verify `claim.assignedTo === currentUserId` OR user role is `admin`/`supervisor`
+- **Notifications mark-read**: Verify notification belongs to the current user
+- **MS365 operations**: All scoped to the current user via token lookup
 
 ### 9.3 OAuth State
 
 MS365 OAuth state tokens:
 - 16 random bytes (hex encoded)
 - 10-minute expiration
-- Server-side Map storage (in-memory) — delete after use
+- Server-side Map storage (in-memory) — delete after single use
+- Validate state matches before exchanging code for tokens
+
+### 9.4 Token Storage (React Native)
+
+- Store auth tokens in secure storage (`expo-secure-store` or `react-native-keychain`), never in AsyncStorage
+- MS365 tokens are stored server-side (not on device) — only the app's own auth token is stored on the device
 
 ---
 
 ## 10. Third-Party Dependencies
 
+### Backend (shared with web app):
 | Dependency | Purpose | License | Cost |
 |------------|---------|---------|------|
 | Nominatim (OpenStreetMap) | Geocoding | ODbL | Free (1 req/sec limit) |
-| OpenStreetMap tiles | Map rendering | ODbL | Free |
-| Leaflet + react-leaflet | Map library | BSD-2-Clause | Free |
 | Microsoft Graph API | Calendar CRUD | Commercial | Free with M365 license |
 | Haversine formula | Distance calc | N/A (math) | Free |
 
-**No paid API keys required** for geocoding or maps. MS365 requires an Azure AD app registration (free tier available).
+### React Native (mobile-specific):
+| Dependency | Purpose | Notes |
+|------------|---------|-------|
+| `react-native-maps` | Map rendering | Uses native Apple Maps / Google Maps |
+| `@react-navigation/bottom-tabs` | Bottom tab bar | Standard RN navigation |
+| `@react-navigation/material-top-tabs` | Sub-tab navigation in My Day | Or use custom segmented control |
+| `expo-location` | Device GPS for route optimization | Requires location permission |
+| `expo-web-browser` | OAuth login flow | Opens system browser for MS365 auth |
+| `expo-secure-store` | Secure token storage | Auth token persistence |
+| `expo-linking` | Deep link handling for OAuth callback | |
+| `react-native-reanimated` | Smooth animations | Skeleton loading, transitions |
+
+**No paid API keys required** for geocoding. Maps use the platform's built-in map SDK (Apple Maps on iOS, Google Maps on Android — Google Maps requires an API key for Android). MS365 requires an Azure AD app registration.
 
 ---
 
@@ -570,17 +758,19 @@ To enable MS365 calendar integration:
 2. New registration:
    - Name: "Claims IQ Calendar"
    - Supported account types: "Accounts in any organizational directory"
-   - Redirect URI: `https://your-domain.com/api/ms365/callback`
+   - Redirect URIs — add both:
+     - Web: `https://your-api-domain.com/api/ms365/callback`
+     - Mobile: `claimsiq://ms365/callback` (custom scheme for RN app)
 3. Under "Certificates & secrets" → New client secret → copy value
 4. Under "API permissions" → Add:
    - `Calendars.ReadWrite` (Delegated)
    - `User.Read` (Delegated)
    - `offline_access` (Delegated)
-5. Set environment variables:
+5. Set environment variables on your backend:
    ```
    MS365_CLIENT_ID=<Application (client) ID>
    MS365_CLIENT_SECRET=<Client secret value>
-   MS365_REDIRECT_URI=https://your-domain.com/api/ms365/callback
+   MS365_REDIRECT_URI=https://your-api-domain.com/api/ms365/callback
    ```
 
 ---
@@ -590,7 +780,7 @@ To enable MS365 calendar integration:
 ```
 Wave 1 (Parallel):
   ├── T001: Schema changes (new columns + 3 tables)
-  └── T002: Navigation reorganization (BottomNav, Layout, routing)
+  └── T002: Navigation reorganization (bottom tabs, header, routing)
 
 Wave 2 (Parallel, after T001):
   ├── T003: Geocoding service
@@ -605,7 +795,7 @@ Wave 4 (after T004, T005, T006, T007):
   └── T008: My Day API endpoints
 
 Wave 5 (Parallel, after T002 + T008):
-  ├── T009: My Day UI with Itinerary tab
+  ├── T009: My Day screen with Itinerary tab
   ├── T012: Notification system expansion
   └── T013: MS365 Settings UI
 
@@ -613,6 +803,11 @@ Wave 6 (Parallel, after T009):
   ├── T010: Schedule sub-tab
   └── T011: Route Map sub-tab
 ```
+
+**Notes for React Native team**:
+- Waves 1–4 are identical to the web app if you share the same backend
+- If you share the same backend API, you only need to implement Waves 2, 5, and 6 on the RN side (T002, T009–T013)
+- Wave 2 (navigation) should be done first on RN since it's structurally different from web (React Navigation vs wouter)
 
 ---
 
@@ -627,9 +822,60 @@ After deploying schema changes, existing claims will have null values for all ne
 
 ---
 
-## 14. Wire Protocol Summary
+## 14. Platform-Specific Considerations
 
-For quick reference, here are all new API endpoints in one table:
+### 14.1 Location Permissions (React Native)
+
+The Route Map and Optimize features need the device's GPS location.
+
+**iOS**: Add to `Info.plist`:
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Claims IQ uses your location to optimize inspection routes and show your position on the map.</string>
+```
+
+**Android**: Add to `AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+```
+
+Request permission at runtime before accessing location. Gracefully degrade if denied (hide "Your Location" marker, skip `startLatitude`/`startLongitude` in optimize requests).
+
+### 14.2 Push Notifications (Future Enhancement)
+
+The current implementation uses pull-based notifications (fetched on screen load). A future enhancement could add push notifications for SLA warnings:
+- Use Firebase Cloud Messaging (FCM) for Android
+- Use Apple Push Notification Service (APNs) for iOS
+- Backend triggers push when `generateSlaNotifications` creates a new notification
+
+### 14.3 Offline Support
+
+The web app caches data via React Query. For React Native:
+- Use `@tanstack/react-query` with `persistQueryClient` + `AsyncStorage` adapter for offline caching
+- Show stale data with "Last updated X minutes ago" indicator when offline
+- Queue schedule/unschedule mutations for replay when connectivity returns
+
+### 14.4 Navigation Deep Linking
+
+For "Navigate" functionality on the Route Map, open native maps:
+```javascript
+import { Linking, Platform } from 'react-native';
+
+function openNavigation(lat, lng) {
+  const url = Platform.select({
+    ios: `maps://app?daddr=${lat},${lng}`,
+    android: `google.navigation:q=${lat},${lng}`,
+  });
+  Linking.openURL(url);
+}
+```
+
+---
+
+## 15. Wire Protocol Summary
+
+For quick reference, here are all new API endpoints:
 
 | Method | Endpoint | Request Body / Query | Response |
 |--------|----------|---------------------|----------|
@@ -657,3 +903,24 @@ For quick reference, here are all new API endpoints in one table:
 | `POST` | `/api/notifications/persistent` | `{ type, title, message, claimId? }` | Created notification |
 | `PATCH` | `/api/notifications/persistent/:id/read` | — | Updated notification |
 | `POST` | `/api/notifications/persistent/mark-all-read` | — | `{ updated: n }` |
+
+---
+
+## 16. Design Tokens / Color Reference
+
+For consistent styling across web and React Native:
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| Priority Critical | `#ef4444` | Red badges, dots, markers |
+| Priority High | `#f97316` | Orange badges, dots, markers |
+| Priority Normal | `#3b82f6` | Blue badges, dots, markers |
+| Priority Low | `#9ca3af` | Gray badges, dots, markers |
+| SLA Overdue | `#dc2626` | Red text for overdue labels |
+| Stats Blue BG | `#eff6ff` | Claims Today stat card bg |
+| Stats Green BG | `#f0fdf4` | Completed stat card bg |
+| Stats Amber BG | `#fffbeb` | SLA Warning stat card bg |
+| Today Highlight | `#eff6ff` (bg) / `#bfdbfe` (border) | Schedule view today column |
+| MS365 Connected | `#f0fdf4` (bg) / `#15803d` (text) | Green status chip |
+| MS365 Disconnected | `#f3f4f6` (bg) / `#6b7280` (text) | Gray status chip |
+| Route Polyline | `#3b82f6` | Blue dashed line on map |
