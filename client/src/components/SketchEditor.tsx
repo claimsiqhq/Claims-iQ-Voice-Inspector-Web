@@ -260,7 +260,7 @@ export default function SketchEditor({
   }, [hierarchyData, structureName, rooms]);
 
   const interiorRooms = useMemo(() => categorizeInterior(structureRooms), [structureRooms]);
-  useEffect(() => { if (dragMode === "none") setDragDimensions({}); }, [structureRooms, dragMode]);
+  useEffect(() => { if (dragMode !== "resize") setDragDimensions({}); }, [structureRooms]);
   const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(structureRooms), [structureRooms]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
@@ -545,7 +545,7 @@ export default function SketchEditor({
           body: JSON.stringify({ length, width, height }),
         });
         if (res.ok) {
-          queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+          await queryClient.refetchQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
           onRoomUpdate?.();
           markSaved();
         }
