@@ -711,7 +711,7 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
                     <text x={x + w / 2} y={labelY + 9}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="5.5" fontFamily={MONO} fill="#6B7280">
-                      {dims.length}'\u00D7{dims.width}'
+                      {Math.round(dims.length * 10) / 10}'\u00D7{Math.round(dims.width * 10) / 10}'
                     </text>
                   )}
 
@@ -1161,7 +1161,7 @@ function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClic
               {dims?.length && (
                 <text x={ix + 6} y={iy + itemH / 2 + 6}
                   dominantBaseline="middle" fontSize="4.5" fontFamily={MONO} fill={DIM_COLOR}>
-                  {dims.length}'{dims.width ? ` \u00D7 ${dims.width}'` : " LF"}
+                  {Math.round(dims.length * 10) / 10}'{dims.width ? ` \u00D7 ${Math.round(dims.width * 10) / 10}'` : " LF"}
                 </text>
               )}
               <Badges room={item} x={ix} y={iy} w={itemW} />

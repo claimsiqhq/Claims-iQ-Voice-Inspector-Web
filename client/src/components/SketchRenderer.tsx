@@ -374,7 +374,7 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                 fontFamily={MONO}
                 fill="#6B7280"
               >
-                {dims.length}'×{dims.width}'
+                {Math.round(dims.length * 10) / 10}'×{Math.round(dims.width * 10) / 10}'
               </text>
             )}
 
