@@ -32,8 +32,10 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Styling**: Tailwind CSS v4, shadcn/ui
 - **State Management**: TanStack React Query, wouter for routing, Framer Motion for animations.
 - **Sketching**: SVG-based architectural sketch renderer (`PropertySketch.tsx`, `SketchRenderer.tsx`, `SketchEditor.tsx`).
+- **Maps**: Leaflet + react-leaflet with OpenStreetMap tiles for route visualization.
 - **Media**: Client-side PDF viewing (pdfjs-dist), photo annotation.
 - **Components**: Modular components for UI elements, galleries, editors, and indicators.
+- **Navigation**: Bottom nav = My Day / Claims / Inspect / Capture / Review. Settings in top header gear icon. My Day is a multi-view hub with Itinerary | Route Map | Schedule sub-tabs.
 
 ### Backend
 - **Framework**: Express 5 on Node.js
@@ -47,6 +49,10 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
     - `esxGenerator.ts`, `pdfGenerator.ts`, `photoReportGenerator.ts`: Modules for generating various report formats. PDF generator is Xactimate-compliant with cover page, claim info, estimate recap, line items with room sketches/dimensions, Grand Total Areas, Settlement Summary (with O&P and coverage breakdown), and three recap appendix pages (taxes/O&P, by room, by category).
     - `layoutValidator.ts`: Validates room layout fit — shared wall consistency, BFS placement, area vs dwelling size comparison, gap detection, and orphaned/collided room detection. Integrated into `sketchGate` workflow validator and exposed via `GET /api/inspection/:sessionId/layout/validate`.
     - `weatherService.ts`: Integrates weather data for correlation and fraud detection.
+    - `slaEngine.ts`: SLA deadline calculation, urgency scoring (0-100), priority auto-assignment on claim creation.
+    - `geocodingService.ts`: Nominatim geocoding (address → lat/lng), auto-geocode on claim create, backfill endpoint.
+    - `routeOptimizer.ts`: Nearest-neighbor TSP for route optimization using Haversine distance.
+    - `ms365Service.ts`: Microsoft 365 OAuth 2.0, Graph API calendar CRUD, claim-to-Outlook event sync.
 
 ### Data Model (High-Level)
 - **User Management**: `users`, `user_settings`.
@@ -55,6 +61,8 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Structural Hierarchy**: `structures` (e.g., Main Dwelling), `inspection_rooms` (rooms, roof facets, elevations), `room_openings`, `sketch_annotations`.
 - **Observations & Estimating**: `damage_observations`, `line_items`, `scope_line_items`, `scope_items`, `policy_rules`.
 - **Xactimate Price List (PL_DOC v6)**: 22 tables matching the Verisk XACTDOC.XML schema — `xact_pl_info` (price list metadata), `xact_category` (item groupings), `xact_minimum` (minimum charges), `xact_item` (estimating codes), `xact_act` (cost actions), `xact_cmp` (material components), `xact_lcmp` (labor components), `xact_ecmp` (equipment components), `xact_spt`/`xact_lspt`/`xact_espt` (supply parts), `xact_jurisdiction` (tax jurisdictions), `xact_sales_tax` (sales tax rules), `xact_burden_tax` (payroll burden), `xact_pl_fee` (fees), `xact_base_variable` (formula anchors), `xact_exception` (tax exceptions), `xact_item_tag` (classification tags), `xact_note`/`xact_description_text`/`xact_translation` (polymorphic text), `xact_item_item_tag` (junction). `scope_line_items` and `scope_trades` reference these via FK. `regional_price_sets` is a denormalized cache derived from component pricing.
+- **Daily Workflow**: `daily_itineraries` (ordered claim routes per day), `adjuster_notifications` (persistent SLA/schedule alerts), `ms365_tokens` (Outlook OAuth tokens).
+- **Claims Scheduling**: Claims now have `priority`, `scheduledDate`, `scheduledTimeSlot`, `slaDeadline`, `latitude`, `longitude`, `estimatedDurationMin`, `routeOrder`, `calendarEventId` fields.
 - **Media & Support**: `inspection_photos`, `standalone_photos`, `voice_transcripts`, `inspection_session_events`, `moisture_readings`, `room_adjacencies`.
 
 ### Voice Inspection System

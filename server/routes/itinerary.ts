@@ -15,6 +15,7 @@ const scheduleBodySchema = z.object({
   claimId: z.number().int().positive(),
   date: z.string().min(1),
   timeSlot: z.string().optional(),
+  priority: z.enum(["critical", "high", "normal", "low"]).optional(),
   estimatedDurationMin: z.number().int().positive().optional(),
 });
 
@@ -143,15 +144,19 @@ export function itineraryRouter(): Router {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten().fieldErrors });
       }
 
-      const { claimId, date, timeSlot, estimatedDurationMin } = parsed.data;
+      const { claimId, date, timeSlot, priority, estimatedDurationMin } = parsed.data;
 
       const claim = await storage.getClaim(claimId);
       if (!claim) {
         return res.status(404).json({ message: "Claim not found" });
       }
+      if (claim.assignedTo !== req.user!.id && req.user!.role !== "admin" && req.user!.role !== "supervisor") {
+        return res.status(403).json({ message: "Not authorized to schedule this claim" });
+      }
 
       const updates: Record<string, any> = { scheduledDate: date };
       if (timeSlot) updates.scheduledTimeSlot = timeSlot;
+      if (priority) updates.priority = priority;
       if (estimatedDurationMin) updates.estimatedDurationMin = estimatedDurationMin;
 
       const updated = await storage.updateClaimScheduling(claimId, updates);
@@ -172,6 +177,9 @@ export function itineraryRouter(): Router {
       const claim = await storage.getClaim(claimId);
       if (!claim) {
         return res.status(404).json({ message: "Claim not found" });
+      }
+      if (claim.assignedTo !== req.user!.id && req.user!.role !== "admin" && req.user!.role !== "supervisor") {
+        return res.status(403).json({ message: "Not authorized to unschedule this claim" });
       }
 
       const updated = await storage.updateClaimScheduling(claimId, {

@@ -41,6 +41,8 @@ interface MyDayClaim {
   scheduledTimeSlot: string | null;
   estimatedDurationMin: number | null;
   slaDeadline: string | null;
+  latitude: number | null;
+  longitude: number | null;
   status: string;
   urgency: ClaimUrgency;
 }

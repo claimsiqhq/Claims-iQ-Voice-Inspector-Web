@@ -115,6 +115,9 @@ export function notificationsRouter() {
       if (!updated) {
         return res.status(404).json({ message: "Notification not found" });
       }
+      if (updated.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
       res.json(updated);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);

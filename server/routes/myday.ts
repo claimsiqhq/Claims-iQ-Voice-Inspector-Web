@@ -1,15 +1,15 @@
 import { Router } from "express";
 import { storage } from "../storage";
+import { authenticateRequest } from "../auth";
 import { computeUrgency, generateSlaNotifications, type UrgencyScore } from "../slaEngine";
 import type { Claim } from "@shared/schema";
 
 export function mydayRouter() {
   const router = Router();
 
-  router.get("/today", async (req, res) => {
+  router.get("/today", authenticateRequest, async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = req.user!.id;
 
       const today = new Date().toISOString().split("T")[0];
 
@@ -85,10 +85,9 @@ export function mydayRouter() {
     }
   });
 
-  router.get("/stats", async (req, res) => {
+  router.get("/stats", authenticateRequest, async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = req.user!.id;
 
       const allClaims = await storage.getClaimsForUser(userId);
       const today = new Date().toISOString().split("T")[0];
@@ -125,10 +124,9 @@ export function mydayRouter() {
     }
   });
 
-  router.get("/claims-for-date/:date", async (req, res) => {
+  router.get("/claims-for-date/:date", authenticateRequest, async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = req.user!.id;
 
       const { date } = req.params;
       const claims = await storage.getClaimsForDate(userId, date);
@@ -156,10 +154,9 @@ export function mydayRouter() {
     }
   });
 
-  router.get("/week/:startDate", async (req, res) => {
+  router.get("/week/:startDate", authenticateRequest, async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = req.user!.id;
 
       const { startDate } = req.params;
       const start = new Date(startDate);

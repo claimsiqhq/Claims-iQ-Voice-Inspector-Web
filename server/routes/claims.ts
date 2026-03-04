@@ -12,6 +12,7 @@ import { z } from "zod";
 import { getWeatherCorrelation } from "../weatherService";
 import { initSessionWorkflow } from "../workflow/orchestrator";
 import { geocodeClaimAddress } from "../geocodingService";
+import { applySlaToClaimData } from "../slaEngine";
 
 const createClaimSchema = z.object({
   claimNumber: z.string().min(1).max(50),
