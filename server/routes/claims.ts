@@ -11,6 +11,7 @@ import { logger } from "../logger";
 import { z } from "zod";
 import { getWeatherCorrelation } from "../weatherService";
 import { initSessionWorkflow } from "../workflow/orchestrator";
+import { geocodeClaimAddress } from "../geocodingService";
 
 const createClaimSchema = z.object({
   claimNumber: z.string().min(1).max(50),
@@ -318,9 +319,22 @@ export function claimsRouter(): Router {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid claim data", errors: parsed.error.flatten().fieldErrors });
       }
-      const claimData = { ...parsed.data, assignedTo: req.user?.id ?? null };
+      const claimData = await applySlaToClaimData({ ...parsed.data, assignedTo: req.user?.id ?? null });
       const claim = await storage.createClaim(claimData);
       emit({ type: "claim.created", claimId: claim.id, userId: req.user?.id });
+
+      geocodeClaimAddress(claim).then(async (coords) => {
+        if (coords) {
+          try {
+            await storage.updateClaimLocation(claim.id, coords.latitude, coords.longitude);
+          } catch (e: any) {
+            logger.warn(`Auto-geocode update failed for claim ${claim.id}: ${e.message}`);
+          }
+        }
+      }).catch((e: any) => {
+        logger.warn(`Auto-geocode failed for claim ${claim.id}: ${e.message}`);
+      });
+
       res.status(201).json(claim);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
@@ -988,6 +1002,60 @@ export function claimsRouter(): Router {
         return res.status(502).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to fetch weather data" });
+    }
+  });
+
+  router.post("/geocode/backfill", authenticateRequest, requireRole("admin"), async (req, res) => {
+    try {
+      const allClaims = await storage.getClaims();
+      const needsGeocode = allClaims.filter(
+        (c) => (c.latitude === null || c.longitude === null) && (c.propertyAddress || c.city || c.zip),
+      );
+
+      let updated = 0;
+      let failed = 0;
+      const results: Array<{ claimId: number; claimNumber: string; status: string }> = [];
+
+      for (const claim of needsGeocode) {
+        const coords = await geocodeClaimAddress(claim);
+        if (coords) {
+          try {
+            await storage.updateClaimLocation(claim.id, coords.latitude, coords.longitude);
+            updated++;
+            results.push({ claimId: claim.id, claimNumber: claim.claimNumber, status: "geocoded" });
+          } catch (e: any) {
+            failed++;
+            results.push({ claimId: claim.id, claimNumber: claim.claimNumber, status: `error: ${e.message}` });
+          }
+        } else {
+          failed++;
+          results.push({ claimId: claim.id, claimNumber: claim.claimNumber, status: "no_result" });
+        }
+      }
+
+      res.json({ total: needsGeocode.length, updated, failed, results });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Geocode backfill failed" });
+    }
+  });
+
+  router.post("/:id/geocode", authenticateRequest, async (req, res) => {
+    try {
+      const authorized = await resolveAuthorizedClaim(req, res, "id");
+      if (!authorized) return;
+      const { claimId, claim } = authorized;
+
+      const coords = await geocodeClaimAddress(claim);
+      if (!coords) {
+        return res.status(404).json({ message: "Could not geocode address" });
+      }
+
+      const updated = await storage.updateClaimLocation(claimId, coords.latitude, coords.longitude);
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Geocoding failed" });
     }
   });
 

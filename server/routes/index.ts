@@ -15,6 +15,9 @@ import { logsRouter } from "./logs";
 import { galleryRouter } from "./gallery";
 import { photolabRouter } from "./photolab";
 import { registerInspectionRoutes } from "./inspection";
+import { ms365Router } from "./ms365";
+import { itineraryRouter } from "./itinerary";
+import { mydayRouter } from "./myday";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -79,6 +82,9 @@ export async function registerRoutes(
   app.use("/api/logs", logsRouter());
   app.use("/api/gallery", galleryRouter());
   app.use("/api/photolab", photolabRouter());
+  app.use("/api/ms365", ms365Router());
+  app.use("/api/myday", mydayRouter());
+  app.use("/api/itinerary", itineraryRouter());
 
   // ─── Inspection routes (sessions, rooms, scope, photos, export, etc.) ─
   await registerInspectionRoutes(app);

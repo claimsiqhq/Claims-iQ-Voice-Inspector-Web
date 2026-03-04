@@ -14,6 +14,7 @@ import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const SupervisorDashboard = lazy(() => import("@/pages/SupervisorDashboard"));
+const MyDay = lazy(() => import("@/pages/MyDay"));
 const ClaimsList = lazy(() => import("@/pages/ClaimsList"));
 const DocumentUpload = lazy(() => import("@/pages/DocumentUpload"));
 const ExtractionReview = lazy(() => import("@/pages/ExtractionReview"));
@@ -88,7 +89,8 @@ function RouterContent() {
   return (
     <Suspense fallback={<PageLoadingFallback />}>
       <Switch>
-        <Route path="/" component={ClaimsList} />
+        <Route path="/" component={MyDay} />
+        <Route path="/claims" component={ClaimsList} />
         {(role === "supervisor" || role === "admin") && <Route path="/dashboard" component={SupervisorDashboardWithBoundary} />}
         <Route path="/documents" component={DocumentsHub} />
         <Route path="/settings" component={SettingsPage} />
@@ -96,6 +98,7 @@ function RouterContent() {
         <Route path="/profile" component={ProfilePage} />
         <Route path="/gallery/photos" component={PhotoGallery} />
         <Route path="/gallery/sketches" component={SketchGallery} />
+        <Route path="/capture" component={PhotoLab} />
         <Route path="/photo-lab" component={PhotoLab} />
         <Route path="/upload/:id" component={DocumentUpload} />
         <Route path="/review/:id" component={ExtractionReview} />

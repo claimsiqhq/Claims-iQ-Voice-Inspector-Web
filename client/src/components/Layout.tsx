@@ -278,6 +278,17 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             )}
           </div>
           
+          <Button
+            data-testid="button-settings"
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/10 h-8 w-8 md:h-10 md:w-10"
+            onClick={() => setLocation("/settings")}
+            aria-label="Settings"
+          >
+            <Settings className="h-4 w-4 md:h-5 md:w-5" />
+          </Button>
+
           <div className="relative" ref={profileMenuRef}>
             <button
               data-testid="button-profile-header"
@@ -309,14 +320,6 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
                   >
                     <User className="h-4 w-4 text-gray-400" />
                     Profile
-                  </button>
-                  <button
-                    data-testid="button-menu-settings"
-                    onClick={() => { setShowProfileMenu(false); setLocation("/settings"); }}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Settings className="h-4 w-4 text-gray-400" />
-                    Settings
                   </button>
                 </div>
                 <div className="border-t border-gray-100 py-1">

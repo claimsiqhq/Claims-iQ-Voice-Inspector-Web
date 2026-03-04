@@ -42,6 +42,15 @@ export const claims = pgTable(
     perilType: varchar("peril_type", { length: 20 }),
     status: varchar("status", { length: 30 }).notNull().default("draft"),
     assignedTo: varchar("assigned_to").references(() => users.id),
+    priority: varchar("priority", { length: 20 }).default("normal"),
+    scheduledDate: varchar("scheduled_date", { length: 20 }),
+    scheduledTimeSlot: varchar("scheduled_time_slot", { length: 20 }),
+    slaDeadline: timestamp("sla_deadline"),
+    latitude: real("latitude"),
+    longitude: real("longitude"),
+    estimatedDurationMin: integer("estimated_duration_min").default(60),
+    routeOrder: integer("route_order"),
+    calendarEventId: varchar("calendar_event_id", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -49,6 +58,7 @@ export const claims = pgTable(
     claimNumberUnique: uniqueIndex("claims_claim_number_unique").on(table.claimNumber),
     assignedToIdx: index("claims_assigned_to_idx").on(table.assignedTo),
     statusIdx: index("claims_status_idx").on(table.status),
+    scheduledDateIdx: index("claims_scheduled_date_idx").on(table.scheduledDate),
   }),
 );
 
@@ -1053,6 +1063,68 @@ export const insertStandalonePhotoSchema = createInsertSchema(standalonePhotos).
 
 export type StandalonePhoto = typeof standalonePhotos.$inferSelect;
 export type InsertStandalonePhoto = z.infer<typeof insertStandalonePhotoSchema>;
+
+// ── Daily Itineraries ─────────────────────
+export const dailyItineraries = pgTable("daily_itineraries", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  date: varchar("date", { length: 20 }).notNull(),
+  claimIds: jsonb("claim_ids").notNull().default([]),
+  routeData: jsonb("route_data"),
+  optimizedAt: timestamp("optimized_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userDateUnique: uniqueIndex("daily_itineraries_user_date_unique").on(table.userId, table.date),
+}));
+
+export const insertDailyItinerarySchema = createInsertSchema(dailyItineraries).omit({
+  id: true,
+  createdAt: true,
+});
+export type DailyItinerary = typeof dailyItineraries.$inferSelect;
+export type InsertDailyItinerary = z.infer<typeof insertDailyItinerarySchema>;
+
+// ── Adjuster Notifications ─────────────────────
+export const adjusterNotifications = pgTable("adjuster_notifications", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: varchar("type", { length: 30 }).notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  claimId: integer("claim_id").references(() => claims.id),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("adjuster_notifications_user_idx").on(table.userId),
+  unreadIdx: index("adjuster_notifications_unread_idx").on(table.userId, table.read),
+}));
+
+export const insertAdjusterNotificationSchema = createInsertSchema(adjusterNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+export type AdjusterNotification = typeof adjusterNotifications.$inferSelect;
+export type InsertAdjusterNotification = z.infer<typeof insertAdjusterNotificationSchema>;
+
+// ── MS365 Tokens ─────────────────────
+export const ms365Tokens = pgTable("ms365_tokens", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id).unique(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  scope: text("scope"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMs365TokenSchema = createInsertSchema(ms365Tokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type Ms365Token = typeof ms365Tokens.$inferSelect;
+export type InsertMs365Token = z.infer<typeof insertMs365TokenSchema>;
 
 // ── Water Damage Classification (IICRC) ─────────────────────
 export interface WaterClassificationInput {

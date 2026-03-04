@@ -2,6 +2,7 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { authenticateRequest } from "../auth";
 import { logger } from "../logger";
+import { insertAdjusterNotificationSchema } from "@shared/schema";
 
 export function notificationsRouter() {
   const router = Router();
@@ -71,6 +72,61 @@ export function notificationsRouter() {
       notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       res.json(notifications.slice(0, 15));
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  router.post("/persistent", authenticateRequest, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const parsed = insertAdjusterNotificationSchema.parse({
+        ...req.body,
+        userId,
+      });
+      const notification = await storage.createNotification(parsed);
+      res.status(201).json(notification);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(400).json({ message: error.message || "Invalid request" });
+    }
+  });
+
+  router.get("/persistent", authenticateRequest, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const unreadOnly = req.query.unreadOnly === "true";
+      const notifications = await storage.getNotifications(userId, unreadOnly);
+      res.json(notifications);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  router.patch("/persistent/:id/read", authenticateRequest, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id), 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid notification id" });
+      }
+      const updated = await storage.markNotificationRead(id);
+      if (!updated) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  router.post("/persistent/mark-all-read", authenticateRequest, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      await storage.markAllNotificationsRead(userId);
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });

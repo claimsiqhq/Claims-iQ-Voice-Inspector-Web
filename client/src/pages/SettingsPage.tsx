@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,12 @@ import {
   Palette,
   LogOut,
   RotateCcw,
+  Calendar,
+  Link,
+  Unlink,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
 import OnboardingWizard, { resetOnboarding } from "@/components/OnboardingWizard";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -121,6 +128,66 @@ export default function SettingsPage() {
   const { data: claims = [] } = useQuery<Claim[]>({
     queryKey: ["/api/claims"],
   });
+
+  const { data: ms365Status, isLoading: ms365Loading } = useQuery<{
+    configured: boolean;
+    connected: boolean;
+    email?: string;
+    displayName?: string;
+    expiresAt?: string;
+  }>({
+    queryKey: ["/api/ms365/status"],
+  });
+
+  const ms365ConnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/ms365/connect");
+      const data = await res.json();
+      return data as { authUrl: string };
+    },
+    onSuccess: (data) => {
+      window.location.href = data.authUrl;
+    },
+    onError: (error: Error) => {
+      toast({ title: "Connection failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const ms365DisconnectMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/ms365/disconnect");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ms365/status"] });
+      toast({ title: "Disconnected", description: "Microsoft 365 account has been disconnected." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Disconnect failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ms365_connected") === "true") {
+      queryClient.invalidateQueries({ queryKey: ["/api/ms365/status"] });
+      toast({ title: "Connected!", description: "Microsoft 365 calendar has been linked successfully." });
+      window.history.replaceState({}, "", "/settings");
+    }
+    const ms365Error = params.get("ms365_error");
+    if (ms365Error) {
+      const errorMessages: Record<string, string> = {
+        missing_params: "Missing authorization parameters.",
+        invalid_state: "Invalid or expired authorization state. Please try again.",
+        token_exchange_failed: "Failed to exchange authorization code. Please try again.",
+      };
+      toast({
+        title: "Connection failed",
+        description: errorMessages[ms365Error] || ms365Error,
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/settings");
+    }
+  }, []);
 
   const purgeMutation = useMutation({
     mutationFn: async () => {
@@ -683,6 +750,166 @@ export default function SettingsPage() {
                 onCheckedChange={(v) => updateSetting("inspectionReminders", v)}
               />
             </SettingRow>
+          </div>
+        </Card>
+
+        {/* ===== Microsoft 365 Calendar ===== */}
+        <Card className="p-5 border-border">
+          <SectionHeader
+            icon={Calendar}
+            title="Microsoft 365 Calendar"
+            description="Connect your Outlook calendar to sync inspections and view availability."
+          />
+          <div className="space-y-1 ml-13">
+            {ms365Loading ? (
+              <div className="flex items-center gap-2 py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Checking connection status...</span>
+              </div>
+            ) : !ms365Status?.configured ? (
+              <div className="py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">MS365 integration is not configured on this server.</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Contact your administrator to set up MS365_CLIENT_ID and MS365_CLIENT_SECRET environment variables.
+                </p>
+              </div>
+            ) : (
+              <>
+                <SettingRow>
+                  <SettingLabel
+                    title="Connection Status"
+                    description={
+                      ms365Status?.connected
+                        ? `Connected as ${ms365Status.displayName || ms365Status.email || "Microsoft Account"}`
+                        : "Not connected to Microsoft 365."
+                    }
+                  />
+                  <div className="flex items-center gap-2">
+                    {ms365Status?.connected ? (
+                      <Badge data-testid="badge-ms365-connected" variant="default" className="bg-green-600 hover:bg-green-700 gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Connected
+                      </Badge>
+                    ) : (
+                      <Badge data-testid="badge-ms365-disconnected" variant="secondary" className="gap-1">
+                        <XCircle className="h-3 w-3" />
+                        Not Connected
+                      </Badge>
+                    )}
+                  </div>
+                </SettingRow>
+                <Separator />
+
+                {ms365Status?.connected && ms365Status.email && (
+                  <>
+                    <SettingRow>
+                      <SettingLabel
+                        title="Linked Account"
+                        description="Microsoft account email used for calendar sync."
+                      />
+                      <span data-testid="text-ms365-email" className="text-sm text-muted-foreground truncate max-w-[200px]">
+                        {ms365Status.email}
+                      </span>
+                    </SettingRow>
+                    <Separator />
+                  </>
+                )}
+
+                {ms365Status?.connected && (
+                  <>
+                    <SettingRow>
+                      <SettingLabel
+                        title="Auto-Sync Inspections"
+                        description="Automatically push scheduled inspections to your Outlook calendar."
+                      />
+                      <Switch
+                        data-testid="switch-ms365-auto-sync"
+                        checked={settings.ms365AutoSync ?? true}
+                        onCheckedChange={(v) => updateSetting("ms365AutoSync", v)}
+                      />
+                    </SettingRow>
+                    <Separator />
+
+                    <SettingRow>
+                      <SettingLabel
+                        title="Show Availability"
+                        description="Display Outlook free/busy blocks in the Schedule view."
+                      />
+                      <Switch
+                        data-testid="switch-ms365-show-availability"
+                        checked={settings.ms365ShowAvailability ?? true}
+                        onCheckedChange={(v) => updateSetting("ms365ShowAvailability", v)}
+                      />
+                    </SettingRow>
+                    <Separator />
+
+                    <SettingRow>
+                      <SettingLabel
+                        title="Sync Reminders"
+                        description="Include 15-minute reminders on synced calendar events."
+                      />
+                      <Switch
+                        data-testid="switch-ms365-sync-reminders"
+                        checked={settings.ms365SyncReminders ?? true}
+                        onCheckedChange={(v) => updateSetting("ms365SyncReminders", v)}
+                      />
+                    </SettingRow>
+                    <Separator />
+                  </>
+                )}
+
+                <div className="pt-3 flex gap-2">
+                  {ms365Status?.connected ? (
+                    <>
+                      <Button
+                        data-testid="button-ms365-refresh"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/ms365/status"] })}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Refresh Status
+                      </Button>
+                      <Button
+                        data-testid="button-ms365-disconnect"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => ms365DisconnectMutation.mutate()}
+                        disabled={ms365DisconnectMutation.isPending}
+                      >
+                        {ms365DisconnectMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Unlink className="h-4 w-4" />
+                        )}
+                        Disconnect
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      data-testid="button-ms365-connect"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => ms365ConnectMutation.mutate()}
+                      disabled={ms365ConnectMutation.isPending}
+                    >
+                      {ms365ConnectMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Link className="h-4 w-4" />
+                      )}
+                      Connect Microsoft 365
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </Card>
 

@@ -45,6 +45,11 @@ export interface AppSettings {
   compactMode: boolean;
   fontSize: "small" | "medium" | "large";
   showPhaseNumbers: boolean;
+
+  // MS365 Calendar
+  ms365AutoSync: boolean;
+  ms365ShowAvailability: boolean;
+  ms365SyncReminders: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -84,6 +89,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   compactMode: false,
   fontSize: "medium",
   showPhaseNumbers: true,
+
+  ms365AutoSync: true,
+  ms365ShowAvailability: true,
+  ms365SyncReminders: true,
 };
 
 const STORAGE_KEY = "claimsiq-settings";

@@ -38,8 +38,11 @@ import {
   userSettings, type UserSettings,
   inspectionFlows, type InspectionFlow, type InsertInspectionFlow,
   inspectionSessionEvents, type InspectionSessionEvent, type InsertInspectionSessionEvent,
+  dailyItineraries, type DailyItinerary, type InsertDailyItinerary,
+  adjusterNotifications, type AdjusterNotification, type InsertAdjusterNotification,
+  ms365Tokens, type Ms365Token, type InsertMs365Token,
 } from "@shared/schema";
-import { eq, and, desc, sql, or } from "drizzle-orm";
+import { eq, and, desc, sql, or, asc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -266,6 +269,28 @@ export interface IStorage {
 
   // ── Settlement Summary ──────────────────────────
   getSettlementSummary(sessionId: number, claimId: number): Promise<any>;
+
+  // ── Scheduling & Location ──────────────────────
+  updateClaimScheduling(id: number, fields: Partial<Pick<Claim, 'scheduledDate' | 'scheduledTimeSlot' | 'priority' | 'slaDeadline' | 'estimatedDurationMin' | 'calendarEventId'>>): Promise<Claim | undefined>;
+  updateClaimLocation(id: number, latitude: number, longitude: number): Promise<Claim | undefined>;
+  updateClaimRouteOrder(id: number, routeOrder: number): Promise<Claim | undefined>;
+  getClaimsForDate(userId: string, date: string): Promise<Claim[]>;
+
+  // ── Daily Itineraries ──────────────────────────
+  createItinerary(data: InsertDailyItinerary): Promise<DailyItinerary>;
+  getItinerary(userId: string, date: string): Promise<DailyItinerary | undefined>;
+  updateItinerary(id: number, data: Partial<InsertDailyItinerary>): Promise<DailyItinerary | undefined>;
+
+  // ── Adjuster Notifications ─────────────────────
+  createNotification(data: InsertAdjusterNotification): Promise<AdjusterNotification>;
+  getNotifications(userId: string, unreadOnly?: boolean): Promise<AdjusterNotification[]>;
+  markNotificationRead(id: number): Promise<AdjusterNotification | undefined>;
+  markAllNotificationsRead(userId: string): Promise<void>;
+
+  // ── MS365 Tokens ───────────────────────────────
+  saveMs365Token(userId: string, tokenData: Omit<InsertMs365Token, 'userId'>): Promise<Ms365Token>;
+  getMs365Token(userId: string): Promise<Ms365Token | undefined>;
+  deleteMs365Token(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1612,6 +1637,102 @@ export class DatabaseStorage implements IStorage {
     const settlementRules = { ...baseRules, ...overrides };
 
     return calculateSettlement(mapped, settlementRules, limits, taxRulesByCategory);
+  }
+
+  // ── Scheduling & Location ──────────────────────
+
+  async updateClaimScheduling(id: number, fields: Partial<Pick<Claim, 'scheduledDate' | 'scheduledTimeSlot' | 'priority' | 'slaDeadline' | 'estimatedDurationMin' | 'calendarEventId'>>): Promise<Claim | undefined> {
+    const [updated] = await db.update(claims).set({ ...fields, updatedAt: new Date() }).where(eq(claims.id, id)).returning();
+    return updated;
+  }
+
+  async updateClaimLocation(id: number, latitude: number, longitude: number): Promise<Claim | undefined> {
+    const [updated] = await db.update(claims).set({ latitude, longitude, updatedAt: new Date() }).where(eq(claims.id, id)).returning();
+    return updated;
+  }
+
+  async updateClaimRouteOrder(id: number, routeOrder: number): Promise<Claim | undefined> {
+    const [updated] = await db.update(claims).set({ routeOrder, updatedAt: new Date() }).where(eq(claims.id, id)).returning();
+    return updated;
+  }
+
+  async getClaimsForDate(userId: string, date: string): Promise<Claim[]> {
+    return db.select().from(claims)
+      .where(and(eq(claims.assignedTo, userId), eq(claims.scheduledDate, date)))
+      .orderBy(asc(claims.routeOrder));
+  }
+
+  // ── Daily Itineraries ──────────────────────────
+
+  async createItinerary(data: InsertDailyItinerary): Promise<DailyItinerary> {
+    const [itinerary] = await db.insert(dailyItineraries).values(data).returning();
+    return itinerary;
+  }
+
+  async getItinerary(userId: string, date: string): Promise<DailyItinerary | undefined> {
+    const [itinerary] = await db.select().from(dailyItineraries)
+      .where(and(eq(dailyItineraries.userId, userId), eq(dailyItineraries.date, date)));
+    return itinerary;
+  }
+
+  async updateItinerary(id: number, data: Partial<InsertDailyItinerary>): Promise<DailyItinerary | undefined> {
+    const [updated] = await db.update(dailyItineraries).set(data).where(eq(dailyItineraries.id, id)).returning();
+    return updated;
+  }
+
+  // ── Adjuster Notifications ─────────────────────
+
+  async createNotification(data: InsertAdjusterNotification): Promise<AdjusterNotification> {
+    const [notification] = await db.insert(adjusterNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getNotifications(userId: string, unreadOnly: boolean = false): Promise<AdjusterNotification[]> {
+    const conditions = [eq(adjusterNotifications.userId, userId)];
+    if (unreadOnly) {
+      conditions.push(eq(adjusterNotifications.read, false));
+    }
+    return db.select().from(adjusterNotifications)
+      .where(and(...conditions))
+      .orderBy(desc(adjusterNotifications.createdAt));
+  }
+
+  async markNotificationRead(id: number): Promise<AdjusterNotification | undefined> {
+    const [updated] = await db.update(adjusterNotifications)
+      .set({ read: true })
+      .where(eq(adjusterNotifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db.update(adjusterNotifications)
+      .set({ read: true })
+      .where(and(eq(adjusterNotifications.userId, userId), eq(adjusterNotifications.read, false)));
+  }
+
+  // ── MS365 Tokens ───────────────────────────────
+
+  async saveMs365Token(userId: string, tokenData: Omit<InsertMs365Token, 'userId'>): Promise<Ms365Token> {
+    const existing = await this.getMs365Token(userId);
+    if (existing) {
+      const [updated] = await db.update(ms365Tokens)
+        .set({ ...tokenData, updatedAt: new Date() })
+        .where(eq(ms365Tokens.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [token] = await db.insert(ms365Tokens).values({ ...tokenData, userId }).returning();
+    return token;
+  }
+
+  async getMs365Token(userId: string): Promise<Ms365Token | undefined> {
+    const [token] = await db.select().from(ms365Tokens).where(eq(ms365Tokens.userId, userId));
+    return token;
+  }
+
+  async deleteMs365Token(userId: string): Promise<void> {
+    await db.delete(ms365Tokens).where(eq(ms365Tokens.userId, userId));
   }
 }
 

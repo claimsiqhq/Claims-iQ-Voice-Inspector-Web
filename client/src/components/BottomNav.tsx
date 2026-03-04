@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, List, Mic, ClipboardCheck, Settings } from "lucide-react";
+import { CalendarDays, List, Mic, Camera, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,16 +21,16 @@ interface NavItem {
 function getNavItems(): NavItem[] {
   return [
     {
-      icon: Home,
-      label: "Home",
+      icon: CalendarDays,
+      label: "My Day",
       getPath: () => "/",
       matchPaths: ["/"],
     },
     {
       icon: List,
-      label: "Scope",
-      getPath: (c) => c ? `/inspection/${c.id}/scope` : "/",
-      matchPaths: ["/inspection/*/scope"],
+      label: "Claims",
+      getPath: () => "/claims",
+      matchPaths: ["/claims"],
     },
     {
       icon: Mic,
@@ -46,16 +46,16 @@ function getNavItems(): NavItem[] {
       prominent: true,
     },
     {
+      icon: Camera,
+      label: "Capture",
+      getPath: () => "/capture",
+      matchPaths: ["/capture", "/photo-lab"],
+    },
+    {
       icon: ClipboardCheck,
       label: "Review",
       getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
       matchPaths: ["/inspection/*/review", "/inspection/*/export"],
-    },
-    {
-      icon: Settings,
-      label: "Settings",
-      getPath: () => "/settings",
-      matchPaths: ["/settings", "/profile"],
     },
   ];
 }

@@ -89,7 +89,7 @@ export default function ClaimsList() {
       <div className="flex flex-col space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">My Claims</h2>
+            <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">All Claims</h2>
             <p className="text-sm md:text-base text-muted-foreground mt-1">Manage your active inspections and assignments.</p>
           </div>
 
