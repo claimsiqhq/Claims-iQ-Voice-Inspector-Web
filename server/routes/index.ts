@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import path from "path";
 import { sql } from "drizzle-orm";
 import { authRouter } from "./auth";
 import { settingsRouter } from "./settings";
@@ -20,10 +21,15 @@ import { ms365Router } from "./ms365";
 import { itineraryRouter } from "./itinerary";
 import { mydayRouter } from "./myday";
 import { db } from "../db";
-import { createRequire } from "module";
+import { readFileSync } from "fs";
 
-const require = createRequire(import.meta.url);
-const { version: appVersion } = require("../../package.json");
+const appVersion = (() => {
+  try {
+    return JSON.parse(readFileSync(path.resolve(__dirname, "..", "..", "package.json"), "utf-8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
 
 export async function registerRoutes(
   httpServer: Server,

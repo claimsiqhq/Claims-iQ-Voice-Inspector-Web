@@ -51,9 +51,14 @@ const cspConnectSrc = [
   ...(supabaseOrigin ? [supabaseOrigin] : []),
 ];
 
-import { createRequire } from "module";
-const requireSync = createRequire(import.meta.url);
-const { version: pkgVersion } = requireSync("../package.json");
+const pkgVersion = (() => {
+  try {
+    const pkgPath = path.resolve(rootDir, "..", "package.json");
+    return JSON.parse(readFileSync(pkgPath, "utf-8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
