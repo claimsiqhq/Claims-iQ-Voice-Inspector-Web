@@ -12,10 +12,10 @@ const rootDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 // Prevent unhandled errors from crashing the process on Cloud Run.
 process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT EXCEPTION:", err);
+  pinoInstance.fatal(err, "UNCAUGHT EXCEPTION");
 });
 process.on("unhandledRejection", (reason) => {
-  console.error("UNHANDLED REJECTION:", reason);
+  pinoInstance.fatal({ reason }, "UNHANDLED REJECTION");
 });
 
 const app = express();
@@ -215,7 +215,7 @@ app.use("/api/realtime/session", realtimeLimiter);
 app.use("/api/inspection/:sessionId/review/ai", aiReviewLimiter);
 
 export function log(message: string, source = "express") {
-  console.log(`[${source}] ${message}`);
+  pinoInstance.info({ source }, message);
 }
 
 // ── BIND TO PORT IMMEDIATELY ─────────────────────────────────────────
@@ -235,14 +235,14 @@ app.use((req, res, next) => {
 });
 
 httpServer.listen({ port, host: "0.0.0.0" }, () => {
-  console.log(`serving on port ${port}`);
+  pinoInstance.info(`serving on port ${port}`);
 });
 
 // Graceful shutdown — allow in-flight requests to finish before exit
 process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully");
+  pinoInstance.info("SIGTERM received, shutting down gracefully");
   httpServer.close(() => {
-    console.log("Server closed");
+    pinoInstance.info("Server closed");
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 10000);
@@ -257,15 +257,29 @@ process.on("SIGTERM", () => {
     const { registerRoutes } = await import("./routes");
     await registerRoutes(httpServer, app);
 
+    const SAFE_CLIENT_MESSAGES: Record<number, string> = {
+      400: "Bad request",
+      401: "Unauthorized",
+      403: "Forbidden",
+      404: "Not found",
+      405: "Method not allowed",
+      409: "Conflict",
+      413: "Payload too large",
+      422: "Unprocessable entity",
+      429: "Too many requests",
+    };
+
     app.use((err: any, req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
-      console.error(`Unhandled error: ${err.message}`, err);
+      pinoInstance.error({ err, method: req.method, url: req.url }, `Unhandled error: ${err.message}`);
 
       if (res.headersSent) {
         return next(err);
       }
 
-      const clientMessage = status >= 500 ? "Internal server error" : (err.message || "An error occurred");
+      const clientMessage = status >= 500
+        ? "Internal server error"
+        : (SAFE_CLIENT_MESSAGES[status] || "An error occurred");
       return res.status(status).json({ message: clientMessage });
     });
 
@@ -279,19 +293,18 @@ process.on("SIGTERM", () => {
     }
 
     appReady = true;
-    console.log("Routes registered successfully");
+    pinoInstance.info("Routes registered successfully");
 
-    // Background tasks — fire and forget.
     import("./supabase")
       .then((m) => m.ensureStorageBuckets())
-      .catch((e) => console.error("Storage bucket init error:", e));
+      .catch((e) => pinoInstance.error(e, "Storage bucket init error"));
     import("./seed-flows")
       .then((m) => m.seedInspectionFlows())
-      .catch((e) => console.error("Flow seed error:", e));
+      .catch((e) => pinoInstance.error(e, "Flow seed error"));
     import("./seed-catalog")
       .then((m) => m.seedCatalog())
-      .catch((e) => console.error("Catalog seed error:", e));
+      .catch((e) => pinoInstance.error(e, "Catalog seed error"));
   } catch (err) {
-    console.error("FATAL: Route registration failed:", err);
+    pinoInstance.fatal(err, "FATAL: Route registration failed");
   }
 })();

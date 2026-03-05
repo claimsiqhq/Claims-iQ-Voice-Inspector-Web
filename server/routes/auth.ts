@@ -108,17 +108,17 @@ export function authRouter(): Router {
       const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
       const normalizedFullName = typeof fullName === "string" ? fullName.trim() : "";
 
-      console.log(`[auth.sync] supabaseId=${normalizedSupabaseId} email=${normalizedEmail} tokenUser=${supabaseUser?.id}`);
+      logger.debug(`auth.sync userId=${supabaseUser?.id}`);
       if (!normalizedSupabaseId || !normalizedEmail) {
         return res.status(400).json({ message: "supabaseId and email required" });
       }
       if (supabaseUser?.id !== normalizedSupabaseId) {
-        console.log(`[auth.sync] token mismatch: tokenUser=${supabaseUser?.id} vs body=${normalizedSupabaseId}`);
+        logger.warn("auth.sync token mismatch");
         return res.status(403).json({ message: "Token does not match provided supabaseId" });
       }
       const user = await storage.syncSupabaseUser(normalizedSupabaseId, normalizedEmail, normalizedFullName);
       const token = createLocalToken(user);
-      console.log(`[auth.sync] success userId=${user.id}`);
+      logger.info(`auth.sync success userId=${user.id}`);
       res.json({
         token,
         user: {
@@ -131,7 +131,7 @@ export function authRouter(): Router {
         },
       });
     } catch (error: unknown) {
-      console.error(`[auth.sync] ERROR:`, error);
+      logger.error(error as Error, "auth.sync error");
       handleRouteError(res, error, "auth.sync");
     }
   });

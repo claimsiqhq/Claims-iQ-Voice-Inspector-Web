@@ -25,6 +25,12 @@ if (!connectionString) {
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === "production" && !process.argv.includes("--force")) {
+  console.error("ERROR: Refusing to run seed script against a production database.");
+  console.error("       Set NODE_ENV to something other than 'production' or pass --force to override.");
+  process.exit(1);
+}
+
 const client = postgres(connectionString, { prepare: false });
 const db = drizzle(client, { schema });
 

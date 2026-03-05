@@ -983,7 +983,7 @@ export function claimsRouter(): Router {
       const { session, created } = await storage.getOrCreateActiveInspectionSession(claimId, req.user?.id);
       if (!created) {
         ensurePolicyRules(claimId, req.user?.id).catch((e) =>
-          console.error("[inspection/start] ensurePolicyRules background error:", e?.message),
+          logger.apiError("BG", "ensurePolicyRules", e),
         );
         return res.json({ sessionId: session.id, session });
       }
@@ -992,11 +992,10 @@ export function claimsRouter(): Router {
       await storage.updateClaimStatus(claimId, "inspecting");
       emit({ type: "inspection.started", sessionId: session.id, claimId, userId: req.user?.id });
       ensurePolicyRules(claimId, req.user?.id).catch((e) =>
-        console.error("[inspection/start] ensurePolicyRules background error:", e?.message),
+        logger.apiError("BG", "ensurePolicyRules", e),
       );
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
-      console.error("[inspection/start] Error:", error?.message, error?.stack);
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
     }

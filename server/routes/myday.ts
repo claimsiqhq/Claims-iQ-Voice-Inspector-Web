@@ -80,7 +80,7 @@ export function mydayRouter() {
         ms365: ms365Status,
       });
     } catch (err: any) {
-      console.error("My Day API error:", err);
+      logger.apiError("GET", "/api/myday/today", err);
       res.status(500).json({ error: "Failed to load My Day data" });
     }
   });

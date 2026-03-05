@@ -87,6 +87,27 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
 - **Archive Utilities**: `archiver` for ZIP/ESX file creation.
 - **Charting**: Recharts
 
+## Security & Hardening (Audit Remediation)
+- JWT secret stored in Replit Secrets only (removed from .replit source control)
+- Registration gated behind `REGISTRATION_INVITE_CODE` env var
+- Password minimum: 8 characters
+- All request body mutations validated with Zod schemas (claims PATCH, admin assign, supplemental create)
+- Notification mark-as-read checks ownership before mutation (TOCTOU fix)
+- Photo uploads validate magic bytes (JPEG/PNG/WebP)
+- MS365 OAuth state stored in database (not in-memory Map)
+- All server console.log replaced with structured Pino logger (no PII in logs)
+- List endpoints paginated (claims, documents) with max limit=100
+- Admin dashboard uses batch queries instead of N+1 pattern
+- Readiness probe uses `SELECT 1` instead of fetching all claims
+- Purge-all endpoint requires `{ confirm: "DELETE ALL DATA" }` body
+- Multi-step deletions wrapped in database transactions
+- CSP tightened: removed unsafe-inline from scriptSrc, restricted imgSrc to known domains
+- Offline queue re-fetches auth token at replay time (no stale token)
+- Gallery/document endpoints filter at DB level (not in-memory)
+- Photo signed URLs lazy-loaded (on-demand via dedicated endpoint)
+- Seed scripts refuse to run in production without --force flag
+- Error handler sanitizes messages with safe whitelist
+
 ## Documentation
 
 Complete developer documentation is in `docs/DEVELOPER_GUIDE.md`. It covers:

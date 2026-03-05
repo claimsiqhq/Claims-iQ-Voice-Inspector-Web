@@ -491,13 +491,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClaim(id: number): Promise<boolean> {
-    const [deleted] = await db.delete(claims).where(eq(claims.id, id)).returning();
-    return !!deleted;
+    return db.transaction(async (tx) => {
+      const [deleted] = await tx.delete(claims).where(eq(claims.id, id)).returning();
+      return !!deleted;
+    });
   }
 
   async deleteAllClaims(): Promise<number> {
-    const deleted = await db.delete(claims).returning();
-    return deleted.length;
+    return db.transaction(async (tx) => {
+      const deleted = await tx.delete(claims).returning();
+      return deleted.length;
+    });
   }
 
   async updateClaimStatus(id: number, status: string): Promise<Claim | undefined> {

@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
+import pinoInstance from "./logger";
 
 const rootDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
@@ -23,9 +24,7 @@ function findPublicDir(): string | null {
 export function serveStatic(app: Express) {
   const distPath = findPublicDir();
   if (!distPath) {
-    console.warn(
-      "[static] Could not find dist/public — static files may be served by CDN. API-only mode."
-    );
+    pinoInstance.warn("Could not find dist/public — static files may be served by CDN. API-only mode.");
     app.use((req, res, next) => {
       if (req.path.startsWith("/api")) return next();
       res.status(503).json({

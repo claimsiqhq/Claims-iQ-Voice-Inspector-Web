@@ -7,7 +7,8 @@ if (!configuredJwtSecret && process.env.NODE_ENV === "production") {
   throw new Error("JWT_SECRET must be set in production.");
 }
 if (!configuredJwtSecret && process.env.NODE_ENV !== "test") {
-  console.warn("[auth] JWT_SECRET not set; using ephemeral in-memory secret for non-production runtime.");
+  const pino = require("pino");
+  pino().warn("JWT_SECRET not set; using ephemeral in-memory secret for non-production runtime.");
 }
 const JWT_SECRET = configuredJwtSecret || randomBytes(32).toString("hex");
 const JWT_EXPIRY = "7d";

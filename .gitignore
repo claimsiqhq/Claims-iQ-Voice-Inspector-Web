@@ -6,3 +6,4 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.local
+database_dump.sql

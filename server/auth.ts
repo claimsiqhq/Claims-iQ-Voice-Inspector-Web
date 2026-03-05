@@ -2,6 +2,7 @@ import { type Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { supabase } from "./supabase";
 import { verifyLocalToken } from "./localAuth";
+import { logger } from "./logger";
 
 declare global {
   namespace Express {
@@ -39,7 +40,7 @@ export async function authenticateRequest(
 ): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
-    console.log(`[auth] ${req.method} ${req.originalUrl} hasAuth=${!!authHeader} authLen=${authHeader?.length || 0}`);
+    logger.debug(`auth ${req.method} ${req.originalUrl} hasAuth=${!!authHeader}`);
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({ message: "Missing or invalid Authorization header" });
       return;
@@ -53,7 +54,7 @@ export async function authenticateRequest(
     if (localPayload) {
       const user = await storage.getUser(localPayload.userId);
       if (!user) {
-        console.log(`[auth] 401 local-jwt user not found userId=${localPayload.userId} path=${reqPath}`);
+        logger.warn(`auth 401 local-jwt user not found path=${reqPath}`);
         res.status(401).json({ message: "User not found" });
         return;
       }
@@ -69,7 +70,7 @@ export async function authenticateRequest(
     // Fall back to Supabase
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
-      console.log(`[auth] 401 supabase-token-invalid path=${reqPath} error=${authError?.message || "no user"}`);
+      logger.warn(`auth 401 supabase-token-invalid path=${reqPath} error=${authError?.message || "no user"}`);
       res.status(401).json({ message: "Invalid or expired token" });
       return;
     }
@@ -77,7 +78,7 @@ export async function authenticateRequest(
     const supabaseAuthId = authData.user.id;
     const user = await storage.getUserBySupabaseId(supabaseAuthId);
     if (!user) {
-      console.log(`[auth] 401 supabase user not in DB supabaseId=${supabaseAuthId} path=${reqPath}`);
+      logger.warn(`auth 401 supabase user not in DB path=${reqPath}`);
       res.status(401).json({ message: "User not found" });
       return;
     }
@@ -102,7 +103,7 @@ export async function authenticateSupabaseToken(
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("[authenticateSupabaseToken] Missing auth header");
+      logger.debug("authenticateSupabaseToken: missing auth header");
       res.status(401).json({ message: "Missing or invalid Authorization header" });
       return;
     }
@@ -111,7 +112,7 @@ export async function authenticateSupabaseToken(
 
     const { data: authData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !authData?.user) {
-      console.log("[authenticateSupabaseToken] Token verification failed:", authError?.message || "no user");
+      logger.warn("authenticateSupabaseToken: token verification failed");
       res.status(401).json({ message: "Invalid or expired token" });
       return;
     }
@@ -119,7 +120,7 @@ export async function authenticateSupabaseToken(
     req.supabaseUser = authData.user as unknown as { id: string; email?: string; [key: string]: unknown };
     next();
   } catch (error) {
-    console.error("[authenticateSupabaseToken] ERROR:", error);
+    logger.error(error as Error, "authenticateSupabaseToken error");
     res.status(500).json({ message: "Authentication failed" });
   }
 }
