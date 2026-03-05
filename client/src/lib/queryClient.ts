@@ -99,12 +99,10 @@ export async function resilientMutation(
       throw err;
     }
 
-    const authHeaders = await getAuthHeaders();
     await enqueueMutation({
       method,
       url,
       body: data,
-      headers: authHeaders,
       maxRetries: options?.maxRetries ?? 5,
       label: options?.label || `${method} ${url}`,
     });

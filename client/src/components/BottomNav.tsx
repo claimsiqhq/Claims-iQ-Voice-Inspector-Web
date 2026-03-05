@@ -87,10 +87,11 @@ export default function BottomNav() {
   const [location, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
 
-  const { data: claims = [] } = useQuery<Claim[]>({
+  const { data: claimsResponse } = useQuery<{ data: Claim[]; totalCount: number } | Claim[]>({
     queryKey: ["/api/claims"],
     enabled: isAuthenticated,
   });
+  const claims: Claim[] = Array.isArray(claimsResponse) ? claimsResponse : (claimsResponse?.data ?? []);
 
   if (!isAuthenticated) return null;
 

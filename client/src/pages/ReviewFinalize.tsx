@@ -71,11 +71,11 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
     enabled: !!claimId,
   });
 
-  const { data: allClaimsData, isLoading: claimsLoading } = useQuery<any[]>({
+  const { data: allClaimsResponse, isLoading: claimsLoading } = useQuery<any>({
     queryKey: ["/api/claims"],
     staleTime: 30000,
   });
-  const allClaims = (allClaimsData || []) as any[];
+  const allClaims = (Array.isArray(allClaimsResponse) ? allClaimsResponse : (allClaimsResponse?.data ?? [])) as any[];
   const cachedClaim = allClaims.find((c: any) => c.id === claimId);
   const displayClaimNumber = claim?.claimNumber || cachedClaim?.claimNumber || (claimsLoading ? "Loading…" : `Claim #${claimId}`);
   const displayInsuredName = claim?.insuredName || cachedClaim?.insuredName || "";

@@ -338,14 +338,16 @@ export default function DocumentsHub() {
   const { role } = useAuth();
   const claimsEndpoint = (role === "supervisor" || role === "admin") ? "/api/claims" : "/api/claims/my-claims";
 
-  const { data: claims = [], isLoading: loadingClaims, isError: claimsError, refetch: refetchClaims } = useQuery<Claim[]>({
+  const { data: claimsResponse, isLoading: loadingClaims, isError: claimsError, refetch: refetchClaims } = useQuery<{ data: Claim[]; totalCount: number } | Claim[]>({
     queryKey: [claimsEndpoint],
   });
+  const claims: Claim[] = Array.isArray(claimsResponse) ? claimsResponse : (claimsResponse?.data ?? []);
 
-  const { data: allDocs = [], isLoading: loadingDocs, isError: docsError, refetch: refetchDocs } = useQuery<DocRecord[]>({
+  const { data: docsResponse, isLoading: loadingDocs, isError: docsError, refetch: refetchDocs } = useQuery<{ data: DocRecord[]; totalCount: number } | DocRecord[]>({
     queryKey: ["/api/documents/all"],
     enabled: claims.length > 0,
   });
+  const allDocs: DocRecord[] = Array.isArray(docsResponse) ? docsResponse : (docsResponse?.data ?? []);
 
   const isLoading = loadingClaims || (claims.length > 0 && loadingDocs);
   const isError = claimsError || docsError;

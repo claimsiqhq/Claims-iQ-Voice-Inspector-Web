@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { emit } from "../events";
 import { storage } from "../storage";
-import { param, decodeBase64Payload, MAX_PHOTO_BYTES } from "../utils";
+import { param, decodeBase64Payload, MAX_PHOTO_BYTES, validateImageMagicBytes } from "../utils";
 import { generateESXFile } from "../esxGenerator";
 import { reviewEstimate } from "../aiReview";
 import { supabase, PHOTOS_BUCKET } from "../supabase";
@@ -2338,6 +2338,9 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
       if (wasTruncated) {
         return res.status(413).json({ message: "Image exceeds max upload size (10MB)" });
       }
+      if (!validateImageMagicBytes(fileBuffer)) {
+        return res.status(400).json({ message: "Invalid image file: magic bytes do not match a supported image format (JPEG, PNG, WebP)" });
+      }
       // Detect content type from data URI prefix
       const mimeMatch = imageBase64.match(/^data:(image\/\w+);/);
       const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
@@ -2394,17 +2397,39 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
       const photos = await storage.getPhotos(sessionId);
-      const photosWithUrls = await Promise.all(photos.map(async (photo) => {
-        let signedUrl = null;
-        if (photo.storagePath) {
-          const { data } = await supabase.storage
-            .from(PHOTOS_BUCKET)
-            .createSignedUrl(photo.storagePath, 3600);
-          if (data?.signedUrl) signedUrl = data.signedUrl;
-        }
-        return { ...photo, signedUrl };
-      }));
-      res.json(photosWithUrls);
+      const withUrls = req.query.withUrls === "true";
+      if (withUrls) {
+        const photosWithUrls = await Promise.all(photos.map(async (photo) => {
+          let signedUrl = null;
+          if (photo.storagePath) {
+            const { data } = await supabase.storage
+              .from(PHOTOS_BUCKET)
+              .createSignedUrl(photo.storagePath, 3600);
+            if (data?.signedUrl) signedUrl = data.signedUrl;
+          }
+          return { ...photo, signedUrl };
+        }));
+        return res.json(photosWithUrls);
+      }
+      res.json(photos.map(photo => ({ ...photo, signedUrl: null })));
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inspection/:sessionId/photos/:photoId/url", authenticateRequest, async (req, res) => {
+    try {
+      const photoId = parseInt(param(req.params.photoId));
+      if (isNaN(photoId)) {
+        return res.status(400).json({ message: "Invalid photoId" });
+      }
+      const photo = await storage.getPhoto(photoId);
+      if (!photo) return res.status(404).json({ message: "Photo not found" });
+      if (!photo.storagePath) return res.json({ signedUrl: null });
+      const { data } = await supabase.storage
+        .from(PHOTOS_BUCKET)
+        .createSignedUrl(photo.storagePath, 3600);
+      res.json({ signedUrl: data?.signedUrl || null });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
@@ -3143,20 +3168,26 @@ IMPORTANT RULES:
       const sessionId = parseInt(param(req.params.sessionId));
       const photos = await storage.getPhotos(sessionId);
       const rooms = await storage.getRooms(sessionId);
+      const withUrls = req.query.withUrls === "true";
 
-      const photosWithUrls = await Promise.all(photos.map(async (photo) => {
-        let signedUrl = null;
-        if (photo.storagePath) {
-          const { data } = await supabase.storage
-            .from(PHOTOS_BUCKET)
-            .createSignedUrl(photo.storagePath, 3600);
-          if (data?.signedUrl) signedUrl = data.signedUrl;
-        }
-        return { ...photo, signedUrl };
-      }));
+      let processedPhotos: any[];
+      if (withUrls) {
+        processedPhotos = await Promise.all(photos.map(async (photo) => {
+          let signedUrl = null;
+          if (photo.storagePath) {
+            const { data } = await supabase.storage
+              .from(PHOTOS_BUCKET)
+              .createSignedUrl(photo.storagePath, 3600);
+            if (data?.signedUrl) signedUrl = data.signedUrl;
+          }
+          return { ...photo, signedUrl };
+        }));
+      } else {
+        processedPhotos = photos.map(photo => ({ ...photo, signedUrl: null }));
+      }
 
       const grouped: Record<string, any[]> = {};
-      for (const photo of photosWithUrls) {
+      for (const photo of processedPhotos) {
         const room = rooms.find(r => r.id === photo.roomId);
         const roomName = room ? room.name : "General";
         if (!grouped[roomName]) grouped[roomName] = [];
@@ -3169,7 +3200,7 @@ IMPORTANT RULES:
           photos: roomPhotos,
           count: roomPhotos.length,
         })),
-        totalPhotos: photosWithUrls.length,
+        totalPhotos: processedPhotos.length,
       });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
@@ -3657,10 +3688,36 @@ IMPORTANT RULES:
 
   // ── Supplemental Claims (inspection session) ───────
 
+  const supplementalCreateSchema = z.object({
+    reason: z.string().min(1).max(1000),
+    newLineItems: z.array(z.object({
+      category: z.string().min(1).max(50),
+      action: z.string().max(30).nullable().optional(),
+      description: z.string().min(1).max(500),
+      xactCode: z.string().max(30).nullable().optional(),
+      quantity: z.number().positive().optional(),
+      unit: z.string().max(20).nullable().optional(),
+      unitPrice: z.number().nonnegative().optional(),
+      roomId: z.number().int().positive().nullable().optional(),
+    })).optional().default([]),
+    removedLineItemIds: z.array(z.number().int().positive()).optional().default([]),
+    modifiedLineItems: z.array(z.object({
+      id: z.number().int().positive(),
+      quantity: z.number().positive().optional(),
+      unitPrice: z.number().nonnegative().optional(),
+      description: z.string().min(1).max(500).optional(),
+      action: z.string().max(30).nullable().optional(),
+    })).optional().default([]),
+  });
+
   app.post("/api/inspection/:sessionId/supplemental", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));
-      const { reason, newLineItems, removedLineItemIds, modifiedLineItems } = req.body;
+      const parsed = supplementalCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid supplemental claim data", errors: parsed.error.flatten().fieldErrors });
+      }
+      const { reason, newLineItems, removedLineItemIds, modifiedLineItems } = parsed.data;
 
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });

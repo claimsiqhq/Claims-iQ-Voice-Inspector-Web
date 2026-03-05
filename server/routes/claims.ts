@@ -40,6 +40,17 @@ const batchUploadBodySchema = z.object({
   documentType: z.literal("endorsements"),
 });
 
+const updateClaimSchema = z.object({
+  insuredName: z.string().max(200).nullable().optional(),
+  propertyAddress: z.string().max(500).nullable().optional(),
+  city: z.string().max(100).nullable().optional(),
+  state: z.string().max(50).nullable().optional(),
+  zip: z.string().max(20).nullable().optional(),
+  dateOfLoss: z.string().max(50).nullable().optional(),
+  perilType: z.string().max(100).nullable().optional(),
+  status: z.string().max(50).optional(),
+}).strict();
+
 const policyRuleSchema = z.object({
   coverageType: z.enum(["Coverage A", "Coverage B", "Coverage C", "Coverage D"]),
   policyLimit: z.number().positive().nullable().optional(),
@@ -289,11 +300,16 @@ export function claimsRouter(): Router {
 
   router.get("/", authenticateRequest, async (req, res) => {
     try {
-      const claims = isPrivilegedRole(req.user?.role)
-        ? await storage.getClaims()
-        : await storage.getClaimsForUser(req.user!.id);
-      const enriched = await enrichClaimsWithProgress(claims);
-      res.json(enriched);
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+      const pagination = { limit, offset };
+
+      const [claimsList, totalCount] = isPrivilegedRole(req.user?.role)
+        ? await Promise.all([storage.getClaims(pagination), storage.getClaimsCount()])
+        : await Promise.all([storage.getClaimsForUser(req.user!.id, pagination), storage.getClaimsForUserCount(req.user!.id)]);
+      const enriched = await enrichClaimsWithProgress(claimsList);
+      res.json({ data: enriched, totalCount, page, limit });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
@@ -363,20 +379,25 @@ export function claimsRouter(): Router {
       const id = parseIntParam(param(req.params.id), res, "claim id");
       if (id === null) return;
 
+      const parsed = updateClaimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid claim update data", errors: parsed.error.flatten().fieldErrors });
+      }
+
       const claim = await storage.getClaim(id);
       if (!claim) return res.status(404).json({ message: "Claim not found" });
       if (req.user?.role !== "supervisor" && req.user?.role !== "admin" && claim.assignedTo !== req.user?.id) {
         return res.status(403).json({ message: "Not authorized to modify this claim" });
       }
 
-      const { status, ...otherFields } = req.body;
+      const { status, ...otherFields } = parsed.data;
       if (status) {
         const updated = await storage.updateClaimStatus(id, status);
         emit({ type: "claim.statusChanged", claimId: id, userId: req.user?.id, meta: { status } });
         return res.json(updated);
       }
       const editableFields: any = {};
-      for (const key of ['insuredName', 'propertyAddress', 'city', 'state', 'zip', 'dateOfLoss', 'perilType']) {
+      for (const key of ['insuredName', 'propertyAddress', 'city', 'state', 'zip', 'dateOfLoss', 'perilType'] as const) {
         if (otherFields[key] !== undefined) editableFields[key] = otherFields[key];
       }
       if (Object.keys(editableFields).length > 0) {
@@ -392,6 +413,11 @@ export function claimsRouter(): Router {
 
   router.delete("/purge-all", authenticateRequest, requireRole("admin"), async (req, res) => {
     try {
+      if (!req.body || req.body.confirm !== "DELETE ALL DATA") {
+        return res.status(400).json({
+          message: "Destructive action requires confirmation. Send { \"confirm\": \"DELETE ALL DATA\" } in the request body.",
+        });
+      }
       const allClaims = await storage.getClaims();
       for (const claim of allClaims) {
         const docs = await storage.getDocuments(claim.id);

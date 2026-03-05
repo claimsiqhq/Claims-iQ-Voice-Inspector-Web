@@ -17,8 +17,7 @@ import {
   removeClaimFromCalendar,
 } from "../ms365Service";
 import crypto from "crypto";
-
-const pendingStates = new Map<string, { userId: string; expiresAt: number }>();
+import logger from "../logger";
 
 export function ms365Router(): Router {
   const router = Router();
@@ -41,10 +40,8 @@ export function ms365Router(): Router {
         return res.status(400).json({ message: "MS365 integration not configured" });
       }
       const state = crypto.randomBytes(16).toString("hex");
-      pendingStates.set(state, {
-        userId: req.user!.id,
-        expiresAt: Date.now() + 10 * 60 * 1000,
-      });
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createOauthState(state, req.user!.id, expiresAt);
       const authUrl = getAuthorizationUrl(state);
       res.json({ authUrl });
     } catch (error: unknown) {
@@ -65,18 +62,16 @@ export function ms365Router(): Router {
       }
 
       const stateStr = String(state);
-      const pending = pendingStates.get(stateStr);
+      const pending = await storage.consumeOauthState(stateStr);
 
-      if (!pending || pending.expiresAt < Date.now()) {
-        pendingStates.delete(stateStr);
+      if (!pending) {
         return res.redirect("/settings?ms365_error=invalid_state");
       }
 
-      pendingStates.delete(stateStr);
       await exchangeCodeForTokens(String(code), pending.userId);
       res.redirect("/settings?ms365_connected=true");
     } catch (error: unknown) {
-      console.error("[ms365.callback] Error:", error);
+      logger.error("[ms365.callback] Error: %s", error instanceof Error ? error.message : String(error));
       res.redirect("/settings?ms365_error=token_exchange_failed");
     }
   });

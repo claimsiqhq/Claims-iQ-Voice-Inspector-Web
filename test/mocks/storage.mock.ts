@@ -19,7 +19,9 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     // Claims
     createClaim: vi.fn().mockResolvedValue({ id: 1 }),
     getClaimsForUser: vi.fn().mockResolvedValue([]),
+    getClaimsForUserCount: vi.fn().mockResolvedValue(0),
     getClaims: vi.fn().mockResolvedValue([]),
+    getClaimsCount: vi.fn().mockResolvedValue(0),
     getClaim: vi.fn().mockResolvedValue(undefined),
     deleteClaim: vi.fn().mockResolvedValue(true),
     deleteAllClaims: vi.fn().mockResolvedValue(0),
@@ -28,6 +30,9 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Documents
     getAllDocuments: vi.fn().mockResolvedValue([]),
+    getAllDocumentsCount: vi.fn().mockResolvedValue(0),
+    getDocumentsForUser: vi.fn().mockResolvedValue([]),
+    getDocumentsForUserCount: vi.fn().mockResolvedValue(0),
     getDocumentById: vi.fn().mockResolvedValue(undefined),
     createDocument: vi.fn().mockResolvedValue({ id: 1 }),
     getDocuments: vi.fn().mockResolvedValue([]),
@@ -213,6 +218,52 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getTestSquare: vi.fn().mockResolvedValue(undefined),
     getTestSquares: vi.fn().mockResolvedValue([]),
     getTestSquaresForRoom: vi.fn().mockResolvedValue([]),
+    updateTestSquare: vi.fn().mockResolvedValue(undefined),
+    deleteTestSquare: vi.fn().mockResolvedValue(undefined),
+
+    updateDamage: vi.fn().mockResolvedValue(undefined),
+    deleteDamage: vi.fn().mockResolvedValue(undefined),
+
+    updateMoistureReading: vi.fn().mockResolvedValue(undefined),
+    deleteMoistureReading: vi.fn().mockResolvedValue(undefined),
+
+    updateAdjacency: vi.fn().mockResolvedValue(undefined),
+
+    getUserByEmail: vi.fn().mockResolvedValue(undefined),
+    getUserByEmailOrUsername: vi.fn().mockResolvedValue(undefined),
+
+    getRegionalPricesForCode: vi.fn().mockResolvedValue([]),
+
+    updateClaimScheduling: vi.fn().mockResolvedValue(undefined),
+    updateClaimLocation: vi.fn().mockResolvedValue(undefined),
+    updateClaimRouteOrder: vi.fn().mockResolvedValue(undefined),
+    getClaimsForDate: vi.fn().mockResolvedValue([]),
+
+    createItinerary: vi.fn().mockResolvedValue({ id: 1 }),
+    getItinerary: vi.fn().mockResolvedValue(undefined),
+    updateItinerary: vi.fn().mockResolvedValue(undefined),
+
+    createNotification: vi.fn().mockResolvedValue({ id: 1 }),
+    getNotificationById: vi.fn().mockResolvedValue(undefined),
+    getNotifications: vi.fn().mockResolvedValue([]),
+    markNotificationRead: vi.fn().mockResolvedValue(undefined),
+    markAllNotificationsRead: vi.fn().mockResolvedValue(undefined),
+
+    saveMs365Token: vi.fn().mockResolvedValue({ id: 1 }),
+    getMs365Token: vi.fn().mockResolvedValue(undefined),
+    deleteMs365Token: vi.fn().mockResolvedValue(undefined),
+
+    createOauthState: vi.fn().mockResolvedValue({ id: 1 }),
+    consumeOauthState: vi.fn().mockResolvedValue(undefined),
+    cleanupExpiredOauthStates: vi.fn().mockResolvedValue(undefined),
+
+    getAllActiveSessions: vi.fn().mockResolvedValue([]),
+    getRoomsBySessionIds: vi.fn().mockResolvedValue([]),
+    getLineItemsBySessionIds: vi.fn().mockResolvedValue([]),
+    getPhotosBySessionIds: vi.fn().mockResolvedValue([]),
+    getDamagesBySessionIds: vi.fn().mockResolvedValue([]),
+    getEstimateSummaryBatch: vi.fn().mockResolvedValue(new Map()),
+    getUsersByIds: vi.fn().mockResolvedValue([]),
 
     // Apply overrides
     ...overrides,

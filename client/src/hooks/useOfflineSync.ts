@@ -5,6 +5,7 @@ import {
   removeMutation,
   markRetry,
 } from "@/lib/offlineQueue";
+import { getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 
@@ -33,11 +34,12 @@ export function useOfflineSync() {
 
       for (const mutation of pending) {
         try {
+          const freshHeaders = await getAuthHeaders();
           const response = await fetch(mutation.url, {
             method: mutation.method,
             headers: {
               "Content-Type": "application/json",
-              ...mutation.headers,
+              ...freshHeaders,
             },
             body: mutation.body ? JSON.stringify(mutation.body) : undefined,
             signal: AbortSignal.timeout(15000),

@@ -11,13 +11,25 @@ export function documentsRouter(): Router {
 
   router.get("/all", authenticateRequest, async (req, res) => {
     try {
-      const docs = await storage.getAllDocuments();
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+      const pagination = { limit, offset };
+
       if (isPrivilegedRole(req.user?.role)) {
-        return res.json(docs);
+        const [docs, totalCount] = await Promise.all([
+          storage.getAllDocuments(pagination),
+          storage.getAllDocumentsCount(),
+        ]);
+        return res.json({ data: docs, totalCount, page, limit });
       }
       const userClaims = await storage.getClaimsForUser(req.user!.id);
       const claimIds = new Set(userClaims.map((claim) => claim.id));
-      res.json(docs.filter((doc) => claimIds.has(doc.claimId)));
+      const allDocs = await storage.getAllDocuments();
+      const filtered = allDocs.filter((doc) => claimIds.has(doc.claimId));
+      const totalCount = filtered.length;
+      const paginatedDocs = filtered.slice(offset, offset + limit);
+      res.json({ data: paginatedDocs, totalCount, page, limit });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
@@ -26,13 +38,12 @@ export function documentsRouter(): Router {
 
   router.get("/status-summary", authenticateRequest, async (req, res) => {
     try {
-      const docs = await storage.getAllDocuments();
       const allClaims = isPrivilegedRole(req.user?.role)
         ? await storage.getClaims()
         : await storage.getClaimsForUser(req.user!.id);
       const summaries = [];
       for (const claim of allClaims) {
-        const claimDocs = docs.filter(d => d.claimId === claim.id);
+        const claimDocs = await storage.getDocuments(claim.id);
         if (claimDocs.length === 0) continue;
         const claimExtractions = await storage.getExtractions(claim.id);
         const docStatuses = claimDocs.map(doc => {

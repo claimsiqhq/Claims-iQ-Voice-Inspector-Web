@@ -125,9 +125,10 @@ export default function SettingsPage() {
   const { user, signOut } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: claims = [] } = useQuery<Claim[]>({
+  const { data: claimsResponse } = useQuery<{ data: Claim[]; totalCount: number } | Claim[]>({
     queryKey: ["/api/claims"],
   });
+  const claims: Claim[] = Array.isArray(claimsResponse) ? claimsResponse : (claimsResponse?.data ?? []);
 
   const { data: ms365Status, isLoading: ms365Loading } = useQuery<{
     configured: boolean;

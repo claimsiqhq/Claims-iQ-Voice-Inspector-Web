@@ -41,8 +41,9 @@ import {
   dailyItineraries, type DailyItinerary, type InsertDailyItinerary,
   adjusterNotifications, type AdjusterNotification, type InsertAdjusterNotification,
   ms365Tokens, type Ms365Token, type InsertMs365Token,
+  ms365OauthStates, type Ms365OauthState,
 } from "@shared/schema";
-import { eq, and, desc, sql, or, asc } from "drizzle-orm";
+import { eq, and, desc, sql, or, asc, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -56,15 +57,20 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
 
   createClaim(data: InsertClaim): Promise<Claim>;
-  getClaimsForUser(userId: string): Promise<Claim[]>;
-  getClaims(): Promise<Claim[]>;
+  getClaimsForUser(userId: string, pagination?: { limit: number; offset: number }): Promise<Claim[]>;
+  getClaimsForUserCount(userId: string): Promise<number>;
+  getClaims(pagination?: { limit: number; offset: number }): Promise<Claim[]>;
+  getClaimsCount(): Promise<number>;
   getClaim(id: number): Promise<Claim | undefined>;
   deleteClaim(id: number): Promise<boolean>;
   deleteAllClaims(): Promise<number>;
   updateClaimStatus(id: number, status: string): Promise<Claim | undefined>;
   updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType' | 'assignedTo'>>): Promise<Claim | undefined>;
 
-  getAllDocuments(): Promise<Document[]>;
+  getAllDocuments(pagination?: { limit: number; offset: number }): Promise<Document[]>;
+  getAllDocumentsCount(): Promise<number>;
+  getDocumentsForUser(userId: string, pagination?: { limit: number; offset: number }): Promise<Document[]>;
+  getDocumentsForUserCount(userId: string): Promise<number>;
   getDocumentById(id: number): Promise<Document | undefined>;
   createDocument(data: InsertDocument): Promise<Document>;
   getDocuments(claimId: number): Promise<Document[]>;
@@ -283,6 +289,7 @@ export interface IStorage {
 
   // ── Adjuster Notifications ─────────────────────
   createNotification(data: InsertAdjusterNotification): Promise<AdjusterNotification>;
+  getNotificationById(id: number): Promise<AdjusterNotification | undefined>;
   getNotifications(userId: string, unreadOnly?: boolean): Promise<AdjusterNotification[]>;
   markNotificationRead(id: number): Promise<AdjusterNotification | undefined>;
   markAllNotificationsRead(userId: string): Promise<void>;
@@ -291,6 +298,20 @@ export interface IStorage {
   saveMs365Token(userId: string, tokenData: Omit<InsertMs365Token, 'userId'>): Promise<Ms365Token>;
   getMs365Token(userId: string): Promise<Ms365Token | undefined>;
   deleteMs365Token(userId: string): Promise<void>;
+
+  // ── MS365 OAuth States (DB-backed) ────────────
+  createOauthState(state: string, userId: string, expiresAt: Date): Promise<Ms365OauthState>;
+  consumeOauthState(state: string): Promise<{ userId: string } | undefined>;
+  cleanupExpiredOauthStates(): Promise<void>;
+
+  // ── Batch queries (admin dashboard) ───────────
+  getAllActiveSessions(): Promise<InspectionSession[]>;
+  getRoomsBySessionIds(sessionIds: number[]): Promise<InspectionRoom[]>;
+  getLineItemsBySessionIds(sessionIds: number[]): Promise<LineItem[]>;
+  getPhotosBySessionIds(sessionIds: number[]): Promise<InspectionPhoto[]>;
+  getDamagesBySessionIds(sessionIds: number[]): Promise<DamageObservation[]>;
+  getEstimateSummaryBatch(sessionIds: number[]): Promise<Map<number, { totalRCV: number }>>;
+  getUsersByIds(ids: string[]): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -424,12 +445,24 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).orderBy(users.fullName);
   }
 
-  async getClaimsForUser(userId: string): Promise<Claim[]> {
-    return db
+  async getClaimsForUser(userId: string, pagination?: { limit: number; offset: number }): Promise<Claim[]> {
+    let query = db
       .select()
       .from(claims)
       .where(eq(claims.assignedTo, userId))
       .orderBy(desc(claims.createdAt));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as any;
+    }
+    return query;
+  }
+
+  async getClaimsForUserCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(claims)
+      .where(eq(claims.assignedTo, userId));
+    return result?.count ?? 0;
   }
 
   async createClaim(data: InsertClaim): Promise<Claim> {
@@ -437,8 +470,19 @@ export class DatabaseStorage implements IStorage {
     return claim;
   }
 
-  async getClaims(): Promise<Claim[]> {
-    return db.select().from(claims).orderBy(desc(claims.createdAt));
+  async getClaims(pagination?: { limit: number; offset: number }): Promise<Claim[]> {
+    let query = db.select().from(claims).orderBy(desc(claims.createdAt));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as any;
+    }
+    return query;
+  }
+
+  async getClaimsCount(): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(claims);
+    return result?.count ?? 0;
   }
 
   async getClaim(id: number): Promise<Claim | undefined> {
@@ -479,8 +523,51 @@ export class DatabaseStorage implements IStorage {
     return doc;
   }
 
-  async getAllDocuments(): Promise<Document[]> {
-    return db.select().from(documents);
+  async getAllDocuments(pagination?: { limit: number; offset: number }): Promise<Document[]> {
+    let query = db.select().from(documents);
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as any;
+    }
+    return query;
+  }
+
+  async getAllDocumentsCount(): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(documents);
+    return result?.count ?? 0;
+  }
+
+  async getDocumentsForUser(userId: string, pagination?: { limit: number; offset: number }): Promise<Document[]> {
+    let query = db
+      .select({
+        id: documents.id,
+        claimId: documents.claimId,
+        documentType: documents.documentType,
+        fileName: documents.fileName,
+        fileSize: documents.fileSize,
+        storagePath: documents.storagePath,
+        status: documents.status,
+        rawText: documents.rawText,
+        errorMessage: documents.errorMessage,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .innerJoin(claims, eq(documents.claimId, claims.id))
+      .where(eq(claims.assignedTo, userId));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as any;
+    }
+    return query;
+  }
+
+  async getDocumentsForUserCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(documents)
+      .innerJoin(claims, eq(documents.claimId, claims.id))
+      .where(eq(claims.assignedTo, userId));
+    return result?.count ?? 0;
   }
 
   async getDocumentById(id: number): Promise<Document | undefined> {
@@ -1687,6 +1774,11 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
+  async getNotificationById(id: number): Promise<AdjusterNotification | undefined> {
+    const [notification] = await db.select().from(adjusterNotifications).where(eq(adjusterNotifications.id, id));
+    return notification;
+  }
+
   async getNotifications(userId: string, unreadOnly: boolean = false): Promise<AdjusterNotification[]> {
     const conditions = [eq(adjusterNotifications.userId, userId)];
     if (unreadOnly) {
@@ -1733,6 +1825,76 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMs365Token(userId: string): Promise<void> {
     await db.delete(ms365Tokens).where(eq(ms365Tokens.userId, userId));
+  }
+
+  async getAllActiveSessions(): Promise<InspectionSession[]> {
+    return db.select().from(inspectionSessions)
+      .where(or(
+        eq(inspectionSessions.status, "active"),
+        eq(inspectionSessions.status, "in_progress"),
+      ));
+  }
+
+  async getRoomsBySessionIds(sessionIds: number[]): Promise<InspectionRoom[]> {
+    if (sessionIds.length === 0) return [];
+    return db.select().from(inspectionRooms).where(inArray(inspectionRooms.sessionId, sessionIds));
+  }
+
+  async getLineItemsBySessionIds(sessionIds: number[]): Promise<LineItem[]> {
+    if (sessionIds.length === 0) return [];
+    return db.select().from(lineItems).where(inArray(lineItems.sessionId, sessionIds));
+  }
+
+  async getPhotosBySessionIds(sessionIds: number[]): Promise<InspectionPhoto[]> {
+    if (sessionIds.length === 0) return [];
+    return db.select().from(inspectionPhotos).where(inArray(inspectionPhotos.sessionId, sessionIds));
+  }
+
+  async getDamagesBySessionIds(sessionIds: number[]): Promise<DamageObservation[]> {
+    if (sessionIds.length === 0) return [];
+    return db.select().from(damageObservations).where(inArray(damageObservations.sessionId, sessionIds));
+  }
+
+  async getEstimateSummaryBatch(sessionIds: number[]): Promise<Map<number, { totalRCV: number }>> {
+    const result = new Map<number, { totalRCV: number }>();
+    if (sessionIds.length === 0) return result;
+    const rows = await db
+      .select({
+        sessionId: lineItems.sessionId,
+        totalRCV: sql<number>`coalesce(sum(${lineItems.totalPrice}::numeric), 0)::float`,
+      })
+      .from(lineItems)
+      .where(inArray(lineItems.sessionId, sessionIds))
+      .groupBy(lineItems.sessionId);
+    for (const row of rows) {
+      result.set(row.sessionId, { totalRCV: row.totalRCV });
+    }
+    return result;
+  }
+
+  async getUsersByIds(ids: string[]): Promise<User[]> {
+    if (ids.length === 0) return [];
+    return db.select().from(users).where(inArray(users.id, ids));
+  }
+
+  async createOauthState(state: string, userId: string, expiresAt: Date): Promise<Ms365OauthState> {
+    const [row] = await db.insert(ms365OauthStates).values({ state, userId, expiresAt }).returning();
+    return row;
+  }
+
+  async consumeOauthState(state: string): Promise<{ userId: string } | undefined> {
+    await this.cleanupExpiredOauthStates();
+    const [row] = await db.select().from(ms365OauthStates)
+      .where(eq(ms365OauthStates.state, state));
+    if (!row) return undefined;
+    await db.delete(ms365OauthStates).where(eq(ms365OauthStates.id, row.id));
+    if (row.expiresAt < new Date()) return undefined;
+    return { userId: row.userId };
+  }
+
+  async cleanupExpiredOauthStates(): Promise<void> {
+    await db.delete(ms365OauthStates)
+      .where(sql`${ms365OauthStates.expiresAt} < now()`);
   }
 }
 

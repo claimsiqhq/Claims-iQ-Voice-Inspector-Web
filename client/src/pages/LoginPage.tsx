@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await signUp(email, password, fullName, username.trim() || undefined);
+      await signUp(email, password, fullName, username.trim() || undefined, inviteCode.trim() || undefined);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Sign up failed. Please try again.");
     } finally {
@@ -128,6 +129,20 @@ export default function LoginPage() {
 
             <TabsContent value="signup">
               <form onSubmit={(e) => { e.preventDefault(); handleSignUp(); }} className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <Lock className="h-4 w-4" /> Invite Code
+                </label>
+                <Input
+                  data-testid="input-invite-code"
+                  type="text"
+                  placeholder="Enter invite code"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  className="border-gray-300"
+                />
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                   <User className="h-4 w-4" /> Full Name

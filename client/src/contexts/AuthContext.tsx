@@ -25,7 +25,7 @@ interface AuthContextType {
   role: string | null;
   loading: boolean;
   signIn: (emailOrUsername: string, password: string, rememberMe?: boolean) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, username?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, username?: string, inviteCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<AuthUser, "fullName" | "title" | "avatarUrl">>) => void;
@@ -309,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function signUp(email: string, password: string, fullName: string, username?: string) {
+  async function signUp(email: string, password: string, fullName: string, username?: string, inviteCode?: string) {
     try {
       localStorage.setItem("claimsiq_remember_me", "true");
       sessionStorage.removeItem("claimsiq_session_active");
@@ -326,6 +326,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: email || undefined,
               password,
               fullName: fullName || undefined,
+              inviteCode: inviteCode || undefined,
             }),
           },
           AUTH_REQUEST_TIMEOUT_MS

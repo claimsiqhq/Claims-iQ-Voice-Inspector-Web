@@ -1106,6 +1106,17 @@ export const insertAdjusterNotificationSchema = createInsertSchema(adjusterNotif
 export type AdjusterNotification = typeof adjusterNotifications.$inferSelect;
 export type InsertAdjusterNotification = z.infer<typeof insertAdjusterNotificationSchema>;
 
+// ── MS365 OAuth States (DB-backed, survives restarts) ────
+export const ms365OauthStates = pgTable("ms365_oauth_states", {
+  id: serial("id").primaryKey(),
+  state: varchar("state", { length: 64 }).notNull().unique(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Ms365OauthState = typeof ms365OauthStates.$inferSelect;
+
 // ── MS365 Tokens ─────────────────────
 export const ms365Tokens = pgTable("ms365_tokens", {
   id: serial("id").primaryKey(),

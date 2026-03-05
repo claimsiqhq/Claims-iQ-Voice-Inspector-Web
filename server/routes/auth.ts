@@ -46,7 +46,14 @@ export function authRouter(): Router {
 
   router.post("/register", async (req, res) => {
     try {
-      const { username, email, password, fullName } = req.body;
+      const { username, email, password, fullName, inviteCode } = req.body;
+      const expectedInviteCode = process.env.REGISTRATION_INVITE_CODE;
+      if (!expectedInviteCode) {
+        return res.status(403).json({ message: "Registration is currently disabled" });
+      }
+      if (!inviteCode || String(inviteCode).trim() !== expectedInviteCode) {
+        return res.status(403).json({ message: "Invalid or missing invite code" });
+      }
       if (!username || !password) {
         return res.status(400).json({ message: "Username and password are required" });
       }
@@ -55,8 +62,8 @@ export function authRouter(): Router {
       if (trimmedUsername.length < 2) {
         return res.status(400).json({ message: "Username must be at least 2 characters" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
       }
       const existingByUsername = await storage.getUserByUsername(trimmedUsername);
       if (existingByUsername) {

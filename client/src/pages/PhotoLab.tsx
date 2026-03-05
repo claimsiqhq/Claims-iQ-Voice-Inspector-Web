@@ -484,9 +484,10 @@ export default function PhotoLab() {
     },
   });
 
-  const { data: claimsList = [] } = useQuery<Claim[]>({
+  const { data: claimsResponse } = useQuery<{ data: Claim[]; totalCount: number } | Claim[]>({
     queryKey: ["/api/claims"],
   });
+  const claimsList: Claim[] = Array.isArray(claimsResponse) ? claimsResponse : (claimsResponse?.data ?? []);
 
   useEffect(() => {
     if (uploadProgress && uploadProgress.completed + uploadProgress.failed >= uploadProgress.total) {

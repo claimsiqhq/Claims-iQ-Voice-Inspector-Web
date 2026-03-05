@@ -6,6 +6,7 @@ import { supabase, PHOTOS_BUCKET } from "../supabase";
 import { authenticateRequest } from "../auth";
 import { analyzePhotoDamage } from "../openai";
 import { logger } from "../logger";
+import { validateImageMagicBytes } from "../utils";
 import { z } from "zod";
 
 const uploadSchema = z.object({
@@ -71,6 +72,9 @@ export function photolabRouter() {
 
       const ext = base64Match[1] === "jpeg" ? "jpg" : base64Match[1];
       const buffer = Buffer.from(base64Match[2], "base64");
+      if (!validateImageMagicBytes(buffer)) {
+        return res.status(400).json({ message: "Invalid image file: magic bytes do not match a supported image format (JPEG, PNG, WebP)" });
+      }
       const contentType = `image/${base64Match[1]}`;
       const storagePath = `standalone/${userId}/${Date.now()}.${ext}`;
 

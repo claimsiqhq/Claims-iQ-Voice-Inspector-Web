@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import { sql } from "drizzle-orm";
 import { authRouter } from "./auth";
 import { settingsRouter } from "./settings";
 import { profileRouter } from "./profile";
@@ -18,27 +19,21 @@ import { registerInspectionRoutes } from "./inspection";
 import { ms365Router } from "./ms365";
 import { itineraryRouter } from "./itinerary";
 import { mydayRouter } from "./myday";
+import { db } from "../db";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { version: appVersion } = require("../../package.json");
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // ─── Health (no auth) ───────────────────────────
-  app.get("/health", (_req, res) => {
-    res.json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      version: process.env.npm_package_version || "unknown",
-    });
-  });
-
   app.get("/readiness", async (_req, res) => {
-    const { storage } = await import("../storage");
     const checks: Record<string, { status: string; latencyMs?: number }> = {};
     try {
       const dbStart = Date.now();
-      await storage.getClaims();
+      await db.execute(sql`SELECT 1`);
       checks.database = { status: "ready", latencyMs: Date.now() - dbStart };
     } catch {
       checks.database = { status: "not_ready" };

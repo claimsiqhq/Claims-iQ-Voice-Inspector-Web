@@ -34,6 +34,14 @@ const supabaseOrigin = (() => {
     return "";
   }
 })();
+const supabaseStorageDomain = (() => {
+  try {
+    const raw = process.env.SUPABASE_URL || "";
+    return raw ? new URL(raw).hostname : "";
+  } catch {
+    return "";
+  }
+})();
 const cspConnectSrc = [
   "'self'",
   "https://api.openai.com",
@@ -43,10 +51,17 @@ const cspConnectSrc = [
   ...(supabaseOrigin ? [supabaseOrigin] : []),
 ];
 
-// Bare-minimum health endpoints — respond before any middleware.
-// Replit autoscale checks "/" by default; Cloud Run may check "/health".
+import { createRequire } from "module";
+const requireSync = createRequire(import.meta.url);
+const { version: pkgVersion } = requireSync("../package.json");
+
 app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "healthy", uptime: process.uptime() });
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: pkgVersion,
+  });
 });
 
 app.use(
@@ -61,10 +76,17 @@ app.use(
               "wss://*.supabase.co",
               "blob:",
             ],
-            imgSrc: ["'self'", "data:", "blob:", "https:"],
+            imgSrc: [
+              "'self'",
+              "data:",
+              "blob:",
+              ...(supabaseStorageDomain ? [`https://${supabaseStorageDomain}`] : []),
+              "https://*.tile.openstreetmap.org",
+              "https://cdnjs.cloudflare.com",
+            ],
             mediaSrc: ["'self'", "blob:", "mediastream:"],
             styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
             fontSrc: ["'self'", "data:"],
             workerSrc: ["'self'", "blob:"],
             objectSrc: ["'none'"],
@@ -202,7 +224,7 @@ export function log(message: string, source = "express") {
 const port = parseInt(process.env.PORT || "5000", 10);
 
 let appReady = false;
-const LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Claims IQ</title><style>body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui;background:#F8F7FC;color:#342A4F}div{text-align:center}.spin{width:32px;height:32px;border:3px solid #e2ddf5;border-top-color:#7c3aed;border-radius:50%;animation:s 0.8s linear infinite;margin:0 auto 16px}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div><div class="spin"></div><p>Loading Claims IQ...</p></div><script>setTimeout(()=>location.reload(),2000)</script></body></html>`;
+const LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="2"><title>Claims IQ</title><style>body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui;background:#F8F7FC;color:#342A4F}div{text-align:center}.spin{width:32px;height:32px;border:3px solid #e2ddf5;border-top-color:#7c3aed;border-radius:50%;animation:s 0.8s linear infinite;margin:0 auto 16px}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div><div class="spin"></div><p>Loading Claims IQ...</p></div></body></html>`;
 app.use((req, res, next) => {
   if (appReady || req.path === "/health" || req.path === "/readiness") return next();
   if (req.path.startsWith("/api")) return next();

@@ -111,13 +111,14 @@ export function notificationsRouter() {
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid notification id" });
       }
-      const updated = await storage.markNotificationRead(id);
-      if (!updated) {
+      const notification = await storage.getNotificationById(id);
+      if (!notification) {
         return res.status(404).json({ message: "Notification not found" });
       }
-      if (updated.userId !== req.user!.id) {
+      if (notification.userId !== req.user!.id) {
         return res.status(403).json({ message: "Not authorized" });
       }
+      const updated = await storage.markNotificationRead(id);
       res.json(updated);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);

@@ -64,20 +64,19 @@ beforeEach(() => {
 
   app.get("/api/admin/dashboard", async (_req, res) => {
     try {
-      const allClaims = await mockStorage.getClaims();
-      const sessions = await Promise.all(allClaims.map((c) => mockStorage.getActiveSessionForClaim(c.id)));
-      const activeSessions = sessions.filter((s) => s !== undefined).length;
+      const [allClaims, allActiveSessions] = await Promise.all([
+        mockStorage.getClaims(),
+        mockStorage.getAllActiveSessions(),
+      ]);
+      const sessionIds = allActiveSessions.map((s: any) => s.id);
+      const estimateSummaries = await mockStorage.getEstimateSummaryBatch(sessionIds);
       let totalEstimateValue = 0;
-      const completedSessions = sessions.filter(Boolean);
-      for (const session of completedSessions) {
-        if (session) {
-          const summary = await mockStorage.getEstimateSummary(session.id);
-          totalEstimateValue += summary.totalRCV;
-        }
+      for (const summary of estimateSummaries.values()) {
+        totalEstimateValue += summary.totalRCV;
       }
       res.json({
         totalClaims: allClaims.length,
-        activeSessions,
+        activeSessions: allActiveSessions.length,
         totalEstimateValue,
       });
     } catch {
@@ -87,19 +86,23 @@ beforeEach(() => {
 
   app.get("/api/admin/active-sessions", async (_req, res) => {
     try {
-      const allClaims = await mockStorage.getClaims();
-      const allSessions = [];
-      for (const claim of allClaims) {
-        const session = await mockStorage.getActiveSessionForClaim(claim.id);
-        if (session) {
-          allSessions.push({
-            id: session.id,
-            claimNumber: claim.claimNumber,
-            claimId: claim.id,
-          });
-        }
+      const [allClaims, activeSessionsList] = await Promise.all([
+        mockStorage.getClaims(),
+        mockStorage.getAllActiveSessions(),
+      ]);
+      if (activeSessionsList.length === 0) {
+        return res.json([]);
       }
-      res.json(allSessions);
+      const claimsMap = new Map(allClaims.map((c: any) => [c.id, c]));
+      const result = activeSessionsList.map((session: any) => {
+        const claim = claimsMap.get(session.claimId);
+        return {
+          id: session.id,
+          claimNumber: claim?.claimNumber || "Unknown",
+          claimId: session.claimId,
+        };
+      });
+      res.json(result);
     } catch {
       res.status(500).json({ message: "Internal server error" });
     }
@@ -174,10 +177,9 @@ describe("GET /api/admin/dashboard", () => {
     const claims = [buildClaim({ id: 1 }), buildClaim({ id: 2 })];
     const session = buildSession({ id: 1, claimId: 1 });
     (mockStorage.getClaims as any).mockResolvedValue(claims);
-    (mockStorage.getActiveSessionForClaim as any)
-      .mockResolvedValueOnce(session)
-      .mockResolvedValueOnce(undefined);
-    (mockStorage.getEstimateSummary as any).mockResolvedValue({ totalRCV: 5000 });
+    (mockStorage.getAllActiveSessions as any).mockResolvedValue([session]);
+    const summaryMap = new Map([[1, { totalRCV: 5000 }]]);
+    (mockStorage.getEstimateSummaryBatch as any).mockResolvedValue(summaryMap);
 
     const res = await request(app).get("/api/admin/dashboard");
 
@@ -193,7 +195,7 @@ describe("GET /api/admin/active-sessions", () => {
     const claims = [buildClaim({ id: 1, claimNumber: "CLM-001" })];
     const session = buildSession({ id: 1, claimId: 1 });
     (mockStorage.getClaims as any).mockResolvedValue(claims);
-    (mockStorage.getActiveSessionForClaim as any).mockResolvedValue(session);
+    (mockStorage.getAllActiveSessions as any).mockResolvedValue([session]);
 
     const res = await request(app).get("/api/admin/active-sessions");
 
